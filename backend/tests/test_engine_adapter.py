@@ -75,15 +75,24 @@ def test_unknown_severity_and_line_range():
     assert (finding.start_line, finding.end_line) == (6, 8)
 
 
-def test_only_code_resolved_items_are_skipped(engine_payload):
+def test_resolved_and_unchecked_items_are_skipped(engine_payload):
     findings = {f.fingerprint: f for f in from_engine_payload(engine_payload)}
     reasons = {fp: skip_reason(f) for fp, f in findings.items()}
 
     skipped = {fp for fp, r in reasons.items() if r}
-    assert skipped == {fp for fp, f in findings.items() if f.status == "code_resolved"}
+    assert skipped == {fp for fp, f in findings.items() if f.status in ("code_resolved", "out_of_scope")}
     # 코드에서는 지웠지만 키 재발급이 남은 비밀값은 설명합니다
     secret = next(f for f in findings.values() if f.category == "secret")
     assert secret.change == "resolved" and skip_reason(secret) is None
+
+
+def test_out_of_scope_is_skipped_as_needs_rescan(engine_payload):
+    # 재검사에서 도구가 실패해 확인하지 못한 항목은 "지금 문제 있음"으로 설명하지 않습니다
+    item = {**engine_payload["items"][0], "status": "out_of_scope", "change": "unverifiable"}
+
+    reason = skip_reason(from_engine_item(item))
+
+    assert reason and "다시 검사" in reason
 
 
 async def test_engine_payload_end_to_end(fake_vllm, engine_payload):

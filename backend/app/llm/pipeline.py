@@ -49,6 +49,9 @@ def skip_reason(finding: FindingInput) -> str | None:
     """
     if finding.status == "code_resolved":
         return "코드에서 이미 해결된 항목입니다"
+    if finding.status == "out_of_scope":
+        # 재검사에서 도구가 실패해 확인하지 못한 항목. "지금 문제 있음"으로 설명하면 안 됩니다
+        return "이번 검사에서 확인하지 못했습니다. 다시 검사가 필요합니다"
     if finding.status is None and finding.change == "resolved":
         return "재검사에서 해결된 항목입니다"
     return None
@@ -115,7 +118,7 @@ class Explainer:
                 RedRound(
                     round=round_no,
                     verdict=review.data.verdict,
-                    issues=review.data.issues,
+                    issues=[prompts.redact_secrets(issue) for issue in review.data.issues],
                     latency_ms=review.latency_ms,
                 )
             )
@@ -157,7 +160,10 @@ class Explainer:
             summary=redact(draft.summary),
             why_risky=redact(draft.why_risky),
             priority=draft.priority,
-            fix_steps=[step.model_copy(update={"detail": redact(step.detail)}) for step in draft.fix_steps],
+            fix_steps=[
+                step.model_copy(update={"title": redact(step.title), "detail": redact(step.detail)})
+                for step in draft.fix_steps
+            ],
             ai_fix_prompt=redact(draft.ai_fix_prompt),
             false_positive_suspect=draft.false_positive_suspect,
             # 모델이 오탐이 아니라고 하면서 이유를 적는 경우가 있어, 오탐 의심일 때만 남깁니다

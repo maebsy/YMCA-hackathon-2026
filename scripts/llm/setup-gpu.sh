@@ -6,6 +6,7 @@
 set -euo pipefail
 
 VLLM_VERSION="${VLLM_VERSION:-0.32.0}"
+UV_VERSION="${UV_VERSION:-0.13.6}"  # docs/external-resources.md 의 버전과 맞춥니다
 VENV="${VLLM_VENV:-$HOME/venv-vllm}"
 MODEL_REPO="${LLM_MODEL_REPO:-avyukth/Qwen3.8-27B-AWQ-INT4}"
 MODEL_REV="${LLM_MODEL_REV:-5a2ee524cbc9f3ac5df12729ecf0c4b57f311192}"
@@ -16,8 +17,8 @@ nvidia-smi --query-gpu=name,driver_version,memory.total,memory.used --format=csv
 df -h "$HOME" | tail -1
 
 if ! command -v uv >/dev/null; then
-  echo "== uv 설치 (~/.local/bin)"
-  curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
+  echo "== uv $UV_VERSION 설치 (~/.local/bin)"
+  curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" | env UV_NO_MODIFY_PATH=1 sh
 fi
 
 # Triton이 실행 중에 C 확장을 컴파일해서 Python.h 가 필요합니다. 서버 python3 에는 개발 헤더가 없고 apt는 쓰지 않으므로

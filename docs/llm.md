@@ -94,7 +94,10 @@ curl -X POST http://localhost:8000/api/llm/explain \
   - `likely_public_key`는 오탐 의심의 근거로, `suppressed_by_comment`·`ignored_by_config`는 숨김 주석·설정을 지우라는 안내와 Red 판정에 씁니다.
   - `fix_hint.target_version`·`command`가 있으면 그 버전과 명령을 그대로 안내합니다.
   - 엔진 규격이 바뀌면 [`tests/fixtures/engine_llm_input.json`](../backend/tests/fixtures/engine_llm_input.json)(엔진 예시 사본)을 바꾸고 계약 테스트를 돌립니다.
-- **건너뛰는 항목**: `status`가 `code_resolved`면 GPU를 쓰지 않고 `skipped`로 돌려줍니다. `change`가 `resolved`여도 `status`가 `runtime_check_needed`면(코드에서 지운 비밀값의 키 재발급처럼 할 일이 남음) 설명합니다.
+- **건너뛰는 항목**: GPU를 쓰지 않고 `skipped`와 이유(`reason`)를 돌려줍니다.
+  - `status: code_resolved`: 코드에서 이미 해결됨
+  - `status: out_of_scope`: 재검사에서 도구가 실패해 확인하지 못함. 화면에는 "다시 검사 필요"로 보여 줍니다
+  - `change`가 `resolved`여도 `status`가 `runtime_check_needed`면(코드에서 지운 비밀값의 키 재발급처럼 할 일이 남음) 설명합니다
 - 출력 `Explanation`: DB `explanation` 테이블 칼럼에 Red–Blue 결과(`attack_scenario`, `red_verdict`, `red_rounds`, `needs_manual_review`)를 더했습니다.
 - 정의: [`backend/app/llm/schemas.py`](../backend/app/llm/schemas.py)
 

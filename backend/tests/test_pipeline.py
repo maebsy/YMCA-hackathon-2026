@@ -123,3 +123,17 @@ async def test_context_overflow_gives_up_with_clear_code(fake_vllm, findings):
 
     assert result.status == "failed"
     assert result.error_code == "LLM_INPUT_TOO_LONG"
+
+
+async def test_secrets_in_red_issues_and_step_titles_are_masked(fake_vllm, findings):
+    leaked = FAKE_OPENAI_KEY
+    step = {"title": f"키 {leaked} 지우기", "detail": "코드에서 지웁니다."}
+    fake_vllm.queue("BlueDraft", blue_draft(fix_steps=[step]), blue_draft(fix_steps=[step]))
+    fake_vllm.queue("RedReview", red_review("incomplete", issues=[f"{leaked} 를 재발급하라는 단계가 없습니다"]), red_review())
+
+    result = await Explainer(fake_vllm.client()).red_blue(findings[0])
+
+    dumped = result.model_dump_json()
+    assert leaked not in dumped
+    assert result.red_rounds[0].issues[0].startswith("[가림]")
+    assert result.fix_steps[0].title == "키 [가림] 지우기"

@@ -100,6 +100,8 @@ exp(model): LoRA r=16과 r=32 정확도 비교
 | `lint` | 파이썬 문법 오류, 정의되지 않은 이름 |
 | `secret-scan` | API 키·토큰 유출 (gitleaks) |
 
+`backend/`나 `compose.yaml`이 바뀐 PR에서는 `compose` 검사(이미지 빌드, DB 연결까지 헬스체크)도 돕니다. 필수 검사는 아니지만 실패하면 다른 사람의 `docker compose up`이 깨지니 고치고 머지하세요.
+
 ## 5. 리뷰
 
 - 리뷰 요청을 받으면 **30분 안에** 봅니다. 해커톤에서는 리뷰 대기가 곧 병목입니다.

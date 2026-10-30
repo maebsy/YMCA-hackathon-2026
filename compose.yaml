@@ -1,0 +1,57 @@
+# 로컬 개발 환경: API 서버(FastAPI) + PostgreSQL
+#
+#   docker compose up --build --watch    코드를 저장하면 컨테이너에 바로 반영됩니다
+#   docker compose down                  끄기 (DB 데이터는 남음)
+#   docker compose down --volumes        DB 데이터까지 지우기
+#
+# 개인 설정(포트, Supabase 연결 등)은 compose.override.yaml 에 적으세요. 자동으로 합쳐지고 커밋되지 않습니다.
+name: ymca-hackathon
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # 127.0.0.1 에만 엽니다. 0.0.0.0 으로 열면 같은 네트워크의 누구나 DB에 붙을 수 있습니다
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # .env 의 DATABASE_URL(Supabase 등)보다 우선합니다. 컨테이너에서는 위의 db 서비스를 씁니다
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
+      # 컨테이너 안의 localhost 는 컨테이너 자신이라 .env 의 LLM_BASE_URL(localhost:8001)을 그대로 못 씁니다.
+      # 내 PC의 8001(GPU 서버 vLLM으로 연 SSH 터널)로 연결합니다
+      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-http://host.docker.internal:8001/v1}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      # 리눅스에서도 host.docker.internal 이 내 PC를 가리키게 합니다 (Docker Desktop은 원래 됨)
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/app
+          target: /srv/backend/app
+        - action: rebuild
+          path: ./backend/requirements.txt
+
+volumes:
+  pgdata:

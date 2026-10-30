@@ -1,0 +1,286 @@
+<title>시스템 플로우 차트</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  /* layout: 한 줄 정의 → 사용자 흐름 → 시스템 구성 → 핵심 4장 카드 → 확정할 것 */
+  :root {
+    --bg: #f4f6f8;
+    --fg: #14202b;
+    --muted: #5b6b7a;
+    --line: #9aa8b5;
+    --surface: #ffffff;
+    --surface-2: #e9eef2;
+    --accent: #0a7a73;
+    --accent-soft: #d6efec;
+    --red: #b4232c;
+    --red-soft: #fbe4e4;
+    --font: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e151c; --fg: #e5ecf2; --muted: #93a3b2; --line: #4b5b69;
+      --surface: #16212b; --surface-2: #1d2a36; --accent: #3cc8bc; --accent-soft: #123a38; --red: #ff8a8a; --red-soft: #3b1d21;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e151c; --fg: #e5ecf2; --muted: #93a3b2; --line: #4b5b69;
+    --surface: #16212b; --surface-2: #1d2a36; --accent: #3cc8bc; --accent-soft: #123a38; --red: #ff8a8a; --red-soft: #3b1d21;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.6;
+    padding-block: 32px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+  header h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; text-wrap: balance; }
+  header p { margin: 0; color: var(--muted); max-width: 75ch; }
+  section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  h2 { font-size: 19px; margin: 0; }
+  .scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--surface-2); border-radius: 6px; padding: 12px; }
+  .scroll svg { display: block; width: 100%; min-width: 900px; height: auto; color: var(--fg); font-family: var(--font); }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  figcaption { color: var(--muted); max-width: 75ch; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  .legend i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1.5px solid var(--line); background: var(--surface); }
+  .legend i.a { border-color: var(--accent); background: var(--accent-soft); }
+  .legend i.r { border-color: var(--red); background: var(--red-soft); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--surface-2); border-radius: 6px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .card .k { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--accent); }
+  .card h3 { margin: 0; font-size: 16px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  svg .node { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+  svg .group { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  svg .inner { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+  svg .hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+  svg .rd { fill: var(--red-soft); stroke: var(--red); stroke-width: 2; }
+  svg .ln { fill: none; stroke: var(--line); stroke-width: 1.6; }
+  svg .ln-a { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+  svg .ln-r { fill: none; stroke: var(--red); stroke-width: 2.2; }
+  svg .mk { fill: var(--line); }
+  svg .mk-a { fill: var(--accent); }
+  svg .mk-r { fill: var(--red); }
+  svg .t { font-size: 15px; font-weight: 700; fill: currentColor; }
+  svg .s { font-size: 12.5px; fill: var(--muted); }
+  svg .lb { font-size: 12px; fill: var(--muted); }
+  svg .lb-a { font-size: 12.5px; font-weight: 700; fill: var(--accent); }
+  svg .lb-r { font-size: 12.5px; font-weight: 700; fill: var(--red); }
+  svg .c { text-anchor: middle; }
+
+  .todo { background: var(--surface); border: 1px solid var(--surface-2); border-left: 4px solid var(--accent); border-radius: 6px; padding: 14px 18px; }
+  .todo ul { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+</style>
+
+<main>
+  <header>
+    <h1>72hours 시스템 플로우</h1>
+    <p>취약점 발견부터 해결, 리포트 전달까지 72시간 안에 끝내는 웹사이트 보안 서비스입니다.</p>
+  </header>
+
+  <section>
+    <h2>1. 사용자 흐름</h2>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1180 215" role="img" aria-label="사용자는 연결, 검사, 알림, 대응 안내, 재검사·리포트의 5단계를 거친다. 수정 후에는 검사로 돌아가고, 검사에서 발견된 순간부터 해결과 리포트 전달까지 72시간 타이머가 돈다.">
+          <defs>
+            <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk"/></marker>
+            <marker id="m1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk-a"/></marker>
+          </defs>
+          <rect class="node" x="20" y="20" width="200" height="76" rx="6"/>
+          <text class="t c" x="120" y="50">① 연결</text>
+          <text class="s c" x="120" y="74">GitHub · CLI</text>
+
+          <rect class="node" x="255" y="20" width="200" height="76" rx="6"/>
+          <text class="t c" x="355" y="50">② 검사</text>
+          <text class="s c" x="355" y="74">이후 매일 지속 검사</text>
+
+          <rect class="node" x="490" y="20" width="200" height="76" rx="6"/>
+          <text class="t c" x="590" y="50">③ 알림</text>
+          <text class="s c" x="590" y="74">새 취약점이 나오면</text>
+
+          <rect class="hl" x="725" y="20" width="200" height="76" rx="6"/>
+          <text class="t c" x="825" y="50">④ 대응 안내</text>
+          <text class="s c" x="825" y="74">쉬운 설명 + 수정 지시</text>
+
+          <rect class="node" x="960" y="20" width="200" height="76" rx="6"/>
+          <text class="t c" x="1060" y="50">⑤ 재검사·리포트</text>
+          <text class="s c" x="1060" y="74">통과하면 완료 리포트</text>
+
+          <path class="ln" d="M220 58 H253" marker-end="url(#m1)"/>
+          <path class="ln" d="M455 58 H488" marker-end="url(#m1)"/>
+          <path class="ln" d="M690 58 H723" marker-end="url(#m1)"/>
+          <path class="ln" d="M925 58 H958" marker-end="url(#m1)"/>
+          <path class="ln-a" d="M1060 96 V140 H355 V100" marker-end="url(#m1a)"/>
+          <text class="lb-a c" x="707" y="132">수정 후 반복</text>
+
+          <path class="ln-r" d="M255 180 H1160"/>
+          <circle class="mk-r" cx="255" cy="180" r="5"/>
+          <circle class="mk-r" cx="1160" cy="180" r="5"/>
+          <text class="lb-r c" x="707" y="170">72시간 타이머</text>
+          <text class="lb-r" x="255" y="202">0h 발견</text>
+          <text class="lb-r" x="1160" y="202" text-anchor="end">72h 해결 + 리포트 전달</text>
+        </svg>
+      </div>
+      <figcaption>핵심은 ④입니다. 비개발자도 이해하고 바로 고칠 수 있게 안내합니다.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>2. 시스템 구성</h2>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1180 610" role="img" aria-label="GitHub App이나 CLI로 연결하면 서버가 소스를 수집해 Opengrep, OSV-Scanner, Gitleaks, 자체 검사기로 검사하고, 결과를 GPU LLM에 넘긴다. GPU LLM 안에서 Blue가 수정 지시를 쓰고 Red가 검증한 뒤 웹 대시보드로 보내고, 사용자는 MCP나 복사로 AI 코딩툴에 넘겨 고친다. 결과는 PostgreSQL에 저장되고 스케줄러가 매일 새 CVE를 대조해 알림을 보낸다. 재검사를 통과하면 완료 리포트가 나오고, 사고가 의심되면 신고 작성 서포트로 이어진다.">
+          <defs>
+            <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk"/></marker>
+            <marker id="m2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk-a"/></marker>
+            <marker id="m2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="mk-r"/></marker>
+          </defs>
+
+          <text class="t" x="20" y="32">① 연결</text>
+          <text class="t" x="240" y="32">② 검사 · 우리 서버</text>
+          <text class="t" x="600" y="32">③ 해석 · GPU</text>
+          <text class="t" x="840" y="32">④ 전달 · 사용자</text>
+
+          <!-- ① -->
+          <rect class="group" x="20" y="50" width="180" height="230" rx="8"/>
+          <rect class="inner" x="30" y="62" width="160" height="70" rx="4"/>
+          <text class="t c" x="110" y="92">GitHub App</text>
+          <text class="s c" x="110" y="113">기본 · 읽기 전용</text>
+          <rect class="inner" x="30" y="146" width="160" height="70" rx="4"/>
+          <text class="t c" x="110" y="176">CLI</text>
+          <text class="s c" x="110" y="197">GitHub 없이 업로드</text>
+          <text class="s c" x="110" y="256">확장: CI · MCP</text>
+
+          <!-- ② -->
+          <rect class="group" x="240" y="50" width="320" height="230" rx="8"/>
+          <rect class="inner" x="252" y="62" width="296" height="44" rx="4"/>
+          <text class="t c" x="400" y="81">수집</text>
+          <text class="s c" x="400" y="98">임시 폴더 · 검사 후 삭제</text>
+          <path class="ln" d="M200 84 H250" marker-end="url(#m2)"/>
+          <rect class="inner" x="252" y="118" width="142" height="50" rx="4"/>
+          <text class="t c" x="323" y="139">Opengrep</text>
+          <text class="s c" x="323" y="157">코드 · 우리 규칙</text>
+          <rect class="inner" x="406" y="118" width="142" height="50" rx="4"/>
+          <text class="t c" x="477" y="139">OSV-Scanner</text>
+          <text class="s c" x="477" y="157">라이브러리</text>
+          <rect class="inner" x="252" y="176" width="142" height="50" rx="4"/>
+          <text class="t c" x="323" y="197">Gitleaks</text>
+          <text class="s c" x="323" y="215">비밀키</text>
+          <rect class="hl" x="406" y="176" width="142" height="50" rx="4"/>
+          <text class="t c" x="477" y="197">자체 검사기</text>
+          <text class="s c" x="477" y="215">설정 실수</text>
+          <rect class="inner" x="252" y="236" width="296" height="36" rx="4"/>
+          <text class="t c" x="400" y="259">결과 정리 · 우선순위</text>
+
+          <!-- ③ -->
+          <rect class="hl" x="600" y="50" width="200" height="230" rx="8"/>
+          <text class="t c" x="700" y="80">GPU LLM</text>
+          <rect class="inner" x="612" y="100" width="176" height="60" rx="5"/>
+          <text class="t c" x="700" y="125">Blue</text>
+          <text class="s c" x="700" y="145">설명 · 수정 지시</text>
+          <rect class="rd" x="612" y="178" width="176" height="60" rx="5"/>
+          <text class="t c" x="700" y="203">Red</text>
+          <text class="s c" x="700" y="223">공격해서 검증</text>
+          <path class="ln" d="M700 160 V176" marker-end="url(#m2)"/>
+          <path class="ln-r" d="M788 210 C799 210 799 130 790 130" marker-end="url(#m2r)"/>
+          <text class="s c" x="700" y="262">통과한 것만 전달</text>
+          <path class="ln" d="M548 254 H598" marker-end="url(#m2)"/>
+
+          <!-- ④ -->
+          <rect class="hl" x="840" y="50" width="320" height="70" rx="6"/>
+          <text class="t c" x="1000" y="80">웹 대시보드</text>
+          <text class="s c" x="1000" y="101">설명 · 수정 지시 · 72시간 타이머</text>
+          <path class="ln-a" d="M800 85 H838" marker-end="url(#m2a)"/>
+          <rect class="hl" x="840" y="140" width="150" height="50" rx="5"/>
+          <text class="t c" x="915" y="170">MCP 전달</text>
+          <rect class="node" x="1010" y="140" width="150" height="50" rx="5"/>
+          <text class="t c" x="1085" y="170">복사</text>
+          <path class="ln-a" d="M915 120 V138" marker-end="url(#m2a)"/>
+          <path class="ln" d="M1085 120 V138" marker-end="url(#m2)"/>
+          <rect class="node" x="840" y="210" width="320" height="70" rx="6"/>
+          <text class="t c" x="1000" y="238">사용자 · AI 코딩툴</text>
+          <text class="s c" x="1000" y="260">Cursor · Claude Code · Codex</text>
+          <path class="ln-a" d="M915 190 V208" marker-end="url(#m2a)"/>
+          <path class="ln" d="M1085 190 V208" marker-end="url(#m2)"/>
+
+          <!-- 지키기 -->
+          <text class="t" x="20" y="386">매일 지키기</text>
+          <rect class="node" x="240" y="340" width="160" height="80" rx="6"/>
+          <text class="t c" x="320" y="374">스케줄러</text>
+          <text class="s c" x="320" y="396">매일 새 CVE 대조</text>
+          <rect class="node" x="440" y="340" width="240" height="80" rx="6"/>
+          <text class="t c" x="560" y="374">DB</text>
+          <text class="s c" x="560" y="396">결과 · 조치 기록 · 타이머</text>
+          <rect class="node" x="840" y="340" width="150" height="80" rx="6"/>
+          <text class="t c" x="915" y="374">알림</text>
+          <text class="s c" x="915" y="396">이메일 · 재알림</text>
+          <path class="ln" d="M480 272 V338" marker-end="url(#m2)"/>
+          <path class="ln" d="M640 280 V338" marker-end="url(#m2)"/>
+          <path class="ln" d="M440 380 H402" marker-end="url(#m2)"/>
+          <path class="ln" d="M320 340 V282" marker-end="url(#m2)"/>
+          <path class="ln" d="M680 380 H838" marker-end="url(#m2)"/>
+          <text class="lb c" x="760" y="372">새 취약점</text>
+          <path class="ln" d="M915 340 V282" marker-end="url(#m2)"/>
+
+          <!-- 72시간 산출물 -->
+          <text class="t" x="20" y="537">72시간 산출물</text>
+          <rect class="hl" x="440" y="500" width="240" height="64" rx="6"/>
+          <text class="t c" x="560" y="527">완료 리포트</text>
+          <text class="s c" x="560" y="547">해결 확인 후 전달</text>
+          <path class="ln-a" d="M560 420 V498" marker-end="url(#m2a)"/>
+          <rect class="rd" x="840" y="500" width="320" height="64" rx="6"/>
+          <text class="t c" x="1000" y="527">신고서 작성 서포트</text>
+          <text class="s c" x="1000" y="547">24h 침해사고 · 72h 개인정보 유출</text>
+          <path class="ln-r" d="M680 532 H838" marker-end="url(#m2r)"/>
+          <text class="lb-r c" x="760" y="524">사고 의심 시</text>
+
+          <!-- ⑤ -->
+          <path class="ln-a" d="M1160 245 H1172 V594 H220 V160 H238" marker-end="url(#m2a)"/>
+          <text class="lb-a c" x="700" y="586">⑤ 재검사 → 수집부터 다시</text>
+        </svg>
+      </div>
+      <div class="legend"><span><i class="a"></i>우리가 만드는 핵심</span><span><i class="r"></i>Red 검증 · 사고 대응</span><span><i></i>기존 도구 · 일반 단계</span></div>
+    </figure>
+  </section>
+
+  <section>
+    <h2>3. 핵심 네 가지</h2>
+    <div class="cards">
+      <div class="card">
+        <span class="k">찾기</span>
+        <h3>검증된 도구 + 우리 규칙</h3>
+        <p>코드, 라이브러리, 비밀키(과거 커밋 포함), 웹셸, 설정 실수를 찾습니다. 모두 유료 서비스에 써도 되는 라이선스입니다.</p>
+      </div>
+      <div class="card">
+        <span class="k">고치기</span>
+        <h3>GPU LLM Red–Blue</h3>
+        <p>Blue가 쉬운 설명과 수정 지시를 쓰고 Red가 공격해 봅니다. 통과한 수정만 대시보드와 MCP로 코딩툴에 전달합니다.</p>
+      </div>
+      <div class="card">
+        <span class="k">72시간</span>
+        <h3>해결 + 리포트, 사고 시 신고 서포트</h3>
+        <p>발견 순간 타이머가 시작되고 완료 리포트 전달로 멈춥니다. 사고가 의심되면 24시간·72시간 신고서 작성을 돕습니다.</p>
+      </div>
+      <div class="card">
+        <span class="k">증명</span>
+        <h3>GPU 효과를 숫자로</h3>
+        <p>같은 취약점을 스캐너 원문, GPU 없는 LLM, GPU LLM, Red–Blue 추가로 처리해 조치 성공률과 이해도를 비교합니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="todo">
+    <strong>팀과 확정할 것</strong>
+    <ul>
+      <li>공통 JSON 규격과 검사 실행 방식 (오늘 밤, 전원)</li>
+      <li>우리 규칙 목록 (장양환) · GPU 모델과 Red–Blue 횟수 (김건우)</li>
+      <li>신고서 작성 서포트를 MVP에 넣을지 (전원)</li>
+      <li>신고서 서식과 신고 대상 기준 원문 확인 (박기태)</li>
+    </ul>
+  </div>
+</main>

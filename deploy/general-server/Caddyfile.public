@@ -1,0 +1,26 @@
+{
+	admin off
+}
+
+# Domain must resolve to this server. Inbound TCP 80/443 must reach it.
+{$PUBLIC_DOMAIN} {
+	# Protect the unfinished demo API until application authentication is ready.
+	# Store only a Caddy password hash here, never the vLLM API key.
+	basic_auth {
+		{$DEMO_USER} {$DEMO_PASSWORD_HASH}
+	}
+	respond /healthz "gateway ready" 200
+	@api path /api /api/*
+	handle @api {
+		header Cache-Control "no-store"
+		reverse_proxy 127.0.0.1:8000 {
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 900s
+			}
+		}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}

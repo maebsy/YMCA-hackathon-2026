@@ -1,0 +1,23 @@
+{
+	admin off
+	auto_https off
+}
+
+{$SITE_ADDRESS:http://127.0.0.1:8080} {
+	bind {$WEB_BIND:127.0.0.1}
+	respond /healthz "gateway ready" 200
+	@api path /api /api/*
+	handle @api {
+		header Cache-Control "no-store"
+		reverse_proxy 127.0.0.1:8000 {
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 900s
+			}
+		}
+	}
+	# The frontend team owns the application listening on port 3000.
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}

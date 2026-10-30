@@ -9,6 +9,8 @@
 | 명칭 | 버전 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|---|
 | FastAPI | 0.162.0 | 백엔드 API 서버 | MIT | https://github.com/fastapi/fastapi |
+| Caddy | 2.11.7 | 일반 서버의 웹·API 프록시, 공개 시연 HTTPS 및 접근 인증 | Apache-2.0 | https://github.com/caddyserver/caddy |
+| Node.js | 24.19.0 | 별도 담당자가 구현할 프론트엔드의 서버 실행 환경 | MIT 및 포함 구성요소별 라이선스 | https://nodejs.org/ |
 | Uvicorn | 0.54.0 | 백엔드 실행 서버 | BSD-3-Clause | https://github.com/encode/uvicorn |
 | SQLModel | 0.0.48 | DB 테이블 정의·조회 | MIT | https://github.com/fastapi/sqlmodel |
 | SQLAlchemy | 2.1.6 | DB 연결 (SQLModel 기반) | MIT | https://github.com/sqlalchemy/sqlalchemy |
@@ -34,4 +36,5 @@
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
 | Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
+| Codex (OpenAI) | 일반 서버 실행 구성·점검·배포 문서 작성 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
 | Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |

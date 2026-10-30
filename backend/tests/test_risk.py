@@ -212,12 +212,28 @@ async def test_intel_lookup_and_cache():
     await intel.aclose()
 
 
-async def test_intel_offline_returns_unknown():
-    intel = HttpThreatIntel(transport=_intel_transport([], fail=True))
+async def test_intel_offline_returns_unknown_and_backs_off():
+    calls: list[str] = []
+    intel = HttpThreatIntel(transport=_intel_transport(calls, fail=True))
 
     result = await intel.lookup(["CVE-2025-0001"])
+    again = await intel.lookup(["CVE-2025-0002"])
 
     assert result["CVE-2025-0001"].kev is False and result["CVE-2025-0001"].epss is None
+    assert again["CVE-2025-0002"].epss is None
+    # 실패한 뒤에는 기다리는 동안(기본 5분) 다시 받으러 가지 않습니다: KEV 1번 + EPSS 1번뿐
+    assert len(calls) == 2
+    await intel.aclose()
+
+
+async def test_intel_retries_after_backoff():
+    calls: list[str] = []
+    intel = HttpThreatIntel(failure_backoff_s=0, transport=_intel_transport(calls, fail=True))
+
+    await intel.lookup(["CVE-2025-0001"])
+    await intel.lookup(["CVE-2025-0001"])
+
+    assert len(calls) == 4
     await intel.aclose()
 
 

@@ -26,7 +26,7 @@ flowchart LR
 |---|---|---|
 | `context.py` | 경로·코드에서 규칙 신호(브라우저 번들, 공개 API, 테스트, 마이그레이션 등)를 뽑고, LLM 실패 시 대신 판단 | 안 씀 |
 | `prompts.py` 문맥 분석 | 실행 위치·노출 범위·도달 가능성·걸린 데이터·공격 조건·OpenVEX 상태 판단 | 씀 (`LLM_ANALYZE_CONTEXT`) |
-| `intel.py` | CISA KEV(실제 공격 사례)·FIRST EPSS(악용 확률) 조회와 캐시, 오프라인이면 "모름" | 안 씀 (`LLM_THREAT_INTEL`) |
+| `intel.py` | CISA KEV(실제 공격 사례)·FIRST EPSS(악용 확률) 조회와 캐시, 오프라인이면 "모름"(실패도 5분 기억해 매번 기다리지 않음) | 안 씀 (`LLM_THREAT_INTEL`) |
 | `risk.py` | 위 결과를 CISA SSVC 공식 결정표(v2.0.3)에 넣어 act·attend·track*·track 결정과 근거 | 안 씀 (같은 입력 → 같은 결정) |
 | `remediation.py` | Windows(PowerShell 5.1)·macOS(zsh)·Linux(bash) 명령 템플릿, 패키지 관리자 자동 감지, 키 재발급 링크, RLS SQL | 안 씀 (명령을 지어내지 않음) |
 | `pipeline.py` | ①~⑤를 묶고, Blue·Red 에 `<analysis>`·`<environment>`·`<actions>` 블록으로 근거를 넘김 | 씀 |
@@ -94,7 +94,7 @@ tmux new -d -s vllm 'bash scripts/llm/serve.sh'
 ### 알려진 한계
 
 - **문맥 분석을 넘기기 전(`.3`)에는 Red가 탐지 범위 밖의 문제를 놓쳤습니다.** SQL 주입 건의 권한 확인 누락(IDOR)을 `low`·`medium` 모두 통과시켰습니다. `.6`부터는 `<analysis>`(로그인 없이 공개, 도달 가능)를 근거로 받아 IDOR까지 지적합니다. 그래도 탐지 규칙으로 따로 잡는 것이 확실합니다.
-- **Red–Blue 가 느립니다.** `.6`에서 Red 가 더 엄격해져 5건 동시 647초가 걸렸습니다. 데모는 검사 직후 백그라운드로 미리 돌려 두고(#26), 급하면 `LLM_RED_BLUE_MAX_REWRITES=1` 이나 Blue 단독(74.5초)을 씁니다.
+- **Red–Blue 가 느립니다.** `.6`에서 Red 가 더 엄격해져 5건 동시 647초가 걸렸습니다. 데모는 검사 직후 백그라운드로 미리 돌려 두고(#26), 일반 서버 예시 설정(`deploy/general-server/backend.env.example`)은 `LLM_RED_BLUE_MAX_REWRITES=1`로 둡니다. 더 급하면 Blue 단독(74.5초)을 씁니다.
 - 문맥 분석이 확신하지 못하면(`confidence: low`) 노출 범위가 `unknown`이 되어 위험도가 낮게 나올 수 있습니다(예: 후기 XSS 가 track*). 규칙 신호를 늘리거나 엔진이 라우트 정보를 넘겨 주면 좋아집니다.
 - Red의 생각 깊이는 `.env`의 `LLM_RED_REASONING_EFFORT`(기본 `low`)로 바꿀 수 있습니다. `medium`은 같은 건에서 Red 시간이 70초→122초로 늘었고 판정은 같았습니다.
 
@@ -152,6 +152,7 @@ curl -X POST http://localhost:8000/api/llm/explain \
 | 형식이 깨진 응답 | vLLM에 JSON 스키마를 강제하고, 검증에 실패하면 이유를 붙여 1회 재요청 |
 | 한국어 답에 한자·중국어가 섞임 | 섞이면 1회 다시 쓰게 하고 로그를 남김 |
 | Red가 공격 코드를 씀 | 시나리오 문장만 쓰게 하고, 코드 블록이 있으면 다시 쓰게 함 |
+| OS별 가이드 명령에 탐지 결과의 값이 섞여 명령 주입 | 경로·패키지·버전은 허용 문자에 맞을 때만 명령에 넣고(아니면 명령 없이 직접 하는 안내), 그래도 OS별로 인용(bash·zsh `shlex.quote`, PowerShell 작은따옴표). 공격 문자열 회귀 테스트 포함 (#35 리뷰) |
 | GPU 과부하·서버 꺼짐 | 동시 요청 8개 제한, 5xx·시간 초과는 2회 재시도 후 `LLM_UNAVAILABLE` |
 
 ## 테스트

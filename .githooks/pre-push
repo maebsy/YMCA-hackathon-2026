@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# push 전에 브랜치 이름이 팀 규칙을 따르는지 검사합니다. 규칙 본체: scripts/check-branch-name.sh
+root="$(git rev-parse --show-toplevel)"
+fail=0
+
+# git이 표준 입력으로 "<로컬 ref> <로컬 sha> <원격 ref> <원격 sha>"를 한 줄씩 넘겨줍니다
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ "$local_sha" =~ ^0+$ ]] && continue            # 브랜치 삭제는 통과
+  [[ "$remote_ref" == refs/heads/* ]] || continue   # 태그 등은 건너뜀
+  branch="${remote_ref#refs/heads/}"
+  [[ "$branch" == main ]] && continue               # main은 GitHub 보호 규칙이 막음
+  bash "$root/scripts/check-branch-name.sh" "$branch" || fail=1
+done
+
+exit "$fail"

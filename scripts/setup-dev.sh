@@ -10,6 +10,7 @@ chmod +x .githooks/* scripts/*.sh 2>/dev/null || true
 
 echo "✅ 설정 완료"
 echo "   - 커밋할 때 메시지 형식, 비밀정보, 대용량 파일을 자동으로 검사합니다"
+echo "   - push할 때 브랜치 이름을 검사합니다"
 echo "   - git commit 을 -m 없이 실행하면 메시지 양식이 열립니다"
 
 if [[ -z "$(git config user.email || true)" ]]; then

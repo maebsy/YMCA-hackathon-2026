@@ -31,8 +31,8 @@ docker compose up --build --watch
 - API 서버와 로컬 PostgreSQL이 같이 뜹니다. http://localhost:8000/api/health 에서 `"db":"postgresql"`이 나오면 성공
 - `backend/app` 코드를 저장하면 컨테이너에 바로 반영되고, `requirements.txt`를 바꾸면 이미지를 다시 만듭니다
 - 끄기는 `Ctrl+C` 또는 `docker compose down`. DB 데이터는 남고, 지우려면 `docker compose down --volumes`
-- 컨테이너 안에서는 `.env`의 `DATABASE_URL`을 무시하고 로컬 DB를 씁니다. Supabase를 쓰려면 아래 "백엔드 실행"처럼 직접 띄우세요
-- DB만 Docker로 쓰고 서버는 직접 띄워도 됩니다: `docker compose up db` 후 `.env`에 `DATABASE_URL=postgresql://app:app@localhost:5432/app`
+- `.env`의 `DATABASE_URL`이 비어 있으면 로컬 DB를, Supabase 주소가 있으면 그 DB를 씁니다
+- DB만 Docker로 쓰고 서버는 직접 띄워도 됩니다: `docker compose up db` 후 `.env`에 `DATABASE_URL=postgresql://app:app@localhost:5432/app`. 이 값은 컨테이너 안에서 통하지 않으니 전체를 Docker로 띄울 때는 다시 비우세요
 
 문제가 생기면:
 

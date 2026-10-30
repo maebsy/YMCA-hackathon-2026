@@ -1,0 +1,16 @@
+[Unit]
+Description=72hours authenticated local origin for public demo tunnel
+Wants=72hours-backend.service
+After=72hours-backend.service
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=%h/.config/72hours/quick-web.env
+ExecStart=%h/.local/share/72hours/bin/caddy run --config %h/apps/72hours/runtime/Caddyfile.quick --adapter caddyfile
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

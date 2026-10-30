@@ -25,6 +25,7 @@
 | Qwen3.8-27B (모델) | 2026-08 공개본 | Blue·Red 해석 LLM의 원본 모델 | Apache-2.0 | https://huggingface.co/Qwen/Qwen3.8-27B |
 | Qwen3.8-27B AWQ INT4 (양자화 체크포인트) | 커밋 5a2ee524cbc9 | L4 24GB에 올리기 위한 4비트 모델 | Apache-2.0 | https://huggingface.co/avyukth/Qwen3.8-27B-AWQ-INT4 |
 | uv | 0.13.6 (GPU 서버) | GPU 서버 파이썬 환경 설치, Python 3.12.16 관리 | Apache-2.0 / MIT | https://github.com/astral-sh/uv |
+| MCP Python SDK (`mcp`) | 1.30.0 | 독립 stdio MCP 서버에서 로컬 LLM 수정 제안을 사용자 AI 에이전트에 전달 | MIT | https://github.com/modelcontextprotocol/python-sdk |
 
 ## 외부 API
 
@@ -45,5 +46,5 @@
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
 | Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
-| Codex (OpenAI) | 일반 서버 실행 구성·점검·배포 문서 작성 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
+| Codex (OpenAI) | 일반 서버 실행 구성·점검·배포 문서, 독립 MCP 전달 모듈·테스트·연결 문서 작성 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
 | Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |

@@ -150,7 +150,14 @@ push 전이라면 로컬에서 이름만 바꾸면 됩니다:
 git branch -m 옛-이름 feat/12-new-name
 ```
 
-이미 push했다면 GitHub 저장소의 **Branches** 화면에서 브랜치 옆 연필 아이콘으로 이름을 바꿉니다. 열린 PR은 자동으로 따라가고, 로컬에서 해야 할 명령은 GitHub가 안내해 줍니다.
+push했지만 PR을 아직 안 열었다면 GitHub 저장소의 **Branches** 화면에서 브랜치 옆 연필 아이콘으로 이름을 바꿉니다. 로컬에서 해야 할 명령은 GitHub가 안내해 줍니다.
+
+**PR을 이미 열었다면 GitHub에서 이름을 바꾸지 마세요.** 그 브랜치에서 올린 PR이 [자동으로 닫힙니다](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-branches-in-your-repository/renaming-a-branch). 대신 새 이름으로 다시 올립니다:
+```bash
+git branch -m 옛-이름 feat/12-new-name
+git push -u origin feat/12-new-name
+```
+새 이름으로 PR을 다시 열고(제목·본문은 옛 PR에서 복사), 옛 PR에 "#새번호로 옮김" 코멘트를 남긴 뒤 옛 브랜치를 지웁니다(`git push origin --delete 옛-이름`, 옛 PR도 닫힙니다). 리뷰 승인은 새 PR에서 다시 받아야 합니다.
 
 ### main이 바뀌어서 충돌이 난다
 

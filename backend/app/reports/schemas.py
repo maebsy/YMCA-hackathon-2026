@@ -14,7 +14,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, field_validator
 
 from app.llm.schemas import ExplainResult, FindingInput
 
@@ -32,6 +32,14 @@ class NotChecked(BaseModel):
     tool: str = Field(max_length=50)
     category: str | None = Field(default=None, max_length=50)
     reason: str = Field(default="", max_length=1000)
+
+    @field_validator("tool", "category", "reason", mode="before")
+    @classmethod
+    def _clip(cls, value, info):
+        # 엔진은 도구 오류를 개수 제한 없이 이어 붙입니다. 도구가 실패한 바로 그 상황에서 리포트가 422로
+        # 막히면 안 되므로 거부하지 않고 한도까지 잘라 받습니다. 화면에는 앞부분이면 충분합니다
+        limit = cls.model_fields[info.field_name].metadata[0].max_length
+        return value[:limit] if isinstance(value, str) else value
 
 
 class ScanContext(BaseModel):

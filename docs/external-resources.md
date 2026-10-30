@@ -30,7 +30,8 @@
 | Semgrep Community Edition | 1.183.0 | 보안엔진: 코드 정적 분석 (Opengrep이 없을 때 대체) | LGPL-2.1 | https://github.com/semgrep/semgrep |
 | Semgrep Registry 룰셋 `p/default` | 실행 시점 최신 | 보안엔진: **내부 비교·검증용만** (기본 꺼짐, `--with-registry p/default`일 때만). 서비스 결과에는 사용 안 함 | Semgrep Rules License v1.0 (내부 사용 한정, 경쟁 제품·SaaS 사용 불가) | https://semgrep.dev/p/default |
 | Gitleaks | 8.30.1 | 보안엔진: 코드 속 비밀값(API 키 등) 노출 검사 | MIT | https://github.com/gitleaks/gitleaks |
-| jsonschema | 4.x | 보안엔진 출력 규격 검증 테스트 (개발용) | MIT | https://github.com/python-jsonschema/jsonschema |
+| jsonschema | 4.26.0 | 보안엔진 출력 규격 검증 테스트 (개발용) | MIT | https://github.com/python-jsonschema/jsonschema |
+| OWASP NodeGoat | c5cb68a7084e4ae7dcc60e6a98768720a81841e8 | 공개 취약 앱 소스의 스캐너·OSV 온라인·마스킹 검증 (앱 실행 없음) | Apache-2.0 | https://github.com/OWASP/NodeGoat |
 | MCP Python SDK (`mcp`) | 1.30.0 | 독립 stdio MCP 서버에서 로컬 LLM 수정 제안을 사용자 AI 에이전트에 전달 | MIT | https://github.com/modelcontextprotocol/python-sdk |
 
 ## 외부 API

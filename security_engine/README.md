@@ -35,6 +35,8 @@
 python -m security_engine doctor
 ```
 
+전역 설치 없이 Windows 검증을 재현할 때는 `python scripts/security/install-test-tools.py --destination outputs/scanners`를 사용합니다. 공식 릴리스 SHA-256을 고정 검증하며 전역 PATH를 수정하지 않습니다. 위 `SECURITY_ENGINE_*_BIN` 세 값을 해당 파일의 절대 경로로 지정한 뒤 `python -m pip install -r tests/security/requirements.txt`와 `python -m pytest tests/security -q`를 실행합니다. `security-engine.yml`도 같은 버전으로 실제 스캐너를 실행하고 테스트가 건너뛰어지면 실패합니다. OSV 온라인 조회는 별도 실검사로 확인하며 이 테스트에서는 외부 장애가 회귀 검증을 흔들지 않도록 분리합니다.
+
 ## 2. 실행
 
 ### 명령줄 (CLI)
@@ -275,3 +277,15 @@ prompt_context = render_llm_text(payload)          # 프롬프트에 붙일 한�
 | `schema/scan_result.schema.json` | 출력 규격 |
 
 테스트: `python -m pytest tests/security -q` (스캐너가 없으면 해당 테스트는 건너뜀)
+
+## Windows 검증 기록 (#15)
+
+2026-10-31, Python 3.12 / OSV-Scanner 2.7.0 / Opengrep 1.33.1 / Gitleaks 8.30.1에서 확인했습니다.
+
+- `doctor`: 설치 경로와 실제 실행 버전 확인.
+- `pytest tests/security -q`: **29 passed, 0 skipped**. 실제 스캐너로 수정/재검사, 줄 이동, 무시 주석, 하드코딩 JWT 마스킹, 내장 규칙을 검증합니다.
+- 공개 `OWASP/NodeGoat` 커밋 `c5cb68a7084e4ae7dcc60e6a98768720a81841e8`: OSV 온라인·Opengrep·Gitleaks·내장 config 모두 `status=ok`, 결과 `complete`. 정규화된 210개 항목(OSV 204, 코드 3, 비밀값 3)을 생성했습니다. 이 개수는 해당 커밋과 당시 취약점 DB 기준입니다.
+- 결과 JSON Schema 통과, LLM 입력 생성, 탐지한 비밀값/변형 17개가 결과 JSON과 LLM 입력 어디에도 원문으로 남지 않음을 확인했습니다. 실제 비밀값이나 원본 보고서는 커밋하지 않습니다.
+- 테스트 fixture/검사 대상은 상위 저장소의 `.gitignore`가 적용되지 않는 독립 임시 폴더에 둡니다. `outputs/`처럼 상위에서 무시한 폴더에 두면 스캐너가 파일을 생략할 수 있습니다. `no_target`은 안전 판정이 아닙니다.
+
+CI는 체크섬이 고정된 Windows 바이너리를 임시 폴더에 설치하고 같은 29개 테스트를 실행합니다. 스캐너 버전을 실행할 수 없거나 테스트가 건너뛰어지면 실패합니다. OSV 온라인 공개 저장소 검사는 외부 DB와 네트워크에 의존하므로 위 수동 검증 기록으로 분리합니다.

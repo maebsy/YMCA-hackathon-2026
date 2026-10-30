@@ -265,6 +265,11 @@ def build_items(req: PlainReportRequest) -> list[Item]:
 
 # 보안엔진 메시지 "종료 코드 127 (사람이 읽는 이유): 도구 원문 로그" 에서 이유만 꺼냅니다
 _ENGINE_REASON = re.compile(r"^종료 코드 -?\d+ \((?P<reason>.+?)\)(?::|$)")
+# 서버의 임시·작업 경로만 지웁니다. 시작이 분명한 경로(/tmp/…, C:\…)만 보고, URL(https://…/v1)이나
+# 낱말 속 슬래시(OSV/NVD)는 그대로 둡니다 (#34 리뷰)
+_SERVER_PATH = re.compile(
+    r"(?<![\w/:])(?:[A-Za-z]:\\|/(?:tmp|home|home1|var|Users|root|srv|opt|mnt|private|workspace|github)/)[^\s:;,'\"]+"
+)
 
 
 def friendly_reason(raw: str) -> str:
@@ -272,7 +277,7 @@ def friendly_reason(raw: str) -> str:
     if m := _ENGINE_REASON.match(text):
         return m.group("reason")
     # 도구 원문에는 서버의 임시 경로가 섞일 수 있어 경로처럼 보이는 부분을 지웁니다
-    text = re.sub(r"(?:[A-Za-z]:)?[/\\][^\s:]+", "(경로)", text)
+    text = _SERVER_PATH.sub("(경로)", text)
     return text[:200] or "도구가 결과를 내지 못했습니다"
 
 

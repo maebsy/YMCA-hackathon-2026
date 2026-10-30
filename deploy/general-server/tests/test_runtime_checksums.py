@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import io
+import os
 from pathlib import Path
 import tarfile
 import tempfile
@@ -54,6 +55,27 @@ class RuntimeIntegrityTests(unittest.TestCase):
             with self.assertRaises(tarfile.FilterError):
                 self.install(archive, digest + "  release.tar.gz", destination)
             self.assertFalse(destination.exists())
+
+    @unittest.skipIf(os.name == "nt", "Production Linux symlinks require Windows privileges")
+    def test_relative_cli_symlink_survives_installation(self):
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
+            content = b"cli content"
+            info = tarfile.TarInfo("lib/npm/bin/npm-cli.js")
+            info.size = len(content)
+            bundle.addfile(info, io.BytesIO(content))
+            link = tarfile.TarInfo("bin/npm")
+            link.type = tarfile.SYMTYPE
+            link.linkname = "../lib/npm/bin/npm-cli.js"
+            bundle.addfile(link)
+        archive = buffer.getvalue()
+        digest = hashlib.sha256(archive).hexdigest()
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "installed"
+            self.install(archive, digest + "  release.tar.gz", destination)
+            self.assertTrue((destination / "bin/npm").is_symlink())
+            self.assertEqual((destination / "bin/npm").resolve(), destination / "lib/npm/bin/npm-cli.js")
+            self.assertEqual((destination / "bin/npm").read_bytes(), content)
 
 
 if __name__ == "__main__":

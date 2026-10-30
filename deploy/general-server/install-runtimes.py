@@ -7,6 +7,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import urllib.request
@@ -43,7 +44,8 @@ def unpack_verified(base_url: str, archive: str, checksums: str, destination: Pa
             bundle.extractall(staging, filter="data")
         if destination.exists():
             raise RuntimeError("Destination already exists; inspect it instead of overwriting")
-        shutil.copytree(staging, destination)
+        # npm/npx resolve their libraries relative to the symlink's real target.
+        shutil.copytree(staging, destination, symlinks=True)
 
 
 def main() -> None:
@@ -79,6 +81,9 @@ def main() -> None:
         node = release / f"node-v{NODE_VERSION}-linux-x64"
         if not (node / "bin/node").is_file():
             raise RuntimeError("Node binary missing; inspect existing installation")
+        environment = {**os.environ, "PATH": str(node / "bin") + os.pathsep + os.environ.get("PATH", "")}
+        for command in ("node", "npm", "npx"):
+            subprocess.run([str(node / "bin" / command), "--version"], check=True, env=environment)
         link = root / "node"
         if link.exists() and not link.is_symlink():
             raise RuntimeError("Refusing to replace an unmanaged Node directory")

@@ -76,6 +76,8 @@ systemctl --user stop 72hours-web 72hours-backend 72hours-gpu-tunnel
 
 ## 4. 프론트 담당자가 연결할 부분
 
+서버 접속·별도 release 배포·복구·실제 API 계약·다음 작업은 [프론트 인수인계](FRONTEND_HANDOFF.md)를 참고하세요.
+
 프론트 코드는 이 변경에 포함하지 않습니다. 완성된 Next.js release를 `~/apps/72hours/frontend`가 가리키게 하고, 그 디렉터리에서 lockfile에 맞춰 의존성 설치와 build를 먼저 수행합니다. Node 경로는 `~/.local/share/72hours/node/bin`입니다.
 
 ```bash

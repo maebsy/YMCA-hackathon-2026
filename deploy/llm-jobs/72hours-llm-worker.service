@@ -1,0 +1,21 @@
+[Unit]
+Description=72hours durable LLM worker (explicit opt-in after DB/auth review)
+Wants=72hours-gpu-tunnel.service
+After=72hours-gpu-tunnel.service
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=%h/apps/72hours/current/backend
+EnvironmentFile=%h/.config/72hours/backend.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=%h/apps/72hours/current/.venv/bin/python -m app.explain_jobs.worker
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGINT
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

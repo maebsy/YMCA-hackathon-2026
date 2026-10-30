@@ -19,6 +19,7 @@
 | pydantic-settings | 2.16.2 | `.env` 설정 읽기 | MIT | https://github.com/pydantic/pydantic-settings |
 | Python 공식 Docker 이미지 | 3.12-slim | 백엔드 컨테이너 기반 이미지 | PSF-2.0 (포함된 Debian 패키지는 각 라이선스) | https://hub.docker.com/_/python |
 | PostgreSQL 공식 Docker 이미지 | 17-alpine | 로컬 개발용 DB | PostgreSQL License | https://hub.docker.com/_/postgres |
+| PostgreSQL Windows 바이너리 | 17.11-5 | #26 독립 임시 DB 통합 테스트 (설치·서비스 등록 없음) | PostgreSQL License | https://www.enterprisedb.com/download-postgresql-binaries |
 | HTTPX | 0.28.1 | LLM 서버(vLLM) 호출 | BSD-3-Clause | https://github.com/encode/httpx |
 | pytest | 9.2.0 | 백엔드·보안엔진 테스트 (개발용) | MIT | https://github.com/pytest-dev/pytest |
 | vLLM | 0.32.0 | GPU 서버 LLM 서빙 (OpenAI 호환 API) | Apache-2.0 | https://github.com/vllm-project/vllm |
@@ -38,7 +39,7 @@
 
 | 명칭 | 용도 | 라이선스·이용약관 | 출처 |
 |---|---|---|---|
-| Supabase | 팀 공용 PostgreSQL DB 호스팅 | Supabase Terms of Service | https://supabase.com |
+| Supabase | 팀 공용 PostgreSQL DB 호스팅 및 Auth 서버의 access token 검증 (#26) | Supabase Terms of Service | https://supabase.com |
 | Cloudflare Quick Tunnels | 공인 IP 없이 일반 서버의 시연 웹/API를 임시 HTTPS 주소로 공개 | Cloudflare 이용약관 | https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/ |
 | Hugging Face Hub | 모델 내려받기 (가중치는 GPU 서버에서만 실행) | Hugging Face Terms of Service | https://huggingface.co |
 | OSV.dev API (api.osv.dev) | OSV-Scanner가 취약점 DB 조회 (무료, 키 없음) | OSV.dev 이용약관, 데이터는 출처(GitHub Advisory 등)별 라이선스 — 제출 전 확인 | https://osv.dev |
@@ -55,7 +56,7 @@
 
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
-| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
-| Codex (OpenAI) | 일반 서버 실행 구성·점검·배포 문서, 독립 MCP 전달 모듈·테스트·연결 문서 작성 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
+| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
+| Codex (OpenAI) | 일반 서버 실행 구성·점검·배포 문서, 독립 MCP 전달, 비동기 LLM 큐·인증 경계·테스트·연결 문서 작성 및 PR 병합 오류 수정 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
 | Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |
 | Claude (Anthropic) | 보안엔진(`security_engine/`) 설계·코드·Semgrep 규칙 작성 보조 | Anthropic 이용약관 | https://claude.ai |

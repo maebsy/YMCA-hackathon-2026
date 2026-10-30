@@ -1,20 +1,26 @@
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from sqlalchemy import text
 
 from app.db import engine, init_db
+from app.explain_jobs.config import job_settings
 from app.llm import create_explainer
-from app.routers import items, llm
+from app.routers import items, llm, reports
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    # LLM 서버가 꺼져 있어도 API 서버는 뜹니다. 연결은 요청할 때 확인합니다 (/api/llm/health)
-    app.state.explainer = create_explainer()
-    yield
-    await app.state.explainer.client.aclose()
+    async with AsyncExitStack() as stack:
+        if job_settings.llm_jobs_enabled:
+            from app.explain_jobs.runtime import prepare
+            await prepare(app, engine, job_settings, stack)
+        else:
+            init_db()
+        # LLM 서버가 꺼져 있어도 API 서버는 뜹니다. 생성 작업은 별도 worker가 실행합니다.
+        app.state.explainer = create_explainer()
+        stack.push_async_callback(app.state.explainer.client.aclose)
+        yield
 
 
 app = FastAPI(title="YMCA Hackathon 2026 API", lifespan=lifespan)
@@ -30,6 +36,13 @@ def health():
     return {"status": "ok", "db": engine.dialect.name}
 
 
-api.include_router(items.router)
-api.include_router(llm.router)
+if job_settings.llm_jobs_enabled:
+    from app.explain_jobs.api import router as jobs_router
+    api.include_router(jobs_router)
+    api.add_api_route("/llm/health", llm.health, methods=["GET"], tags=["llm"])
+else:
+    # Existing evaluation/development API stays unchanged when the feature is disabled.
+    api.include_router(items.router)
+    api.include_router(llm.router)
+api.include_router(reports.router)
 app.include_router(api)

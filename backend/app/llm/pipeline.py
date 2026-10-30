@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 Mode = Literal["blue", "red_blue"]
 
 # Blue는 생각 모드를 끄고 바로 씁니다. Red는 우회 경로를 따져야 해서 짧게 생각하게 합니다
-BLUE_SAMPLING = Sampling(max_tokens=1500)
+BLUE_SAMPLING = Sampling(max_tokens=2000)
 RED_SAMPLING = Sampling(max_tokens=2500)
 
 

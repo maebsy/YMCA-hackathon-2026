@@ -25,6 +25,7 @@ from app.llm.client import (
 )
 from app.llm.context import ContextSignals, analysis_from_signals, collect_signals
 from app.llm.intel import ThreatIntel
+from app.llm.remediation import build_guide
 from app.llm.risk import assess
 from app.llm.schemas import (
     BlueDraft,
@@ -160,7 +161,8 @@ class Explainer:
         if intel is None:
             intel = await self._intel_for([finding])
         risk = assess(finding, analysis, signals, intel)
-        return Briefing(signals, analysis, risk, environment, guide=None, tokens=tokens)
+        guide = build_guide(finding, environment)
+        return Briefing(signals, analysis, risk, environment, guide=guide, tokens=tokens)
 
     async def _analyze(self, finding: FindingInput, signals: ContextSignals) -> tuple[ContextAnalysis, int]:
         if not self.analyze_context:

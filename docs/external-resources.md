@@ -22,6 +22,8 @@
 | Qwen3.8-27B (모델) | 2026-08 공개본 | Blue·Red 해석 LLM의 원본 모델 | Apache-2.0 | https://huggingface.co/Qwen/Qwen3.8-27B |
 | Qwen3.8-27B AWQ INT4 (양자화 체크포인트) | 커밋 5a2ee524cbc9 | L4 24GB에 올리기 위한 4비트 모델 | Apache-2.0 | https://huggingface.co/avyukth/Qwen3.8-27B-AWQ-INT4 |
 | uv | 0.13.6 (GPU 서버) | GPU 서버 파이썬 환경 설치, Python 3.12.16 관리 | Apache-2.0 / MIT | https://github.com/astral-sh/uv |
+| CERT/CC SSVC 결정표 (CISA Coordinator v2.0.3) | 커밋 c5be80f180f0 | 위험도 해석의 결정표 (`backend/app/llm/data/` 사본) | MIT (SEI) 계열, 전문은 `backend/app/llm/data/SSVC-LICENSE.txt` | https://github.com/CERTCC/SSVC |
+| OpenVEX 명세 (용어만 사용) | v0.2.0 | 문맥 분석 결과의 상태·사유 용어 | CC0-1.0 | https://github.com/openvex/spec |
 
 ## 외부 API
 
@@ -29,6 +31,8 @@
 |---|---|---|---|
 | Supabase | 팀 공용 PostgreSQL DB 호스팅 | Supabase Terms of Service | https://supabase.com |
 | Hugging Face Hub | 모델 내려받기 (가중치는 GPU 서버에서만 실행) | Hugging Face Terms of Service | https://huggingface.co |
+| CISA KEV 카탈로그 | 실제 공격에 쓰인 취약점 목록 조회 (위험도 해석) | 미국 정부 공개 자료 | https://www.cisa.gov/known-exploited-vulnerabilities-catalog |
+| FIRST EPSS API | CVE별 30일 내 악용 확률 조회 (위험도 해석) | 무료 공개, 등록 불필요 | https://www.first.org/epss/api |
 
 ## 사전 보유 코드
 

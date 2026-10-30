@@ -5,17 +5,50 @@
 
 ```mermaid
 flowchart LR
-    F["탐지 결과<br/>(finding)"] --> B["Blue<br/>설명 · 수정 지시"]
-    B --> R{"Red<br/>공격자 관점 판정"}
-    R -- pass --> OUT["④ 대응 안내<br/>(explanation)"]
+    F["탐지 결과<br/>(finding)"] --> C["① 문맥 분석<br/>규칙 신호 + LLM"]
+    C --> K["② 위험도<br/>SSVC 결정표 + KEV·EPSS<br/>(코드로 결정)"]
+    K --> G["③ 대응 가이드<br/>OS별 검증된 명령"]
+    G --> B["④ Blue<br/>설명 · 수정 지시"]
+    B --> R{"⑤ Red<br/>공격자 관점 판정"}
+    R -- pass --> OUT["대응 안내<br/>(explanation)"]
     R -- "bypass · breaks_function · incomplete<br/>지적을 붙여 다시 (최대 2회)" --> B
     R -- 끝까지 실패 --> M["수동 확인 필요 표시"] --> OUT
 ```
 
 | 모드 | 평가 | 호출 수 | 용도 |
 |---|---|---|---|
-| `blue` | C | Blue 1회 | 빠른 설명, GPU 효과(C − B) 비교 |
-| `red_blue` (기본) | D | Blue 1~3회 + Red 1~3회 | 서비스 기본, Red–Blue 효과(D − C) 비교 |
+| `blue` | C | 문맥 분석 1회 + Blue 1회 | 빠른 설명, GPU 효과(C − B) 비교 |
+| `red_blue` (기본) | D | 문맥 분석 1회 + Blue 1~3회 + Red 1~3회 | 서비스 기본, Red–Blue 효과(D − C) 비교 |
+
+모듈 구성 (`backend/app/llm/`)
+
+| 모듈 | 하는 일 | LLM 사용 |
+|---|---|---|
+| `context.py` | 경로·코드에서 규칙 신호(브라우저 번들, 공개 API, 테스트, 마이그레이션 등)를 뽑고, LLM 실패 시 대신 판단 | 안 씀 |
+| `prompts.py` 문맥 분석 | 실행 위치·노출 범위·도달 가능성·걸린 데이터·공격 조건·OpenVEX 상태 판단 | 씀 (`LLM_ANALYZE_CONTEXT`) |
+| `intel.py` | CISA KEV(실제 공격 사례)·FIRST EPSS(악용 확률) 조회와 캐시, 오프라인이면 "모름" | 안 씀 (`LLM_THREAT_INTEL`) |
+| `risk.py` | 위 결과를 CISA SSVC 공식 결정표(v2.0.3)에 넣어 act·attend·track*·track 결정과 근거 | 안 씀 (같은 입력 → 같은 결정) |
+| `remediation.py` | Windows(PowerShell 5.1)·macOS(zsh)·Linux(bash) 명령 템플릿, 패키지 관리자 자동 감지, 키 재발급 링크, RLS SQL | 안 씀 (명령을 지어내지 않음) |
+| `pipeline.py` | ①~⑤를 묶고, Blue·Red 에 `<analysis>`·`<environment>`·`<actions>` 블록으로 근거를 넘김 | 씀 |
+
+### 위험도 해석 (SSVC)
+
+| 결정 | 우선순위 | 화면 문구 | 언제 |
+|---|---|---|---|
+| `act` | now | 지금 바로 고치세요 | 실제 공격 중 + 큰 피해 (예: 브라우저에 드러난 service_role 키) |
+| `attend` | soon | 이번 주 안에 고치세요 | 공개된 공격 방법 + 자동화 가능 + 민감 데이터 (예: 공개 API 의 SQL 주입) |
+| `track*` | later | 주의해서 지켜보세요 | 조건이 맞으면 커질 수 있음 |
+| `track` | later | 정해진 일정에 맞춰 고치세요 | 테스트 코드, 공개용 키, 영향 없음(OpenVEX not_affected) |
+
+- **Exploitation:** KEV 에 있으면 `active`, 공개된 곳에 드러난 키도 `active`(자동 수집 봇). EPSS 10% 이상 또는 상위 5%면 `public poc`, 코드·설정 탐지는 공격 방법이 널리 알려진 CWE 면 `public poc`
+- **Automatable:** 로그인 없이 인터넷에서 닿고(public) 도달 가능하면 `yes`
+- **Technical Impact:** 비밀값, 명령 실행·SQL 주입·인증 우회 같은 CWE, critical 이면 `total`
+- **Mission & Well-Being:** 계정·키·개인정보·결제가 걸리면 `high`, 테스트·미배포면 `low`
+- 결과의 `risk.factors`에 요인별 한국어 근거가, `risk.policy`에 규칙 버전이 들어 있어 평가·감사에 그대로 씁니다
+
+### OS별 대응 가이드
+
+요청에 `environment`(`os`: windows·macos·linux, `hosting`: vercel·netlify·cloudflare·supabase·render·railway…, `package_manager`)를 넣으면 그 환경의 명령만, 비우면 세 OS 명령을 모두 만듭니다. 명령은 템플릿에서만 나오고, 비밀값은 자리표시자만 넣어 편집기로 채우게 합니다(터미널 기록 방지). Blue 는 명령을 직접 쓰지 않고 "아래 Windows 명령"처럼 가리킵니다.
 
 ## 모델과 서버
 

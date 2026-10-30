@@ -1,6 +1,6 @@
 -- REVIEW REQUIRED: apply AFTER the reviewed #7 schema, never automatically at app startup.
--- Compatible with docs/7-db-design db-schema.sql blob 4e04ffaecb5c34306b886603e41855c049fc1345.
--- No table/data deletion. The owning DB reviewer must reconcile these additions into #7.
+-- Apply after docs/db-schema.sql; also compatible with the original #7 six-table draft.
+-- No table/data deletion. Shared fields remain idempotent for existing installations.
 begin;
 
 alter table public.finding drop constraint if exists finding_explain_status_check;

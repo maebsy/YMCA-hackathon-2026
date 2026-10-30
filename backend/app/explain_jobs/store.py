@@ -188,6 +188,8 @@ class JobStore:
                 values = {key: value for key, value in result.explanation.model_dump(mode="json").items()
                           if key in self.explanation.c}
                 values["finding_id"] = claim["finding_id"]
+                if "covers" in self.explanation.c:
+                    values["covers"] = result.covers
                 conn.execute(insert(self.explanation).values(**values).on_conflict_do_update(
                     index_elements=["finding_id", "variant"], set_=values,
                 ))

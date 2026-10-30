@@ -6,12 +6,12 @@
 
 ## 선행 조건과 DB 소유 범위
 
-- #7의 `docs/7-db-design` 초안을 기준으로 구현했습니다. 기준 SQL blob: `4e04ffaecb5c34306b886603e41855c049fc1345`.
-- 원본 설계 브랜치는 수정하지 않았습니다. 리뷰용 추가 SQL은 [`migrations/026-async-llm.sql`](migrations/026-async-llm.sql)입니다.
+- 서비스 스키마는 [`db-schema.sql`](db-schema.sql)입니다. 무료 데모 플랜과 엔진·Red–Blue 필드를 포함합니다.
+- 작업 큐 추가 SQL은 [`migrations/026-async-llm.sql`](migrations/026-async-llm.sql)입니다. 원본 설계 브랜치는 수정하지 않았습니다.
 - #7 담당자가 테이블/필드를 확정하고 **#7 → #26 순서로 SQL을 적용**해야 활성화할 수 있습니다. API 시작 시 DDL·migration·`create_all`을 실행하지 않습니다.
 - 추가 항목: `finding.explain_status=skipped`, 스캐너 전용 `finding.llm_context`, explanation의 D/Red 검증 필드, RLS를 켠 `llm_job` 큐. 기존 B/C 기록은 유지하고 과거 설명의 `needs_manual_review` 기본값은 true로 둡니다.
 - PostgreSQL만 지원합니다. SQLite에서 활성화하면 시작을 거부합니다. 로컬 고정 사용자·검증 생략 모드는 없습니다.
-- `backend/tests/fixtures/db_schema_7.sql`은 위 #7 초안의 **테스트 스냅샷**입니다. 운영 migration의 대체 파일이 아닙니다. 최종 #7 변경 시 fixture와 adapter를 함께 재검증해야 합니다.
+- 인증/큐 테스트는 실제 `docs/db-schema.sql`과 큐 migration을 새 임시 DB에 적용합니다. 이전 초안 업그레이드 검증용 스냅샷은 `tests/db/legacy-schema.sql`에 있습니다.
 
 ## 프론트 계약
 

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "72hours-handoff": {
+      "command": "C:/absolute/path/to/mcp-handoff/.venv/Scripts/python.exe",
+      "args": [
+        "C:/absolute/path/to/mcp-handoff/server.py",
+        "--results", "C:/absolute/path/to/private/results.json",
+        "--repository", "TARGET_OWNER/TARGET_REPOSITORY",
+        "--revision", "REPLACE_WITH_SCANNED_TARGET_40_CHARACTER_COMMIT_SHA"
+      ],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}

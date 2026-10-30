@@ -76,6 +76,9 @@ class FindingInput(BaseModel):
     fix_hint: FixHint | None = None
     status: EngineStatus | None = None
     change: Change | None = None
+    # 여러 탐지 결과를 한 번에 설명할 때(예: 같은 패키지의 의존성 취약점) 묶인 결과들의 fingerprint.
+    # 모델에는 넘기지 않고, 결과를 DB의 각 finding 에 나눠 저장할 때 씁니다
+    covers: list[str] = Field(default_factory=list, max_length=500)
 
 
 # ── 모델이 만드는 JSON ──
@@ -150,5 +153,7 @@ class ExplainResult(BaseModel):
     status: Literal["done", "failed", "skipped"]
     explanation: Explanation | None = None
     reason: str | None = None
+    # 이 결과가 함께 설명하는 탐지 결과들 (패키지 단위 묶음일 때)
+    covers: list[str] = Field(default_factory=list)
     error_code: Literal["LLM_UNAVAILABLE", "LLM_BAD_OUTPUT", "LLM_INPUT_TOO_LONG", "LLM_ERROR"] | None = None
     error: str | None = None

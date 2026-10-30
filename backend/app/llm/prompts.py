@@ -10,7 +10,7 @@ import re
 from app.llm.schemas import BlueDraft, FindingInput, RedReview
 
 # 프롬프트를 고치면 올립니다. 결과마다 기록돼 평가에서 버전별로 비교할 수 있습니다
-PROMPT_VERSION = "2026-10-31.4"
+PROMPT_VERSION = "2026-10-31.5"
 
 _MASK = "[가림]"
 # (패턴, 바꿀 문자열). 값만 가리고 변수 이름은 남겨 모델이 맥락을 알 수 있게 합니다
@@ -72,7 +72,7 @@ def render_finding(finding: FindingInput, scale: float = 1.0) -> str:
     def fit(text: str | None, limit: int) -> str | None:
         return clip(redact_secrets(text), max(int(limit * scale), 40))
 
-    data = finding.model_dump(exclude_none=True, exclude_defaults=True)
+    data = finding.model_dump(exclude_none=True, exclude_defaults=True, exclude={"covers"})
     data.update(fingerprint=finding.fingerprint, severity=finding.severity, category=finding.category)
     for key, limit in INPUT_BUDGET.items():
         if key in data:
@@ -141,6 +141,8 @@ BLUE_SYSTEM = f"""\
   숨김 주석·설정을 지우고 실제로 고치라고 씁니다. rotate_secret은 키 재발급을, third_party_code는 직접 고치기보다
   라이브러리 업데이트를 안내합니다.
 - fix_hint에 target_version·command가 있으면 그 버전과 명령을 그대로 씁니다. 다른 버전을 지어내지 않습니다.
+- 의존성 항목이 같은 패키지의 취약점 여러 건을 묶은 것이면(what에 목록이 있음), 업그레이드 한 번으로 함께 해결된다고 안내합니다.
+  고친 버전이 없는 취약점이 섞여 있으면 그 건은 따로 대처가 필요하다고 씁니다.
 
 출력 항목과 분량 (넘치면 잘립니다)
 - summary: 무엇이 문제인지 한 문장, 80자 이내

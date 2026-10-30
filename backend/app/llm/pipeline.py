@@ -76,7 +76,7 @@ class Explainer:
 
     async def _safe(self, run, finding: FindingInput) -> ExplainResult:
         if reason := skip_reason(finding):
-            return ExplainResult(fingerprint=finding.fingerprint, status="skipped", reason=reason)
+            return ExplainResult(fingerprint=finding.fingerprint, status="skipped", reason=reason, covers=finding.covers)
         try:
             explanation = await run(finding)
         except LLMError as exc:
@@ -90,8 +90,12 @@ class Explainer:
                 if isinstance(exc, LLMContextOverflow)
                 else "LLM_ERROR"
             )
-            return ExplainResult(fingerprint=finding.fingerprint, status="failed", error_code=code, error=str(exc))
-        return ExplainResult(fingerprint=finding.fingerprint, status="done", explanation=explanation)
+            return ExplainResult(
+                fingerprint=finding.fingerprint, status="failed", error_code=code, error=str(exc), covers=finding.covers
+            )
+        return ExplainResult(
+            fingerprint=finding.fingerprint, status="done", explanation=explanation, covers=finding.covers
+        )
 
     async def blue(self, finding: FindingInput) -> Explanation:
         started = time.perf_counter()

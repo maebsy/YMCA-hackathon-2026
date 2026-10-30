@@ -1,0 +1,17 @@
+[Unit]
+Description=72hours web and API reverse proxy
+Wants=72hours-backend.service
+After=72hours-backend.service
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=%h/.config/72hours/web.env
+ExecStart=%h/.local/share/72hours/bin/caddy run --config %h/apps/72hours/runtime/Caddyfile --adapter caddyfile
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

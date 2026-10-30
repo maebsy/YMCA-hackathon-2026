@@ -71,6 +71,8 @@ def summarize(mode: str, repeat: int, results, wall_ms: int) -> bool:
             f"  {mark} {r.fingerprint}: {e.latency_ms / 1000:.1f}초, {e.completion_tokens}토큰, 우선순위 {e.priority}, "
             f"Red {rounds}{' (수동 확인)' if e.needs_manual_review else ''}, 한글 {hangul_ratio(text):.0%}, 한자 {foreign}"
         )
+        if len(r.covers) > 1:
+            print(f"     (탐지 결과 {len(r.covers)}건을 함께 설명)")
         print(f"     {e.summary}")
     if latencies:
         print(
@@ -84,12 +86,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--findings", type=Path, default=DEFAULT_FINDINGS, help="FindingInput 목록 JSON")
     parser.add_argument("--engine-input", type=Path, help="보안엔진 llm-input 결과 JSON (--findings 대신)")
+    parser.add_argument("--no-group", action="store_true", help="의존성을 패키지 단위로 묶지 않고 건마다 설명 (비교용)")
     parser.add_argument("--mode", choices=["blue", "red_blue", "both"], default="both")
     parser.add_argument("--repeat", type=int, default=1)
     args = parser.parse_args()
 
     if args.engine_input:
-        findings = from_engine_payload(json.loads(args.engine_input.read_text(encoding="utf-8")))
+        payload = json.loads(args.engine_input.read_text(encoding="utf-8"))
+        findings = from_engine_payload(payload, group_dependencies=not args.no_group)
     else:
         findings = [FindingInput.model_validate(x) for x in json.loads(args.findings.read_text(encoding="utf-8"))]
     modes = ["blue", "red_blue"] if args.mode == "both" else [args.mode]

@@ -1,0 +1,16 @@
+[Unit]
+Description=72hours temporary Cloudflare HTTPS demo tunnel
+Requires=72hours-quick-web.service
+After=72hours-quick-web.service
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=%h/.local/share/72hours/bin/cloudflared tunnel --no-autoupdate --protocol http2 --edge-ip-version 4 --metrics 127.0.0.1:20241 --url http://127.0.0.1:8088
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

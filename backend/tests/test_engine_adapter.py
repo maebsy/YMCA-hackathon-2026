@@ -106,3 +106,10 @@ async def test_engine_payload_end_to_end(fake_vllm, engine_payload):
     assert [r.status for r in results].count("skipped") == 2
     assert all(r.reason for r in results if r.status == "skipped")
     assert all(r.status == "done" for r in results if r.status != "skipped")
+
+
+def test_unverifiable_without_status_is_skipped_like_the_report():
+    # 리포트(app/reports/plain.py finding_state)가 "다시 검사 필요"로 보여 주는 항목은 LLM 도 설명하지 않습니다
+    item = {"id": "osv:u1", "kind": "code", "severity": "high", "title": "확인 못 함", "where": "a.js:1", "rule_id": "r", "change": "unverifiable"}
+
+    assert "다시 검사" in skip_reason(from_engine_item(item))

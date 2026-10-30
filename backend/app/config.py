@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     llm_red_blue_max_rewrites: int = 2
     # Red의 생각 깊이 (low·medium·high). 깊을수록 우회 경로를 더 찾지만 L4에서 느려집니다
     llm_red_reasoning_effort: str = "low"
+    # 문맥 분석을 LLM 으로 할지 (끄면 규칙 신호로만 판단해 호출 1회를 아낌)
+    llm_analyze_context: bool = True
+    # 위험도 해석에 CISA KEV·FIRST EPSS 를 조회할지 (인터넷이 안 되면 "모름"으로 진행)
+    llm_threat_intel: bool = True
 
     @field_validator("llm_base_url", "llm_model", "llm_red_reasoning_effort", mode="before")
     @classmethod

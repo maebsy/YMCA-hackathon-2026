@@ -116,3 +116,19 @@ def test_all_skipped_returns_200(api):
 
     assert resp.status_code == 200
     assert resp.json()["results"][0]["status"] == "skipped"
+
+
+def test_environment_is_passed_through(api, fake_vllm):
+    fake_vllm.queue("BlueDraft", blue_draft())
+    finding = sample_findings(4)[3]  # next 의존성
+
+    resp = api.post("/api/llm/explain", json={"findings": [finding], "mode": "blue", "environment": {"os": "macos"}})
+
+    guide = resp.json()["results"][0]["explanation"]["guide"]
+    assert guide["environment"]["os"] == "macos"
+    assert {b["os"] for a in guide["actions"] for b in a["commands"]} == {"macos"}
+
+
+def test_bad_environment_is_rejected(api):
+    payload = {"findings": sample_findings(1), "environment": {"os": "windows11"}}
+    assert api.post("/api/llm/explain", json=payload).status_code == 422

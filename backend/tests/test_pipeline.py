@@ -137,3 +137,75 @@ async def test_secrets_in_red_issues_and_step_titles_are_masked(fake_vllm, findi
     assert leaked not in dumped
     assert result.red_rounds[0].issues[0].startswith("[가림]")
     assert result.fix_steps[0].title == "키 [가림] 지우기"
+
+
+# ── 문맥 분석·위험도 단계 (#33) ──
+
+
+async def test_context_analysis_feeds_risk_and_prompts(fake_vllm, findings):
+    from tests.conftest import context_analysis
+
+    fake_vllm.queue("ContextAnalysis", context_analysis())
+    fake_vllm.queue("BlueDraft", blue_draft()).queue("RedReview", red_review("pass"))
+
+    result = await Explainer(fake_vllm.client(), analyze_context=True).red_blue(findings[1])
+
+    assert result.context.exposure == "public" and result.context.confidence == "high"
+    assert result.risk.decision == "attend" and result.priority == "soon"
+    blue_prompt = fake_vllm.calls("BlueDraft")[0]["messages"][-1]["content"]
+    red_prompt = fake_vllm.calls("RedReview")[0]["messages"][-1]["content"]
+    assert "<analysis>" in blue_prompt and '"decision": "attend"' in blue_prompt
+    assert "<analysis>" in red_prompt
+    context_prompt = fake_vllm.calls("ContextAnalysis")[0]["messages"][-1]["content"]
+    assert "<signals>" in context_prompt and "server_route" in context_prompt
+
+
+async def test_context_failure_falls_back_to_signals(fake_vllm, findings):
+    fake_vllm.queue("ContextAnalysis", "not json", "still not json")
+    fake_vllm.queue("BlueDraft", blue_draft())
+
+    [result] = await Explainer(fake_vllm.client(), analyze_context=True).explain_many(findings[1:2], "blue")
+
+    assert result.status == "done"
+    assert result.explanation.context.confidence == "low"
+    assert result.explanation.risk is not None
+
+
+async def test_context_outage_fails_the_finding(fake_vllm, findings):
+    fake_vllm.queue("ContextAnalysis", 503, 503, 503)
+
+    [result] = await Explainer(fake_vllm.client(), analyze_context=True).explain_many(findings[1:2], "blue")
+
+    assert result.status == "failed" and result.error_code == "LLM_UNAVAILABLE"
+
+
+async def test_priority_comes_from_risk_not_model(fake_vllm, findings):
+    fake_vllm.queue("BlueDraft", blue_draft(priority="later"))  # 모델이 priority 를 적어도 무시됩니다
+
+    result = await Explainer(fake_vllm.client()).blue(findings[0])  # 브라우저 코드에 service_role 키
+
+    assert result.risk.decision == "act"
+    assert result.priority == "now"
+
+
+async def test_threat_intel_is_looked_up_once_per_batch(fake_vllm, findings):
+    from app.llm.intel import StaticThreatIntel
+    from app.llm.schemas import ThreatIntelRecord
+
+    class CountingIntel(StaticThreatIntel):
+        calls = 0
+
+        async def lookup(self, cves):
+            CountingIntel.calls += 1
+            return await super().lookup(cves)
+
+    cve = "CVE-2025-29927"
+    intel = CountingIntel({cve: ThreatIntelRecord(cve=cve, epss=0.99, epss_percentile=0.999)})
+    fake_vllm.queue("BlueDraft", *[blue_draft() for _ in findings])
+
+    results = await Explainer(fake_vllm.client(), intel=intel).explain_many(findings, "blue")
+
+    assert CountingIntel.calls == 1
+    dep = next(r for r in results if r.fingerprint == "demo-dep-next-middleware-bypass")
+    assert dep.explanation.risk.exploitation == "public poc"
+    assert dep.explanation.risk.intel[0].epss == 0.99

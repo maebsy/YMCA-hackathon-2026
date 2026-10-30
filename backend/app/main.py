@@ -19,7 +19,8 @@ async def lifespan(app: FastAPI):
             init_db()
         # LLM 서버가 꺼져 있어도 API 서버는 뜹니다. 생성 작업은 별도 worker가 실행합니다.
         app.state.explainer = create_explainer()
-        stack.push_async_callback(app.state.explainer.client.aclose)
+        # LLM 연결과 위협 정보(KEV·EPSS) 연결을 함께 닫습니다
+        stack.push_async_callback(app.state.explainer.aclose)
         yield
 
 

@@ -12,6 +12,11 @@
 | Caddy | 2.11.7 | 일반 서버의 웹·API 프록시, 공개 시연 HTTPS 및 접근 인증 | Apache-2.0 | https://github.com/caddyserver/caddy |
 | cloudflared | 2026.10.7 | 승인된 시연용 HTTPS 터널 클라이언트, 공식 SHA-256 고정 검증 | Apache-2.0 | https://github.com/cloudflare/cloudflared |
 | Node.js | 24.19.0 | 별도 담당자가 구현할 프론트엔드의 서버 실행 환경 | MIT 및 포함 구성요소별 라이선스 | https://nodejs.org/ |
+| Next.js | 16.4.3 | 프론트엔드 웹 대시보드 및 SSR/App Router 프레임워크 | MIT | https://github.com/vercel/next.js |
+| React & React-DOM | 19.3.0 | 사용자 인터페이스 렌더링 및 상태 관리 라이브러리 | MIT | https://github.com/facebook/react |
+| Tailwind CSS | 4.x | 대시보드 반응형 유틸리티 디자인 스타일링 | MIT | https://github.com/tailwindlabs/tailwindcss |
+| Lucide React | 1.65.0 | 보안 대시보드 아이콘 컴포넌트 라이브러리 | ISC | https://github.com/lucide-icons/lucide |
+| Google Fonts (IBM Plex Sans KR, JetBrains Mono) | 최신 | 웹 대시보드 본문 한글 폰트 및 개발자 터미널 고정폭 폰트 | OFL-1.1 / Apache-2.0 | https://fonts.google.com |
 | Uvicorn | 0.54.0 | 백엔드 실행 서버 | BSD-3-Clause | https://github.com/encode/uvicorn |
 | SQLModel | 0.0.48 | DB 테이블 정의·조회 | MIT | https://github.com/fastapi/sqlmodel |
 | SQLAlchemy | 2.1.6 | DB 연결 (SQLModel 기반) | MIT | https://github.com/sqlalchemy/sqlalchemy |

@@ -6,7 +6,7 @@ from sqlalchemy import text
 from app.db import engine, init_db
 from app.explain_jobs.config import job_settings
 from app.llm import create_explainer
-from app.routers import items, llm
+from app.routers import items, llm, reports
 
 
 @asynccontextmanager
@@ -44,4 +44,7 @@ else:
     # Existing evaluation/development API stays unchanged when the feature is disabled.
     api.include_router(items.router)
     api.include_router(llm.router)
+api.include_router(items.router)
+api.include_router(llm.router)
+api.include_router(reports.router)
 app.include_router(api)

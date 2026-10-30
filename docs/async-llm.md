@@ -98,4 +98,4 @@ ASYNC_JOB_TEST_DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5432/postgre
   python -m pytest -q tests/test_job_auth.py tests/test_explain_jobs.py
 ```
 
-`async-llm.yml`은 CI의 일회용 PostgreSQL 17에서 같은 테스트를 실행합니다. Windows 독립 PostgreSQL 17.11에서도 인증·큐 통합 테스트 36개를 확인했습니다. Auth는 MockTransport, LLM은 fake를 사용하여 실제 Supabase·GPU·공용 DB를 호출하지 않습니다. 실제 OAuth 로그인·시연 프록시 전환·GPU 생성은 운영 통합 단계의 검증 항목입니다.
+`async-llm.yml`은 CI의 일회용 PostgreSQL 17에서 같은 테스트를 실행합니다. Windows 독립 PostgreSQL 17.11에서도 인증·큐·라우팅 테스트 37개를 확인했습니다. Auth는 MockTransport, LLM은 fake를 사용하여 실제 Supabase·GPU·공용 DB를 호출하지 않습니다. 실제 OAuth 로그인·시연 프록시 전환·GPU 생성은 운영 통합 단계의 검증 항목입니다.

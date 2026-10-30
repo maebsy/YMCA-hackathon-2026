@@ -116,6 +116,19 @@ OAuth 설정은 Supabase Authentication → Providers에서 하고 callback은 S
 4. #26을 사용할 경우 그 PR의 `docs/migrations/026-async-llm.sql`을 이어서 적용합니다. 중복 컬럼/상태 확장은 재적용 가능하고 llm_job을 추가합니다.
 5. #26의 인증/소유권/큐 검증을 마친 다음 서버 feature flag와 프록시를 함께 전환합니다.
 
+이 저장소가 Supabase를 사용할 서비스입니다. 로컬 개발은 루트 `.env`, 일반 서버는 권한 600인 `~/.config/72hours/backend.env`에 다음 연결 설정을 둡니다. 기존 LLM/GPU 설정은 유지합니다.
+
+```dotenv
+# Supabase Connect > Session pooler URI, 비밀번호의 특수문자는 URL 인코딩
+DATABASE_URL=postgresql://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@POOLER_HOST:5432/postgres?sslmode=require
+SUPABASE_URL=https://PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY=PROJECT_PUBLISHABLE_KEY
+# 스키마·인증·프록시 준비 후에 활성화
+LLM_JOBS_ENABLED=true
+```
+
+DB URI와 Auth URL은 반드시 같은 프로젝트를 가리켜야 합니다. 위 값은 예시이며 실제 프로젝트나 키를 생성한 것이 아닙니다. 프론트에는 Supabase URL/publishable key만 전달하고 DB 비밀번호/service-role/GPU 키는 전달하지 않습니다. 기존 시연 서버의 SQLite를 자동 이전하거나 서버 환경 파일을 덮어쓰지 않습니다. 큐 worker와 Bearer 프록시 구성은 [비동기 연결 문서](async-llm.md)의 활성화 절차를 따릅니다.
+
 **서비스 테이블의 기준은 SQL**입니다. SQLModel `create_all`로 production 스키마를 만들지 않습니다. 현재 기본 서버의 Item/SQLite 예제는 유지하며, #26 opt-in 모드는 startup DDL을 실행하지 않습니다. SQLite는 이 스키마의 동등한 대체물이 아닙니다. DB 기능 테스트는 일회용 PostgreSQL에서 수행합니다.
 
 재적용은 알려진 #7 초안 업그레이드 범위에서 검증합니다. 임의의 다른 테이블 구조를 자동 수리하지 않으며, 제약 이름/타입이 다르면 transaction이 실패하게 두고 담당자가 migration을 작성합니다. 데이터가 있는 상태에서 `DROP TABLE` 또는 역방향 스키마 초기화를 하지 않습니다.

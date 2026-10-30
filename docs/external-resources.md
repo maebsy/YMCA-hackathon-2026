@@ -20,6 +20,8 @@
 | 명칭 | 용도 | 라이선스·이용약관 | 출처 |
 |---|---|---|---|
 | Supabase | PostgreSQL DB 호스팅, 로그인(Supabase Auth) | Supabase Terms of Service | https://supabase.com |
+| Google OAuth (Google Identity) | Google 계정으로 가입·로그인 | Google APIs Terms of Service | https://developers.google.com/identity |
+| GitHub OAuth Apps | GitHub 계정으로 가입·로그인 | GitHub Terms of Service | https://docs.github.com/apps/oauth-apps |
 
 ## 사전 보유 코드
 

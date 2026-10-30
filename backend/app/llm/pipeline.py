@@ -32,10 +32,13 @@ RED_SAMPLING = Sampling(max_tokens=3500)
 
 
 class Explainer:
-    def __init__(self, client: LLMClient, max_rewrites: int = 2, red_thinking: bool = True) -> None:
+    def __init__(
+        self, client: LLMClient, max_rewrites: int = 2, red_thinking: bool = True, red_reasoning_effort: str = "low"
+    ) -> None:
         self.client = client
         self.max_rewrites = max_rewrites
         self.red_thinking = red_thinking
+        self.red_reasoning_effort = red_reasoning_effort
 
     async def explain_many(self, findings: list[FindingInput], mode: Mode) -> list[ExplainResult]:
         """여러 건을 동시에 보냅니다. GPU가 묶어서 처리해야 L4에서 전체 시간이 줄어듭니다.
@@ -75,7 +78,7 @@ class Explainer:
                 prompts.red_messages(finding, draft.data),
                 RedReview,
                 thinking=self.red_thinking,
-                reasoning_effort="low",
+                reasoning_effort=self.red_reasoning_effort,
                 sampling=RED_SAMPLING,
                 check=quality.problems,
             )

@@ -10,7 +10,7 @@ import re
 from app.llm.schemas import BlueDraft, FindingInput, RedReview
 
 # 프롬프트를 고치면 올립니다. 결과마다 기록돼 평가에서 버전별로 비교할 수 있습니다
-PROMPT_VERSION = "2026-10-31.2"
+PROMPT_VERSION = "2026-10-31.3"
 
 _MASK = "[가림]"
 # (패턴, 앞뒤 그룹을 남길지). 값만 가리고 변수 이름은 남겨 모델이 맥락을 알 수 있게 합니다
@@ -97,6 +97,12 @@ RED_SYSTEM = f"""\
 - bypass: 고친 뒤에도 다른 경로나 입력으로 같은 공격이 가능합니다.
 - breaks_function: 막히기는 하지만 정상 기능이 깨집니다.
 - incomplete: 중요한 단계가 빠졌거나 모호해서 비개발자가 따라 하면 실패할 가능성이 큽니다.
+
+반드시 확인할 것
+- 고친 뒤에도 다른 사용자의 데이터나 관리자 기능에 접근할 수 있는지 (로그인·본인 확인 같은 권한 검사가 빠졌는지)
+- fix_steps의 단계끼리, 그리고 fix_steps와 ai_fix_prompt의 내용이 서로 맞는지
+- 사용 중인 라이브러리·DB의 실제 문법에 맞는지 (예: PostgreSQL은 $1, MySQL은 ? 자리표시자)
+- 비밀값 노출이면 키 폐기·재발급이 들어 있는지
 
 규칙
 {_COMMON_RULES}

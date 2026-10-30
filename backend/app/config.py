@@ -22,8 +22,10 @@ class Settings(BaseSettings):
     llm_max_concurrency: int = 8
     # Red 검토에서 막히면 Blue가 다시 쓰는 최대 횟수 (아키텍처: 최대 2회)
     llm_red_blue_max_rewrites: int = 2
+    # Red의 생각 깊이 (low·medium·high). 깊을수록 우회 경로를 더 찾지만 L4에서 느려집니다
+    llm_red_reasoning_effort: str = "low"
 
-    @field_validator("llm_base_url", "llm_model", mode="before")
+    @field_validator("llm_base_url", "llm_model", "llm_red_reasoning_effort", mode="before")
     @classmethod
     def _empty_means_default(cls, value, info):
         # .env 에 `LLM_MODEL=` 처럼 빈 값으로 남아 있으면 기본값을 씁니다

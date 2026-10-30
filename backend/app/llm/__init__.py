@@ -13,4 +13,8 @@ def create_explainer() -> Explainer:
         timeout_s=settings.llm_timeout_s,
         max_concurrency=settings.llm_max_concurrency,
     )
-    return Explainer(client, max_rewrites=settings.llm_red_blue_max_rewrites)
+    return Explainer(
+        client,
+        max_rewrites=settings.llm_red_blue_max_rewrites,
+        red_reasoning_effort=settings.llm_red_reasoning_effort,
+    )

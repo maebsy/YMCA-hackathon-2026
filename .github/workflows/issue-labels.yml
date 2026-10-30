@@ -1,0 +1,43 @@
+name: 이슈 자동 라벨
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 이슈 양식의 우선순위·파트를 라벨로 붙이기
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            // 이슈 양식 본문은 "### 항목\n\n값" 형태입니다
+            const field = (title) => {
+              const m = body.match(new RegExp(`###\\s*${title}\\s*\\n+([^\\n]+)`));
+              const v = m ? m[1].trim() : '';
+              return v && v !== '_No response_' ? v : null;
+            };
+            const priority = field('우선순위');   // "P0 (데모 필수)" → "P0"
+            const area = field('파트');           // "데이터" → "area: 데이터"
+            const groups = [
+              { pattern: /^P[0-2]$/, value: priority && priority.split(' ')[0] },
+              { pattern: /^area: /, value: area && `area: ${area}` },
+            ];
+
+            const current = issue.labels.map((l) => l.name);
+            const params = { ...context.repo, issue_number: issue.number };
+            for (const { pattern, value } of groups) {
+              if (!value) continue;
+              for (const name of current.filter((n) => pattern.test(n) && n !== value)) {
+                await github.rest.issues.removeLabel({ ...params, name });
+              }
+              if (!current.includes(value)) {
+                await github.rest.issues.addLabels({ ...params, labels: [value] });
+              }
+            }

@@ -1,0 +1,43 @@
+name: "🧩 작업"
+description: 문서, 발표 자료, 서버·환경 설정 같은 기능 외 작업
+title: "[작업] "
+labels: ["type: task"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 할 일
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      placeholder: 예) 발표 슬라이드 데모 파트 초안이 공유 폴더에 올라가 있다
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 우선순위
+      options:
+        - P0 (데모 필수)
+        - P1 (중요)
+        - P2 (있으면 좋음)
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 파트
+      options:
+        - AI·모델
+        - 데이터
+        - 백엔드
+        - 프론트·데모
+        - 인프라
+        - 문서·발표
+    validations:
+      required: true

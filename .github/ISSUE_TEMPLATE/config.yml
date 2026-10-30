@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📘 팀 협업 규칙 (CONTRIBUTING.md)
+    url: https://github.com/maebsy/YMCA-hackathon-2026/blob/main/CONTRIBUTING.md
+    about: 이슈·브랜치·커밋·PR 규칙

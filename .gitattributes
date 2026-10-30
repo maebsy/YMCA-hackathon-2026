@@ -1,0 +1,14 @@
+# Windows PC와 Linux 서버를 같이 쓰므로 줄바꿈을 LF로 통일합니다.
+# (CRLF가 섞이면 서버에서 셸 스크립트·훅이 깨집니다)
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary

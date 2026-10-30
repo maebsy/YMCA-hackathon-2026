@@ -247,11 +247,30 @@ def test_not_checked_area_blocks_completion_and_safe_wording():
         ),
         ("lockfile not found in /srv/scans/abc/repo", "lockfile not found in (경로)"),
         ("", "도구가 결과를 내지 못했습니다"),
+        # #34 리뷰 2: URL과 낱말 속 슬래시는 그대로 둡니다
+        ("could not reach https://api.osv.dev/v1/querybatch", "could not reach https://api.osv.dev/v1/querybatch"),
+        ("OSV/NVD 데이터베이스 응답 없음", "OSV/NVD 데이터베이스 응답 없음"),
+        ("timeout C:\\Users\\me\\AppData\\Local\\Temp\\scan", "timeout (경로)"),
+        ("ENOENT /home/ncloud/apps/72hours/x and /var/lib/y", "ENOENT (경로) and (경로)"),
     ],
-    ids=["engine-format", "raw-path", "empty"],
+    ids=["engine-format", "raw-path", "empty", "url-kept", "word-slash-kept", "windows-path", "two-paths"],
 )
 def test_not_checked_reason_is_friendly_and_hides_server_paths(raw, shown):
     assert plain.friendly_reason(raw) == shown
+
+
+def test_long_engine_message_is_clipped_not_rejected(api):
+    # #34 리뷰 1: 엔진은 도구 오류를 개수 제한 없이 이어 붙입니다. 1,000자를 넘어도 422 대신 잘라서 받습니다
+    reason = "; ".join(f"Opengrep fatal error {i}: " + "x" * 200 for i in range(8))
+    assert len(reason) > 1000
+    body = plain_request().model_dump(mode="json")
+    body["scan"]["not_checked"] = [{"tool": "semgrep" * 10, "category": "code" * 20, "reason": reason}]
+
+    resp = api.post("/api/reports/plain", json=body)
+
+    assert resp.status_code == 200
+    area = next(s for s in resp.json()["sections"] if s["heading"] == "이번에 검사하지 못한 영역")
+    assert area["bullets"][0].count("Opengrep fatal error") >= 1
 
 
 def test_unverifiable_change_is_recheck_not_open():

@@ -26,6 +26,14 @@ ReportFormat = Literal["json", "markdown", "html"]
 # ── 입력 ──
 
 
+class NotChecked(BaseModel):
+    """이번 검사에서 확인하지 못한 영역. 보안엔진 LLM 입력의 `not_checked`를 그대로 받습니다 (#28)."""
+
+    tool: str = Field(max_length=50)
+    category: str | None = Field(default=None, max_length=50)
+    reason: str = Field(default="", max_length=1000)
+
+
 class ScanContext(BaseModel):
     """검사 한 번의 정보. 72시간 타이머는 첫 발견 시각(detected_at)에 시작합니다."""
 
@@ -37,6 +45,9 @@ class ScanContext(BaseModel):
         default=None, description="처음 취약점이 발견된 시각. 72시간 타이머 시작점"
     )
     resolved_at: AwareDatetime | None = Field(default=None, description="재검사를 통과한 시각. 있으면 완료 리포트")
+    not_checked: list[NotChecked] = Field(
+        default_factory=list, max_length=20, description="도구 실패·lockfile 없음 등으로 검사하지 못한 영역"
+    )
 
 
 class PlainReportRequest(BaseModel):

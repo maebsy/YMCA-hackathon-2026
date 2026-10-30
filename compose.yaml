@@ -32,8 +32,8 @@ services:
       - path: .env
         required: false
     environment:
-      # .env 의 DATABASE_URL(Supabase 등)보다 우선합니다. 컨테이너에서는 위의 db 서비스를 씁니다
-      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
+      # .env 에 DATABASE_URL(Supabase 등)이 있으면 그걸 쓰고, 비어 있으면 위의 db 서비스를 씁니다
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}}
       # 컨테이너 안의 localhost 는 컨테이너 자신이라 .env 의 LLM_BASE_URL(localhost:8001)을 그대로 못 씁니다.
       # 내 PC의 8001(GPU 서버 vLLM으로 연 SSH 터널)로 연결합니다
       LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-http://host.docker.internal:8001/v1}

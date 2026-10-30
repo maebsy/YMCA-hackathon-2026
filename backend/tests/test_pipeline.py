@@ -89,3 +89,15 @@ async def test_unavailable_is_reported_per_finding(fake_vllm, findings):
 
     assert result.status == "failed"
     assert result.error_code == "LLM_UNAVAILABLE"
+
+
+async def test_false_positive_reason_only_when_suspected(fake_vllm, findings):
+    fake_vllm.queue(
+        "BlueDraft",
+        blue_draft(false_positive_suspect=False, false_positive_reason="실제 코드라 오탐이 아닙니다"),
+        blue_draft(false_positive_suspect=True, false_positive_reason="테스트 폴더의 예시 값입니다"),
+    )
+    explainer = Explainer(fake_vllm.client())
+
+    assert (await explainer.blue(findings[1])).false_positive_reason is None
+    assert (await explainer.blue(findings[1])).false_positive_reason == "테스트 폴더의 예시 값입니다"

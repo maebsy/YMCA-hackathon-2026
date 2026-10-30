@@ -27,8 +27,8 @@ log = logging.getLogger(__name__)
 Mode = Literal["blue", "red_blue"]
 
 # Blue는 생각 모드를 끄고 바로 씁니다. Red는 우회 경로를 따져야 해서 짧게 생각하게 합니다
-BLUE_SAMPLING = Sampling(max_tokens=2000)
-RED_SAMPLING = Sampling(max_tokens=2500)
+BLUE_SAMPLING = Sampling(max_tokens=2500)
+RED_SAMPLING = Sampling(max_tokens=3500)
 
 
 class Explainer:
@@ -119,7 +119,8 @@ class Explainer:
             fix_steps=[step.model_copy(update={"detail": redact(step.detail)}) for step in draft.fix_steps],
             ai_fix_prompt=redact(draft.ai_fix_prompt),
             false_positive_suspect=draft.false_positive_suspect,
-            false_positive_reason=redact(draft.false_positive_reason),
+            # 모델이 오탐이 아니라고 하면서 이유를 적는 경우가 있어, 오탐 의심일 때만 남깁니다
+            false_positive_reason=redact(draft.false_positive_reason) if draft.false_positive_suspect else None,
             model=self.client.model,
             prompt_version=prompts.PROMPT_VERSION,
             latency_ms=int((time.perf_counter() - started) * 1000),

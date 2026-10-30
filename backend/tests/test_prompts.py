@@ -92,3 +92,9 @@ def test_quality_problems():
     assert problems(BlueDraft.model_validate(blue_draft())) == []
     assert problems(BlueDraft.model_validate(blue_draft(why_risky="데이터가 漏洩됩니다"))) != []
     assert problems(RedReview.model_validate(red_review(attack_scenario="```sql\n' OR 1=1\n```"))) != []
+
+
+def test_text_cut_at_schema_limit_is_flagged():
+    cut = BlueDraft.model_validate(blue_draft(summary="가" * 200))
+    assert any("summary" in p and "잘렸습니다" in p for p in problems(cut))
+    assert problems(RedReview.model_validate(red_review(attack_scenario="나" * 400)))

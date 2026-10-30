@@ -10,7 +10,7 @@ import re
 from app.llm.schemas import BlueDraft, FindingInput, RedReview
 
 # 프롬프트를 고치면 올립니다. 결과마다 기록돼 평가에서 버전별로 비교할 수 있습니다
-PROMPT_VERSION = "2026-10-31.1"
+PROMPT_VERSION = "2026-10-31.2"
 
 _MASK = "[가림]"
 # (패턴, 앞뒤 그룹을 남길지). 값만 가리고 변수 이름은 남겨 모델이 맥락을 알 수 있게 합니다
@@ -78,7 +78,15 @@ BLUE_SYSTEM = f"""\
 - ai_fix_prompt는 사용자가 Cursor·Claude Code·Codex에 그대로 붙여 넣을 지시문입니다. 파일 경로, 줄 번호, 규칙 ID,
   고칠 방향, 확인 방법을 쓰고, 코드 원문과 비밀값은 넣지 않습니다.
 - 비밀값이 노출된 경우에는 코드에서 지우는 것만으로는 부족하고, 키를 폐기하고 새로 발급해야 한다고 반드시 씁니다.
-- 테스트 코드, 예시 값, 문서처럼 실제 서비스와 무관해 보이면 false_positive_suspect를 true로 하고 이유를 씁니다."""
+- 테스트 코드, 예시 값, 문서처럼 실제 서비스와 무관해 보이면 false_positive_suspect를 true로 하고 이유를 씁니다.
+
+출력 항목과 분량 (넘치면 잘립니다)
+- summary: 무엇이 문제인지 한 문장, 80자 이내
+- why_risky: 2~3문장, 300자 이내
+- priority: now(바로 악용 가능하거나 비밀값 노출) / soon(조건이 맞으면 악용) / later(영향이 작음)
+- fix_steps: 단계마다 title은 30자 이내, detail은 200자 이내
+- ai_fix_prompt: 600자 이내
+- false_positive_suspect: 오탐으로 보일 때만 true, false_positive_reason은 그때만 150자 이내로 쓰고 아니면 null"""
 
 RED_SYSTEM = f"""\
 당신은 웹 해킹을 잘 아는 공격자 관점의 보안 검토자입니다. 탐지 결과 1건과, 다른 전문가가 쓴 수정 지시를 받습니다.
@@ -95,7 +103,12 @@ RED_SYSTEM = f"""\
 - attack_scenario는 고치기 전에 공격자가 이 문제를 어떻게 악용하는지 1~2문장으로, 비개발자가 이해할 말로 씁니다.
   실행 가능한 공격 코드, 페이로드, 명령어는 쓰지 않습니다.
 - pass가 아니면 issues에 수정 지시의 구멍을 구체적으로 씁니다. pass면 issues는 비워 둡니다.
-- 표현이 조금 아쉬운 정도로는 pass를 막지 않습니다. 보안상 실제 차이가 있을 때만 pass가 아닌 판정을 내립니다."""
+- 표현이 조금 아쉬운 정도로는 pass를 막지 않습니다. 보안상 실제 차이가 있을 때만 pass가 아닌 판정을 내립니다.
+
+출력 항목과 분량 (넘치면 잘립니다)
+- verdict: pass / bypass / breaks_function / incomplete
+- attack_scenario: 1~2문장, 150자 이내
+- issues: 최대 3개, 하나에 150자 이내"""
 
 
 def blue_messages(finding: FindingInput) -> list[dict]:

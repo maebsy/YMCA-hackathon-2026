@@ -14,6 +14,8 @@
 | SQLAlchemy | 2.1.6 | DB 연결 (SQLModel 기반) | MIT | https://github.com/sqlalchemy/sqlalchemy |
 | psycopg | 3.3.6 | PostgreSQL(Supabase) 드라이버 | LGPL-3.0 | https://github.com/psycopg/psycopg |
 | pydantic-settings | 2.16.2 | `.env` 설정 읽기 | MIT | https://github.com/pydantic/pydantic-settings |
+| Python 공식 Docker 이미지 | 3.12-slim | 백엔드 컨테이너 기반 이미지 | PSF-2.0 (포함된 Debian 패키지는 각 라이선스) | https://hub.docker.com/_/python |
+| PostgreSQL 공식 Docker 이미지 | 17-alpine | 로컬 개발용 DB | PostgreSQL License | https://hub.docker.com/_/postgres |
 
 ## 외부 API
 
@@ -31,4 +33,5 @@
 
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
-| Claude Code (Anthropic) | 백엔드 골격 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
+| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
+| Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |

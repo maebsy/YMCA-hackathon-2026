@@ -1,0 +1,41 @@
+name: Docker
+
+on:
+  pull_request:
+    paths:
+      - compose.yaml
+      - backend/**
+      - .github/workflows/docker.yml
+  push:
+    branches: [main]
+    paths:
+      - compose.yaml
+      - backend/**
+      - .github/workflows/docker.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+# 필수 검사가 아닙니다. backend 나 compose 파일이 바뀐 PR에서만 돕니다.
+jobs:
+  compose:
+    name: compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: compose 파일 문법 검사
+        run: docker compose config --quiet
+      - name: 이미지 빌드, 실행, 헬스체크 통과까지 대기
+        run: docker compose up --build --detach --wait --wait-timeout 120
+      - name: API 응답 확인 (PostgreSQL 연결 포함)
+        run: curl --fail --silent --show-error http://127.0.0.1:8000/api/health | tee /dev/stderr | grep -q '"db":"postgresql"'
+      - name: 실패하면 로그 출력
+        if: failure()
+        run: docker compose logs
+      - name: 정리
+        if: always()
+        run: docker compose down --volumes

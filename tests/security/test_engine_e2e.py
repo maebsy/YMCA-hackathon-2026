@@ -74,18 +74,24 @@ def test_builtin_rules_pass_semgrep_test():
     import subprocess
 
     from security_engine.models import BUILTIN_RULES_DIR
-    from security_engine.runners.base import run_cmd
+    from security_engine.runners.base import engine_name, run_cmd
 
-    proc = run_cmd([find_binary("semgrep"), "--test", "--metrics=off", str(BUILTIN_RULES_DIR)], timeout=300)
+    binary = find_binary("semgrep")
+    if engine_name(binary) == "opengrep":
+        cmd = [binary, "test", str(BUILTIN_RULES_DIR)]
+    else:
+        cmd = [binary, "--test", "--metrics=off", str(BUILTIN_RULES_DIR)]
+    proc = run_cmd(cmd, timeout=300)
     assert proc.returncode == 0, (proc.stdout or "")[-2000:]
     assert isinstance(proc, subprocess.CompletedProcess)
 
 
 @needs_semgrep
-def test_no_registry_uses_only_our_rules(vibe_site: Path):
-    """--no-registry(semgrep_registry=())면 우리 규칙만 → 모든 rule_id가 vibe-coding/로 시작."""
-    r = scan(vibe_site, options=ScanOptions(tools=("semgrep",), semgrep_registry=()))
+def test_default_uses_only_our_rules(vibe_site: Path):
+    """기본값은 우리 규칙만 → 모든 rule_id가 vibe-coding/로 시작, 어떤 코드 검사기를 썼는지 기록."""
+    r = scan(vibe_site, options=ScanOptions(tools=("semgrep",)))
     assert r["coverage"]["semgrep"]["message"] == ""
+    assert r["coverage"]["semgrep"]["engine"] in ("opengrep", "semgrep")
     assert r["findings"] and all(f["rule_id"].startswith("vibe-coding/") for f in r["findings"])
 
 
@@ -104,13 +110,29 @@ def test_third_party_library_is_downgraded(tmp_path: Path):
     assert by_file["app.js"]["severity"] == "medium" and not by_file["app.js"]["flags"]   # 내 코드는 그대로
 
 
-def test_registry_on_by_default():
-    """기본값은 우리 규칙 + Semgrep 레지스트리(p/default). CLI --no-registry로 끌 수 있다."""
-    from security_engine.cli import _options
+def test_registry_off_by_default():
+    """기본값은 우리 규칙만(유료 서비스 가능 구성). Semgrep 레지스트리는 --with-registry로만 켠다."""
     import argparse
-    assert ScanOptions().semgrep_registry == ("p/default",)
-    ns = argparse.Namespace(tools=None, no_registry=True, with_registry=None, semgrep_config=None,
+
+    from security_engine.cli import _options
+    assert ScanOptions().semgrep_registry == ()
+    ns = argparse.Namespace(tools=None, no_registry=False, with_registry=None, semgrep_config=None,
                             osv_offline=False, timeout=600, include_raw=False)
     assert _options(ns).semgrep_registry == ()
-    ns.no_registry = False
+    ns.with_registry = ["p/default"]
     assert _options(ns).semgrep_registry == ("p/default",)
+
+
+@needs_semgrep
+def test_hardcoded_jwt_secret_never_leaks(tmp_path: Path):
+    """PR #21 리뷰 재현: gitleaks가 못 잡는 JWT 키 → 결과 JSON·LLM 입력·LLM 텍스트 어디에도 원문이 없어야 한다."""
+    from security_engine import build_llm_input, render_llm_text
+    key = "c0rp-signing-" + "Key-2026-xY"  # 저장소 비밀값 검사에 걸리지 않게 나눠 씀
+    (tmp_path / "auth.js").write_text(
+        f'const jwt = require("jsonwebtoken");\nconst t = jwt.sign({{ id: user.id }}, "{key}");\n', encoding="utf-8")
+    r = scan(tmp_path, options=ScanOptions(tools=("semgrep", "gitleaks")))
+    assert any(f["rule_id"] == "vibe-coding/jwt-hardcoded-secret" for f in r["findings"])
+    assert r["coverage"]["semgrep"]["registry_used"] is False
+    llm = build_llm_input(r)
+    for blob in (json.dumps(r, ensure_ascii=False), json.dumps(llm, ensure_ascii=False), render_llm_text(llm)):
+        assert key not in blob

@@ -56,7 +56,8 @@ def _print_summary(r: dict) -> None:
     p(f"\n[보안엔진] {r['target']['path']}  ({r['status']}, {r['duration_sec']}초)")
     for tool, c in r["coverage"].items():
         extra = f" - {c['message']}" if c["message"] else ""
-        p(f"  {tool:<9} {c['status']:<13} {c['count']}건{extra}")
+        name = f"{tool}({c['engine']})" if c.get("engine") and c["engine"] not in (tool, "builtin") else tool
+        p(f"  {name:<18} {c['status']:<13} {c['count']}건{extra}")
     s = r["summary"]
     sev = ", ".join(f"{k} {v}" for k, v in s["by_severity"].items() if v)
     p(f"  열린 문제 {s['open']}건" + (f" ({sev})" if sev else ""))
@@ -81,7 +82,7 @@ def _options(a) -> ScanOptions:
     bad = [t for t in tools if t not in TOOLS]
     if bad:
         raise SystemExit(f"알 수 없는 도구: {bad} (가능: {', '.join(TOOLS)})")
-    registry = () if a.no_registry else tuple(a.with_registry or ("p/default",))
+    registry = () if a.no_registry else tuple(a.with_registry or ())
     return ScanOptions(
         tools=tools,
         semgrep_registry=registry,
@@ -113,9 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("-o", "--output", help="결과 JSON 저장 경로 (없으면 표준 출력)")
     s.add_argument("--tools", help="쉼표로 구분: osv,semgrep,gitleaks (기본: 전부)")
     s.add_argument("--with-registry", action="append", metavar="RULESET",
-                   help="Semgrep 레지스트리 룰셋 지정 (기본 p/default, 여러 번 가능)")
-    s.add_argument("--no-registry", action="store_true",
-                   help="레지스트리 룰셋 없이 우리 규칙만 사용 (상용 서비스·오프라인용)")
+                   help="내부 비교용으로 Semgrep 레지스트리 룰셋 추가 (예: p/default). 라이선스상 서비스 결과에는 쓰지 말 것")
+    s.add_argument("--no-registry", action="store_true", help="(기본값과 같음, 예전 명령 호환용)")
     s.add_argument("--semgrep-config", action="append", help="추가 Semgrep 규칙 파일/폴더")
     s.add_argument("--osv-offline", action="store_true", help="미리 받은 OSV DB만 사용 (인터넷 없이)")
     s.add_argument("--timeout", type=int, default=600, help="도구당 제한 시간(초), 기본 600")
@@ -146,7 +146,8 @@ def main(argv: list[str] | None = None) -> int:
         info = doctor()
         for tool, v in info.items():
             mark = "OK " if v["path"] else "없음"
-            print(f"{mark} {tool:<9} {v['version'] or '':<10} {v['path'] or ''}")
+            eng = f"({v['engine']})" if v.get("engine") and v["engine"] != tool else ""
+            print(f"{mark} {tool:<9} {eng:<11} {v['version'] or '':<10} {v['path'] or ''}")
         return 0 if all(v["path"] for v in info.values()) else 1
 
     if a.cmd == "llm-input":

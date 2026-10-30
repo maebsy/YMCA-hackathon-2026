@@ -61,7 +61,7 @@ _UPGRADE_CMD = {
 
 # 혹시 남아 있을지 모르는 비밀값 모양 (마지막 안전장치)
 _SECRET_LIKE = re.compile(
-    r"(sk[-_](live|test)?_?[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{35}|gh[pousr]_[A-Za-z0-9]{36}"
+    r"(sk[-_](live|test)?_?[A-Za-z0-9]{16,}|sk-(proj|ant|svcacct|admin)-[A-Za-z0-9_\-]{16,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{35}|gh[pousr]_[A-Za-z0-9]{36}"
     r"|github_pat_[A-Za-z0-9_]{40,}|xox[baprs]-[A-Za-z0-9\-]{10,}|eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{10,}"
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----)"
 )

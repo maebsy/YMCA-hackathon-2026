@@ -1,4 +1,5 @@
 """스캐너 원본 JSON → 공통 형식 변환 (스캐너 설치 없이 돈다)."""
+import json
 from pathlib import Path
 
 from conftest import fake_stripe_key
@@ -155,3 +156,38 @@ def test_gitleaks_public_key_is_downgraded_not_hidden(tmp_path):
     assert public["severity"] == "low" and "likely_public_key" in public["flags"]
     assert "rotate_secret" not in public["flags"]
     assert admin["severity"] == "high" and "rotate_secret" in admin["flags"]   # 관리자 키는 그대로 위험
+
+
+def test_semgrep_secret_rule_masks_literal(tmp_path):
+    """PR #21 리뷰: Gitleaks가 못 잡은 하드코딩 JWT 키도 semgrep 결과에서 원문이 사라져야 한다."""
+    key = "c0rp-signing-" + "Key-2026-xY"  # 저장소 비밀값 검사에 걸리지 않게 나눠 씀
+    line = f'const t = jwt.sign({{ id: user.id }}, "{key}");\n'
+    (tmp_path / "auth.js").write_text(line, encoding="utf-8")
+    start, end = line.index("jwt"), line.index(");") + 1
+    data = {"results": [{
+        "check_id": "rules.jwt-hardcoded-secret", "path": "auth.js",
+        "start": {"line": 1, "offset": start}, "end": {"line": 1, "offset": end},
+        "extra": {"message": f"hardcoded {key}", "severity": "ERROR",
+                  "metadata": {"cwe": "CWE-798: Use of Hard-coded Credentials"}},
+    }]}
+    secrets: list[str] = []
+    out = semgrep.parse(data, tmp_path, secrets_out=secrets)
+    assert secrets == [key]
+    assert key not in json.dumps(out, ensure_ascii=False)
+    assert FLAG_ROTATE_SECRET in out[0]["flags"]
+    assert "c0rp********" in out[0]["evidence"]["snippet"]
+
+
+def test_clone_only_accepts_github(monkeypatch):
+    """PR #21 리뷰: 내부 주소(SSRF)·위장 호스트는 clone 전에 막는다."""
+    import pytest
+
+    from security_engine.git import _ALLOWED_URL, CloneError, clone_repo
+    for ok in ("https://github.com/user/user.github.io", "https://github.com/o/r.git", "https://github.com/o/r/"):
+        assert _ALLOWED_URL.match(ok), ok
+    for bad in ("https://169.254.169.254/latest/meta-data", "https://localhost:8000/a/b",
+                "https://github.com.evil.io/o/r", "http://github.com/o/r", "https://github.com/o/r/tree/main",
+                "https://gitlab.com/o/r"):
+        assert not _ALLOWED_URL.match(bad), bad
+        with pytest.raises(CloneError):
+            clone_repo(bad)

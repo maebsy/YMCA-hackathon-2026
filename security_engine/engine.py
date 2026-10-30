@@ -36,17 +36,16 @@ from .models import (
     SEVERITIES,
     SEVERITY_RANK,
     STATUSES,
+    THIRD_PARTY_HINT,
     TOOL_ERROR,
     TOOL_OK,
     TOOL_SKIPPED,
-    THIRD_PARTY_HINT,
     TOOLS,
     ScanOptions,
 )
 from .normalize import scrub, version_key
 from .runners import RUNNERS
-from .runners.base import ToolRun, find_binary, tool_version
-
+from .runners.base import ToolRun, engine_name, find_binary, tool_version
 
 _THIRD_PARTY = re.compile(THIRD_PARTY_HINT)
 
@@ -72,6 +71,8 @@ def _coverage(runs: dict[str, ToolRun]) -> dict:
             "category": CATEGORY_BY_TOOL[tool],
             "message": r.message,
             "version": r.version,
+            "engine": r.engine,
+            "registry_used": r.registry_used,
             "count": len(r.findings),
             "duration_sec": r.duration_sec,
         }
@@ -145,16 +146,17 @@ def scan(target: str | Path, previous: dict | None = None, *, options: ScanOptio
     for t in TOOLS:
         runs.setdefault(t, ToolRun(t, TOOL_SKIPPED, "옵션으로 이번 검사에서 뺐습니다."))
 
-    secrets = runs["gitleaks"].secrets
+    # 가릴 비밀값: Gitleaks가 찾은 값 + 코드 검사기의 비밀값 규칙(CWE-798 등)이 잡은 문자열
+    secrets = [s for t in TOOLS for s in runs[t].secrets]
     findings: list[dict] = []
     for t in TOOLS:
         for f in runs[t].findings:
-            # 비밀값이 다른 도구의 증거 코드에 섞여 나오는 경우까지 가린다
-            f["evidence"] = scrub(f.get("evidence"), secrets)
-            if "raw" in f:
-                f["raw"] = scrub(f["raw"], secrets)
+            # 비밀값이 다른 도구의 증거 코드·메시지에 섞여 나오는 경우까지 가린다
+            for key in ("evidence", "raw", "title", "message"):
+                if key in f:
+                    f[key] = scrub(f[key], secrets)
             findings.append(f)
-    runs["gitleaks"].secrets = []
+        runs[t].secrets = []
     secrets = []
 
     fp.make_unique(findings)
@@ -236,7 +238,10 @@ def doctor() -> dict:
     args = {"osv": ["--version"], "semgrep": ["--version"], "gitleaks": ["version"]}
     out = {}
     for t in TOOLS:
+        if t not in args:  # 엔진 안에 들어 있는 검사기(설정 검사기)는 설치가 필요 없다
+            out[t] = {"path": "(내장)", "version": ENGINE_VERSION, "engine": "builtin"}
+            continue
         b = find_binary(t)
-        out[t] = {"path": b, "version": tool_version(b, args[t]) if b else None}
+        out[t] = {"path": b, "version": tool_version(b, args[t]) if b else None, "engine": engine_name(b)}
     out["git"] = {"path": shutil.which("git"), "version": None}
     return out

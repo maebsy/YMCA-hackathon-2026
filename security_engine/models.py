@@ -13,8 +13,9 @@ ENGINE_NAME = "security_engine"
 ENGINE_VERSION = "0.1.0"
 
 # ---------------------------------------------------------------- 도구
-TOOLS = ("osv", "semgrep", "gitleaks")
-CATEGORY_BY_TOOL = {"osv": "dependency", "semgrep": "code", "gitleaks": "secret"}
+# osv: 외부 부품 / semgrep: 코드 검사기(Opengrep 우선) / gitleaks: 비밀값 / config: 자체 설정 검사기(엔진 내장)
+TOOLS = ("osv", "semgrep", "gitleaks", "config")
+CATEGORY_BY_TOOL = {"osv": "dependency", "semgrep": "code", "gitleaks": "secret", "config": "config"}
 
 # 도구 실행 결과 (coverage.<tool>.status)
 TOOL_OK = "ok"                        # 정상 실행
@@ -81,10 +82,10 @@ class ScanOptions:
     """scan()의 세부 설정. 기본값 그대로 써도 된다."""
 
     tools: tuple[str, ...] = TOOLS
-    # Semgrep: 우리 규칙(rules/)은 항상 쓰고, 여기 적은 Semgrep 레지스트리 룰셋을 함께 쓴다 (2026-10-31 팀 결정: 해커톤 기간 기본 사용).
-    # 레지스트리에 접속하지 못하면 자동으로 우리 규칙만으로 다시 돌리고 coverage.semgrep.message에 남긴다.
-    # 주의: 레지스트리 규칙은 'Semgrep Rules License'(내부 사용만, SaaS 제공 불가). 유료 서비스로 낼 때는 ()로 끄거나 대체 필요.
-    semgrep_registry: tuple[str, ...] = ("p/default",)
+    # 코드 검사(Opengrep/Semgrep)는 우리 규칙(rules/)만 기본으로 쓴다 → 유료 서비스 가능 구성 (2026-10-31 팀 차트 기준).
+    # Semgrep 레지스트리 룰셋(예: ("p/default",))은 'Semgrep Rules License'(SaaS 제공 불가)라 내부 비교·검증 때만 켠다.
+    # 접속 실패 시 자동으로 우리 규칙만으로 다시 돌리고 coverage.semgrep.message에 남긴다.
+    semgrep_registry: tuple[str, ...] = ()
     semgrep_extra_configs: tuple[str, ...] = ()  # 추가 규칙 파일·폴더 경로
     osv_offline: bool = False  # True면 미리 받아둔 OSV DB만 사용 (--offline-vulnerabilities)
     timeout_sec: int = 600     # 도구 하나당 최대 실행 시간

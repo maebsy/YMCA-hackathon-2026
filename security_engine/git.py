@@ -3,7 +3,7 @@
 백엔드가 직접 clone해서 폴더 경로만 넘겨도 되고, 이 함수를 써도 된다.
 - 공개 저장소만 (로그인 정보를 쓰지 않음). 비공개면 바로 실패한다 (비밀번호를 묻느라 멈추지 않게).
 - 최신 커밋 하나만 받는다 (--depth 1).
-- 남의 코드를 받는 것이므로: https 주소만 허용, 심볼릭 링크는 일반 파일로 받음, LFS 파일은 받지 않음.
+- 남의 코드를 받는 것이므로: https://github.com 주소만 허용, 심볼릭 링크는 일반 파일로 받음, LFS 파일은 받지 않음.
 """
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-_ALLOWED_URL = re.compile(r"^https://[A-Za-z0-9.\-]+(:\d+)?/[\w.\-~/%]+?(\.git)?/?$")
+# 공개 GitHub 저장소만 (내부 주소·다른 호스트로 요청이 나가는 SSRF 통로를 막는다)
+_ALLOWED_URL = re.compile(r"^https://github\.com/[\w.\-]+/[\w.\-]+?(\.git)?/?$")
 
 
 class CloneError(RuntimeError):
@@ -37,7 +38,7 @@ def clone_repo(url: str, dest: str | Path | None = None, ref: str | None = None,
     if not shutil.which("git"):
         raise CloneError("git이 설치되어 있지 않습니다.")
     if not _ALLOWED_URL.match(url or ""):
-        raise CloneError(f"https:// 로 시작하는 저장소 주소만 받을 수 있습니다: {url!r}")
+        raise CloneError(f"https://github.com/<owner>/<repo> 형식의 공개 저장소 주소만 받을 수 있습니다: {url!r}")
     if ref is not None and (ref.startswith("-") or not re.match(r"^[\w.\-/]+$", ref)):
         raise CloneError(f"브랜치/태그 이름이 올바르지 않습니다: {ref!r}")
 

@@ -24,6 +24,7 @@ from .models import (
     CODE_RESOLVED,
     FLAG_FILE_REMOVED,
     FLAG_LOCKFILE_REMOVED,
+    FLAG_ROTATE_SECRET,
     NEW,
     OUT_OF_SCOPE,
     PERSISTING,
@@ -76,11 +77,16 @@ def compare(current: dict, previous: dict | None, target: Path | None = None) ->
         f.pop("raw", None)
         f["flags"] = [x for x in f.get("flags", []) if x not in (FLAG_FILE_REMOVED, FLAG_LOCKFILE_REMOVED)]
         tool_ok = coverage.get(f["tool"], {}).get("status") == TOOL_OK
+        if f["tool"] == "semgrep" and not str(f.get("rule_id", "")).startswith("vibe-coding/"):
+            # 레지스트리 규칙으로 찾은 문제는 이번에 레지스트리 규칙을 실제로 돌렸을 때만 '해결'로 본다
+            # (레지스트리 접속 실패로 우리 규칙만 돌았으면 → 확인 불가)
+            tool_ok = tool_ok and bool(coverage.get("semgrep", {}).get("registry_used", False))
         file = (f.get("location") or {}).get("file")
         file_gone = bool(reader and file and not reader.exists(file))
         if tool_ok and not (f["tool"] == "osv" and file_gone):
             f["change"] = RESOLVED
-            set_status(f, RUNTIME_CHECK if f.get("category") == "secret" else CODE_RESOLVED)
+            needs_rotation = f.get("category") == "secret" or FLAG_ROTATE_SECRET in f.get("flags", [])
+            set_status(f, RUNTIME_CHECK if needs_rotation else CODE_RESOLVED)
             if file_gone:
                 f["flags"].append(FLAG_FILE_REMOVED)
             f["resolved_at"] = now

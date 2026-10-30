@@ -11,15 +11,17 @@ from security_engine.models import (
 )
 
 
-def finding(fp, tool="semgrep", category="code", file="a.js"):
-    return {"fingerprint": fp, "tool": tool, "category": category, "flags": [],
+def finding(fp, tool="semgrep", category="code", file="a.js", rule_id="vibe-coding/x"):
+    return {"fingerprint": fp, "tool": tool, "category": category, "flags": [], "rule_id": rule_id,
             "location": {"file": file, "start_line": 1, "end_line": 1}}
 
 
-def result(findings, cov=None, at="2026-11-01T00:00:00Z"):
+def result(findings, cov=None, at="2026-11-01T00:00:00Z", registry_used=False):
     cov = cov or {"osv": "ok", "semgrep": "ok", "gitleaks": "ok"}
+    coverage = {t: {"status": s} for t, s in cov.items()}
+    coverage.setdefault("semgrep", {})["registry_used"] = registry_used
     return {"scan_id": at, "scanned_at": at, "target": {"commit_sha": None},
-            "coverage": {t: {"status": s} for t, s in cov.items()},
+            "coverage": coverage,
             "findings": copy.deepcopy(findings)}
 
 
@@ -67,3 +69,18 @@ def test_resolved_items_are_not_carried_forever():
     assert by_fp(mid)["s:1"]["change"] == "resolved"
     last = compare(result([], at="t3"), mid)
     assert last["findings"] == []
+
+
+def test_registry_finding_not_resolved_when_registry_unused(tmp_path):
+    """PR #21 리뷰: 재검사에서 레지스트리 접속이 막혀 우리 규칙만 돌았으면, 레지스트리 규칙 결과는 '해결'이 아니라 '확인 불가'."""
+    (tmp_path / "a.js").write_text("x", encoding="utf-8")
+    reg = finding("s:reg", rule_id="javascript.jwt.security.hardcoded-jwt-secret")
+    ours = finding("s:ours")
+    prev = compare(result([reg, ours], at="t1", registry_used=True), None)
+
+    offline = by_fp(compare(result([], at="t2", registry_used=False), prev, tmp_path))
+    assert (offline["s:reg"]["change"], offline["s:reg"]["status"]) == ("unverifiable", OUT_OF_SCOPE)
+    assert (offline["s:ours"]["change"], offline["s:ours"]["status"]) == ("resolved", CODE_RESOLVED)
+
+    online = by_fp(compare(result([], at="t2", registry_used=True), prev, tmp_path))
+    assert online["s:reg"]["status"] == CODE_RESOLVED

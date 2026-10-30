@@ -59,3 +59,11 @@ def test_llm_text_and_truncation(tmp_path):
     assert "[검사 못 한 영역] semgrep" in text
     assert "lodash 4.17.15 → 4.17.21" in text
     assert secret not in text
+
+
+def test_last_resort_redacts_openai_and_anthropic_keys():
+    """PR #21 리뷰: sk-proj-… / sk-ant-… 키도 마지막 안전장치에서 가린다."""
+    from security_engine.llm_input import _redact
+    for key in ("sk-proj-" + "Ab3dEf6hIj9kLm2nOp5q", "sk-ant-api03-" + "Ab3dEf6hIj9kLm2nOp5q_x", "sk_live_" + "Ab3dEf6hIj9kLm2nOp"):
+        out = _redact(f"key={key}")
+        assert key not in out and "********" in out

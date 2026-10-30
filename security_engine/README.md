@@ -1,6 +1,7 @@
 # 보안엔진 (security_engine)
 
-검사할 코드 폴더를 받아 **Semgrep · OSV-Scanner · Gitleaks**를 동시에 돌리고, 결과를 하나의 JSON으로 묶습니다.
+검사할 코드 폴더를 받아 **Opengrep(코드) · OSV-Scanner(라이브러리) · Gitleaks(비밀키) · 자체 설정 검사기**를 동시에 돌리고, 결과를 하나의 JSON으로 묶습니다.
+모두 유료 서비스에 써도 되는 라이선스 구성입니다 (Semgrep 레지스트리 규칙은 내부 비교용으로만 켬).
 재검사 때는 지난 결과와 비교해서 **새로 생김 / 계속 있음 / 해결됨 / 확인 불가**와 **4가지 상태**를 정합니다.
 
 ```
@@ -15,14 +16,17 @@
 |---|---|---|
 | OSV-Scanner | `winget install -e --id Google.OSVScanner` | `osv-scanner --version` |
 | Gitleaks | `winget install -e --id Gitleaks.Gitleaks` | `gitleaks version` |
-| Semgrep | `pip install semgrep` | `semgrep --version` |
+| Opengrep (코드 검사기) | https://github.com/opengrep/opengrep/releases 에서 `opengrep_windows_x86.exe`를 받아 PATH 폴더에 두기 (이름 그대로 둬도 엔진이 찾음) (또는 PowerShell: `irm https://raw.githubusercontent.com/opengrep/opengrep/main/install.ps1 \| iex`) | `opengrep --version` |
+| (대신) Semgrep | `pip install semgrep` — Opengrep이 없으면 자동으로 Semgrep을 씀 | `semgrep --version` |
 
 - winget이 안 되면 GitHub 릴리스에서 받아 PATH 폴더에 넣으세요.
   - https://github.com/google/osv-scanner/releases → `osv-scanner_windows_amd64.exe` (이름 그대로 둬도 엔진이 찾음)
   - https://github.com/gitleaks/gitleaks/releases → `gitleaks_<버전>_windows_x64.zip`
 - PATH에 넣기 어렵다면 환경 변수로 위치를 알려줘도 됩니다:
   `SECURITY_ENGINE_OSV_BIN`, `SECURITY_ENGINE_SEMGREP_BIN`, `SECURITY_ENGINE_GITLEAKS_BIN`
-- Semgrep은 최근 버전부터 Windows에서 바로 돕니다. 설치·실행이 안 되면 WSL(우분투)에서 돌리세요.
+- 코드 검사기는 `opengrep` → `semgrep` 순서로 찾습니다. 어떤 걸 썼는지는 결과의 `coverage.semgrep.engine`에 나옵니다.
+- 결과 JSON에서 코드 검사기의 도구 이름은 호환을 위해 그대로 `semgrep`입니다 (= 코드 검사기).
+- 자체 설정 검사기(`config`)는 엔진에 들어 있어 설치가 필요 없습니다.
 - 테스트용: `pip install pytest jsonschema`
 
 설치 확인:
@@ -55,9 +59,8 @@ python -m security_engine llm-input outputs\scan2.json --text
 
 | 옵션 | 뜻 |
 |---|---|
-| `--tools osv,semgrep` | 일부 도구만 |
-| `--no-registry` | Semgrep 레지스트리 룰셋(p/default) 없이 우리 규칙만 (상용 서비스·오프라인용) |
-| `--with-registry 룰셋` | 레지스트리 룰셋을 바꿔 지정 (기본 `p/default`, 여러 번 가능) |
+| `--tools osv,semgrep,gitleaks,config` | 일부 도구만 |
+| `--with-registry p/default` | **내부 비교용**으로 Semgrep 레지스트리 규칙 추가 (기본은 우리 규칙만, 서비스 결과에는 쓰지 말 것). 접속 실패 시 `coverage.semgrep.registry_used=false`가 되고, 지난번 레지스트리 규칙 결과는 재검사에서 '해결'이 아니라 '확인 불가'로 남습니다 |
 | `--semgrep-config 경로` | 규칙 파일/폴더 추가 |
 | `--osv-offline` | 미리 받아둔 OSV DB만 사용 (인터넷 없을 때. 처음 한 번 `osv-scanner scan source --offline-vulnerabilities --download-offline-databases -r .`) |
 | `--include-raw` | 스캐너 원본을 `finding.raw`에 포함 (비밀값은 가림) |
@@ -82,7 +85,7 @@ result4 = scan("C:/code/my-site", options=opts)
   폴더가 없으면 `NotADirectoryError`, clone 실패는 `CloneError`.
 - 한 번 검사에 수 초~수 분 걸리므로 백엔드에서는 **작업자(worker)에서 호출**하세요.
 - 고객 저장소 받기는 백엔드가 직접 해도 되고 `scan_repo` / `clone_repo`를 써도 됩니다
-  (https 공개 저장소만, 최신 커밋 하나만, 심볼릭 링크는 일반 파일로 받음).
+  (`https://github.com/<owner>/<repo>` 공개 저장소만 — 내부 주소로 요청이 나가는 SSRF 방지, 최신 커밋 하나만, 심볼릭 링크는 일반 파일로 받음).
 
 ## 3. 출력 JSON (schema_version 1.0)
 
@@ -120,7 +123,7 @@ finding 하나:
 ```jsonc
 {
   "fingerprint": "semgrep:3f2a…",       // 같은 문제 식별자 (줄 번호와 무관)
-  "tool": "semgrep",                     // osv | semgrep | gitleaks
+  "tool": "semgrep",                     // osv | semgrep(코드 검사기) | gitleaks | config
   "category": "code",                    // dependency | code | secret
   "rule_id": "vibe-coding/js-eval-dynamic",
   "title": "eval()에 고정 문자열이 아닌 값을 넣고 있습니다.",
@@ -191,7 +194,8 @@ prompt_context = render_llm_text(payload)          # 프롬프트에 붙일 한�
 - 문제마다: `title`, `what`(설명), `where`(파일:줄), `code`(앞뒤 줄 + 문제 줄 `>` 표시), `fix_hint`
   (의존성은 `npm install lodash@4.17.21` 같은 명령까지), `flags`(꼼수·주의 설명 문장)
 - `not_checked`: 이번에 검사 못 한 영역. LLM이 이걸 보고 "그 부분은 안전합니다"라고 말하지 않게 해야 합니다.
-- 비밀값은 결과 단계에서 이미 가렸고, 여기서 비밀값 모양을 한 번 더 지웁니다.
+- 비밀값은 결과 단계에서 이미 가렸고(Gitleaks가 찾은 값 + 코드 검사기의 비밀값 규칙(CWE-798 등)이 잡은 따옴표 문자열),
+  여기서 비밀값 모양(`sk-proj-`, `sk-ant-`, `AKIA…` 등)을 한 번 더 지웁니다.
 - `max_items`로 개수를 잘라 토큰을 아낍니다 (`truncated: true`면 잘린 것).
 
 ## 4. 보안 처리
@@ -203,17 +207,16 @@ prompt_context = render_llm_text(payload)          # 프롬프트에 붙일 한�
   무시하고 검사하고, 있었다는 사실은 `suppressions`·`flags`로 알려줍니다.
 - 남의 사이트는 **소스 코드만** 분석합니다. 운영 중인 사이트에 요청을 보내지 않습니다.
 
-## 5. Semgrep 규칙 (우리 규칙 + Semgrep 레지스트리 `p/default`)
+## 5. 코드 검사 규칙 (Opengrep + 우리 규칙)
 
-2026-10-31 팀 결정: 해커톤 기간에는 **우리 규칙과 Semgrep 레지스트리 규칙(`p/default`)을 함께** 씁니다.
-레지스트리(semgrep.dev)에 접속하지 못하면 자동으로 우리 규칙만으로 다시 돌리고 `coverage.semgrep.message`에 남깁니다.
-결과에서 `rule_id`가 `vibe-coding/`로 시작하면 우리 규칙, 그 외(예: `javascript.lang.security...`)는 레지스트리 규칙입니다.
+2026-10-31 팀 차트 기준: 코드 검사는 **Opengrep + 우리 규칙만** 기본으로 씁니다 → 유료 서비스 가능 구성.
 
 | 구성 | 라이선스 | 유료 서비스(SaaS)에서 |
 |---|---|---|
-| Semgrep CE 엔진 | LGPL-2.1 | 사용 가능 |
-| Semgrep 레지스트리 규칙 `p/default` | Semgrep Rules License v1.0 | **사용 불가** (내부 사용만) → 상용화 때는 `--no-registry` 또는 `ScanOptions(semgrep_registry=())` |
+| Opengrep (Semgrep CE 호환 오픈소스 포크) | LGPL-2.1 | 사용 가능 |
+| (대신) Semgrep CE 엔진 | LGPL-2.1 | 사용 가능 |
 | `rules/*.yml` 우리 규칙 | 우리 팀 소유 | 사용 가능 |
+| Semgrep 레지스트리 규칙 `p/default` | Semgrep Rules License v1.0 | **사용 불가** → 기본 꺼짐, 내부 비교용 `--with-registry p/default`만 |
 
 - `rules/vibe-coding.yml` (19개): NEXT_PUBLIC_/VITE_ 비밀값, 브라우저 코드의 Supabase service_role,
   로그인 확인 없는 Next.js API 라우트 DB 변경, 서명 확인 없는 Stripe 웹훅, eval·new Function,
@@ -229,17 +232,37 @@ prompt_context = render_llm_text(payload)          # 프롬프트에 붙일 한�
    `metadata`에 `engine_severity`(critical~low), `cwe`, `category`를 넣습니다.
 2. 같은 이름의 테스트 파일(`vibe-coding.js`, `.tsx`, `.py` / 설정 규칙은 `vibe-coding-config.sql`, `.rules`)에
    걸려야 하는 줄 위에 `// ruleid: 규칙ID`, 걸리면 안 되는 줄 위에 `// ok: 규칙ID`를 답니다.
-3. 확인: `semgrep --test --metrics=off security_engine/rules` → `All tests passed`
+3. 확인: `opengrep test security_engine/rules` (Semgrep이면 `semgrep --test --metrics=off security_engine/rules`) → `All tests passed`
 4. 전체 테스트: `python -m pytest tests/security -q`
 
 규칙 테스트 파일은 일부러 위험한 코드를 담고 있지만 실행되는 코드가 아닙니다.
+
+## 5-1. 자체 설정 검사기 (`config`)
+
+코드 한 줄이 아니라 "있으면 안 되는 파일", "켜야 할 설정을 안 켬" 같은 문제를 파이썬으로 직접 찾습니다 (`runners/config.py`).
+
+| 규칙 ID | 찾는 것 | 위험도 |
+|---|---|---|
+| `config/env-file-committed` | `.env` 파일이 저장소에 올라감 (변수 **이름만** 보여주고 값은 안 읽음) | high |
+| `config/gitignore-missing-env` | `.env`를 쓰는데 `.gitignore`에 `.env`가 없음 | medium |
+| `config/db-file-public` | 공개 폴더(public, static, dist…)에 DB·백업 파일 | high |
+| `config/db-file-committed` | DB 파일(.sqlite .db)이 저장소에 올라감 | medium |
+| `config/sourcemap-public` | 공개 폴더에 소스맵(.map) → 원본 코드 노출 | medium |
+| `config/nextjs-browser-sourcemaps` | `productionBrowserSourceMaps: true` | medium |
+| `config/supabase-rls-not-enabled` | Supabase 테이블을 만들고 RLS를 켜지 않음 | high |
+| `config/missing-security-headers` | Next.js 사이트에 보안 헤더(CSP 등) 설정 없음 | low |
+| `config/django-debug-true` | Django `DEBUG = True` | medium |
+| `config/lockfile-missing` | package.json은 있는데 lockfile 없음 | low |
+
+검증: OWASP NodeGoat·GitHub 블로그 0건, Vercel 공식 Next.js+Supabase 예제는 보안 헤더 없음 1건(실제로 없음 확인).
 
 ## 6. 파일 구조
 
 | 파일 | 하는 일 |
 |---|---|
 | `engine.py` | `scan`, `scan_repo`, `compare_results`, `doctor` |
-| `runners/osv.py` `semgrep.py` `gitleaks.py` | 도구 실행 + 결과를 공통 형식으로 |
+| `runners/osv.py` `semgrep.py` `gitleaks.py` | 도구 실행 + 결과를 공통 형식으로 (`semgrep.py`는 Opengrep/Semgrep 둘 다) |
+| `runners/config.py` | 자체 설정 검사기 |
 | `normalize.py` | 경로·위험도·비밀값 가리기·코드 읽기 |
 | `fingerprint.py` | 같은 문제 지문 |
 | `compare.py` | 이전 결과와 비교 → change, 4가지 상태 |

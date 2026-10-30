@@ -15,8 +15,9 @@
 | psycopg | 3.3.6 | PostgreSQL(Supabase) 드라이버 | LGPL-3.0 | https://github.com/psycopg/psycopg |
 | pydantic-settings | 2.16.2 | `.env` 설정 읽기 | MIT | https://github.com/pydantic/pydantic-settings |
 | OSV-Scanner | 2.7.0 | 보안엔진: 외부 부품(의존성) 취약점 검사 | Apache-2.0 | https://github.com/google/osv-scanner |
-| Semgrep Community Edition | 1.183.0 | 보안엔진: 코드 정적 분석 (규칙은 우리 팀이 직접 작성) | LGPL-2.1 | https://github.com/semgrep/semgrep |
-| Semgrep Registry 룰셋 `p/default` | 실행 시점 최신 | 보안엔진: 추가 코드 검사 규칙 (해커톤 기간 기본 사용, `--no-registry`로 끔. 상용 서비스에서는 끌 것) | Semgrep Rules License v1.0 (내부 사용 한정, 경쟁 제품·SaaS 사용 불가) | https://semgrep.dev/p/default |
+| Opengrep | 1.33.1 | 보안엔진: 코드 정적 분석 (기본 코드 검사기, Semgrep CE 호환 포크) | LGPL-2.1 | https://github.com/opengrep/opengrep |
+| Semgrep Community Edition | 1.183.0 | 보안엔진: 코드 정적 분석 (Opengrep이 없을 때 대체) | LGPL-2.1 | https://github.com/semgrep/semgrep |
+| Semgrep Registry 룰셋 `p/default` | 실행 시점 최신 | 보안엔진: **내부 비교·검증용만** (기본 꺼짐, `--with-registry p/default`일 때만). 서비스 결과에는 사용 안 함 | Semgrep Rules License v1.0 (내부 사용 한정, 경쟁 제품·SaaS 사용 불가) | https://semgrep.dev/p/default |
 | Gitleaks | 8.30.1 | 보안엔진: 코드 속 비밀값(API 키 등) 노출 검사 | MIT | https://github.com/gitleaks/gitleaks |
 | pytest | 9.x | 보안엔진 테스트 (개발용) | MIT | https://github.com/pytest-dev/pytest |
 | jsonschema | 4.x | 보안엔진 출력 규격 검증 테스트 (개발용) | MIT | https://github.com/python-jsonschema/jsonschema |
@@ -27,7 +28,7 @@
 |---|---|---|---|
 | Supabase | 팀 공용 PostgreSQL DB 호스팅 | Supabase Terms of Service | https://supabase.com |
 | OSV.dev API (api.osv.dev) | OSV-Scanner가 취약점 DB 조회 (무료, 키 없음) | OSV.dev 이용약관, 데이터는 출처(GitHub Advisory 등)별 라이선스 — 제출 전 확인 | https://osv.dev |
-| Semgrep Registry (semgrep.dev) | `p/default` 룰셋 다운로드 (보안엔진 기본 사용) | Semgrep Rules License v1.0 | https://docs.semgrep.dev/licensing |
+| Semgrep Registry (semgrep.dev) | 내부 비교용 `p/default` 룰셋 다운로드 (기본 꺼짐) | Semgrep Rules License v1.0 | https://docs.semgrep.dev/licensing |
 | GitHub (공개 저장소 clone) | 검사 대상 사이트 소스 코드 받기 (공개 저장소만, 소스 분석만) | GitHub 이용약관 | https://github.com |
 
 ## 사전 보유 코드

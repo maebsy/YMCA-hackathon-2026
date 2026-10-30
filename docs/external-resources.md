@@ -9,6 +9,9 @@
 | 명칭 | 버전 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|---|
 | FastAPI | 0.162.0 | 백엔드 API 서버 | MIT | https://github.com/fastapi/fastapi |
+| Caddy | 2.11.7 | 일반 서버의 웹·API 프록시, 공개 시연 HTTPS 및 접근 인증 | Apache-2.0 | https://github.com/caddyserver/caddy |
+| cloudflared | 2026.10.7 | 승인된 시연용 HTTPS 터널 클라이언트, 공식 SHA-256 고정 검증 | Apache-2.0 | https://github.com/cloudflare/cloudflared |
+| Node.js | 24.19.0 | 별도 담당자가 구현할 프론트엔드의 서버 실행 환경 | MIT 및 포함 구성요소별 라이선스 | https://nodejs.org/ |
 | Uvicorn | 0.54.0 | 백엔드 실행 서버 | BSD-3-Clause | https://github.com/encode/uvicorn |
 | SQLModel | 0.0.48 | DB 테이블 정의·조회 | MIT | https://github.com/fastapi/sqlmodel |
 | SQLAlchemy | 2.1.6 | DB 연결 (SQLModel 기반) | MIT | https://github.com/sqlalchemy/sqlalchemy |
@@ -22,12 +25,14 @@
 | Qwen3.8-27B (모델) | 2026-08 공개본 | Blue·Red 해석 LLM의 원본 모델 | Apache-2.0 | https://huggingface.co/Qwen/Qwen3.8-27B |
 | Qwen3.8-27B AWQ INT4 (양자화 체크포인트) | 커밋 5a2ee524cbc9 | L4 24GB에 올리기 위한 4비트 모델 | Apache-2.0 | https://huggingface.co/avyukth/Qwen3.8-27B-AWQ-INT4 |
 | uv | 0.13.6 (GPU 서버) | GPU 서버 파이썬 환경 설치, Python 3.12.16 관리 | Apache-2.0 / MIT | https://github.com/astral-sh/uv |
+| MCP Python SDK (`mcp`) | 1.30.0 | 독립 stdio MCP 서버에서 로컬 LLM 수정 제안을 사용자 AI 에이전트에 전달 | MIT | https://github.com/modelcontextprotocol/python-sdk |
 
 ## 외부 API
 
 | 명칭 | 용도 | 라이선스·이용약관 | 출처 |
 |---|---|---|---|
 | Supabase | 팀 공용 PostgreSQL DB 호스팅 | Supabase Terms of Service | https://supabase.com |
+| Cloudflare Quick Tunnels | 공인 IP 없이 일반 서버의 시연 웹/API를 임시 HTTPS 주소로 공개 | Cloudflare 이용약관 | https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/ |
 | Hugging Face Hub | 모델 내려받기 (가중치는 GPU 서버에서만 실행) | Hugging Face Terms of Service | https://huggingface.co |
 
 ## 사전 보유 코드
@@ -41,4 +46,5 @@
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
 | Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
+| Codex (OpenAI) | 일반 서버 실행 구성·점검·배포 문서, 독립 MCP 전달 모듈·테스트·연결 문서 작성 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
 | Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |

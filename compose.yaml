@@ -34,10 +34,13 @@ services:
     environment:
       # .env 의 DATABASE_URL(Supabase 등)보다 우선합니다. 컨테이너에서는 위의 db 서비스를 씁니다
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
+      # 컨테이너 안의 localhost 는 컨테이너 자신이라 .env 의 LLM_BASE_URL(localhost:8001)을 그대로 못 씁니다.
+      # 내 PC의 8001(GPU 서버 vLLM으로 연 SSH 터널)로 연결합니다
+      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-http://host.docker.internal:8001/v1}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     extra_hosts:
-      # 컨테이너 안의 localhost 는 컨테이너 자신입니다. 내 PC(예: GPU 서버로 연 SSH 터널)는 이 이름으로 부릅니다
+      # 리눅스에서도 host.docker.internal 이 내 PC를 가리키게 합니다 (Docker Desktop은 원래 됨)
       - "host.docker.internal:host-gateway"
     depends_on:
       db:

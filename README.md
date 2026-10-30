@@ -39,7 +39,7 @@ docker compose up --build --watch
 | 증상 | 해결 |
 |---|---|
 | `port is already allocated` | `.env`에서 `BACKEND_PORT`나 `POSTGRES_PORT`를 다른 번호로 |
-| 컨테이너에서 LLM 서버에 연결 안 됨 | 컨테이너 안의 `localhost`는 컨테이너 자신입니다. `LLM_BASE_URL`에 `host.docker.internal`을 쓰세요 |
+| 컨테이너에서 LLM 서버에 연결 안 됨 | 내 PC에 8001 SSH 터널이 열려 있는지 확인하세요(아래 "LLM 서버 연결"). 다른 주소를 쓰려면 `.env`의 `DOCKER_LLM_BASE_URL` |
 | 나만 설정을 바꾸고 싶음 | `compose.override.yaml`을 만들면 자동으로 합쳐지고 커밋되지 않습니다 |
 
 ## 백엔드 실행 (Docker 없이)
@@ -55,6 +55,22 @@ uvicorn app.main:app --reload
 - http://localhost:8000/api/health 에서 `{"status":"ok","db":"sqlite"}`가 나오면 성공 (Supabase면 `"postgresql"`)
 - http://localhost:8000/docs 에서 API를 직접 눌러 볼 수 있습니다
 - `Item`과 `/api/items`는 연결 확인용 예시입니다. 실제 테이블을 만들면 지우세요.
+
+## LLM 서버 연결 (vLLM, 8001 포트)
+
+GPU 서버의 vLLM은 **8001 포트**로 띄웁니다. 백엔드(8000)와 겹치지 않게 서버와 내 PC 모두 같은 번호를 씁니다.
+
+```bash
+# GPU 서버: 127.0.0.1에만 열어 서버 밖에서 직접 들어오지 못하게 합니다
+vllm serve <모델> --host 127.0.0.1 --port 8001
+
+# 내 PC: 서버의 8001을 내 PC의 8001로 가져옵니다 (SSH 터널 허용 여부는 운영진 확인 필요)
+ssh -N -L 8001:127.0.0.1:8001 <GPU 서버>
+```
+
+- 백엔드를 직접 띄우면 `.env`의 `LLM_BASE_URL=http://localhost:8001/v1`을 그대로 씁니다
+- Docker로 띄우면 compose가 `http://host.docker.internal:8001/v1`(내 PC의 8001)로 바꿔 연결합니다
+- vLLM은 OpenAI 호환 API라, 개발 중에는 OpenAI·Ollama 주소로 바꿔도 코드는 그대로입니다
 
 ## 규칙
 

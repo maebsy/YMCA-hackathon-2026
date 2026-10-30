@@ -1,0 +1,345 @@
+# 바이브코딩(AI로 만든 웹사이트)에서 자주 나오는 위험한 작성 방식 — 우리 팀이 직접 작성한 Semgrep 규칙.
+#
+# - metadata.engine_severity: 엔진이 쓰는 위험도 (critical | high | medium | low). 없으면 severity(ERROR/WARNING/INFO)로 정함.
+# - metadata.cwe: 대표 CWE 번호
+# - message는 사용자·LLM에게 그대로 전달되므로 한국어로 짧고 구체적으로 쓴다.
+#
+# 규칙 문법 검사:  semgrep --validate --config security_engine/rules
+rules:
+  # ---------------------------------------------------------------- 비밀값이 브라우저로 나감
+  - id: public-env-exposes-secret
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      '$KEY'는 이름이 NEXT_PUBLIC_/VITE_/REACT_APP_ 등으로 시작해서 빌드할 때 브라우저용 코드에 그대로 들어갑니다.
+      SECRET·SERVICE_ROLE·PRIVATE 같은 비밀값은 서버 코드에서만 쓰고, 공개용 접두어를 빼세요.
+    patterns:
+      - pattern-either:
+          - pattern: process.env.$KEY
+          - pattern: import.meta.env.$KEY
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: (?i)^(NEXT_PUBLIC_|VITE_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|NUXT_PUBLIC_)\w*(SECRET|SERVICE_ROLE|SERVICE_KEY|PRIVATE|PASSWORD|ADMIN)
+    metadata:
+      engine_severity: critical
+      cwe: CWE-200
+      category: secret-exposure
+
+  - id: supabase-service-role-in-client
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      브라우저에서 실행되는 파일('use client')에서 Supabase service_role 키로 클라이언트를 만들고 있습니다.
+      service_role 키는 RLS(행 단위 보안)를 무시하므로, 방문자 누구나 DB 전체를 읽고 지울 수 있습니다. anon 키를 쓰세요.
+    patterns:
+      - pattern-inside: |
+          'use client';
+          ...
+      - pattern: createClient($URL, $KEY, ...)
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: (?i).*service_?role.*
+    metadata:
+      engine_severity: critical
+      cwe: CWE-284
+      category: access-control
+
+  # ---------------------------------------------------------------- 인증 누락
+  - id: nextjs-api-mutation-without-auth
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      Next.js API 라우트(POST/PUT/PATCH/DELETE)에서 로그인 확인 없이 DB를 바꾸고 있습니다.
+      주소만 알면 누구나 데이터를 만들거나 지울 수 있습니다. 함수 맨 앞에서 로그인 사용자를 확인하고(auth(), getServerSession,
+      supabase.auth.getUser 등), 본인 데이터만 바꾸도록 조건을 거세요.
+    patterns:
+      - pattern: |
+          export async function $METHOD(...) { ... }
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: ^(POST|PUT|PATCH|DELETE)$
+      - pattern: |
+          export async function $METHOD(...) { ... <... $Q.$WRITE(...) ...>; ... }
+      - metavariable-regex:
+          metavariable: $WRITE
+          regex: ^(insert|update|upsert|delete|create|createMany|updateMany|deleteMany|destroy|save)$
+      - pattern-not: |
+          export async function $METHOD(...) { ... <... getServerSession(...) ...>; ... }
+      - pattern-not: |
+          export async function $METHOD(...) { ... <... auth() ...>; ... }
+      - pattern-not: |
+          export async function $METHOD(...) { ... <... $S.auth.getUser(...) ...>; ... }
+      - pattern-not: |
+          export async function $METHOD(...) { ... <... $S.auth.getSession(...) ...>; ... }
+      - pattern-not: |
+          export async function $METHOD(...) { ... <... currentUser() ...>; ... }
+      - pattern-not: |
+          export async function $METHOD(...) { ... <... getToken(...) ...>; ... }
+      - pattern-not: |
+          export async function $METHOD(...) { ... <... $V.verifyIdToken(...) ...>; ... }
+    metadata:
+      engine_severity: high
+      cwe: CWE-306
+      category: access-control
+
+  - id: stripe-webhook-without-signature
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Stripe 결제 웹훅을 서명 확인 없이 처리하고 있습니다. 누구나 '결제 완료' 요청을 위조해 보내 무료로 주문을 완료시킬 수 있습니다.
+      stripe.webhooks.constructEvent(본문, stripe-signature 헤더, 웹훅 비밀키)로 확인한 이벤트만 쓰세요.
+    patterns:
+      - pattern-either:
+          - patterns:   # switch (event.type) { case "checkout.session.completed": … }
+              - pattern-inside: |
+                  switch ($EV.type) { case $C: ... }
+              - pattern-regex: (?<![\w.])(checkout\.session|payment_intent|invoice|customer\.subscription|charge)\.[a-z_.]+
+          - patterns:   # if (event.type === "invoice.paid") … (이벤트 이름 목록·상수는 제외: 공식 예제에서 오탐 확인)
+              - pattern-either:
+                  - pattern: $EV.type === "$EVENT"
+                  - pattern: $EV.type == "$EVENT"
+                  - pattern: '"$EVENT" === $EV.type'
+              - metavariable-regex:
+                  metavariable: $EVENT
+                  regex: ^["'`]?(checkout\.session|payment_intent|invoice|customer\.subscription|charge)\.[a-z_.]+["'`]?$
+      - pattern-not-inside: |
+          $E = $STRIPE.webhooks.constructEvent(...);
+          ...
+      - pattern-not-inside: |
+          $E = await $STRIPE.webhooks.constructEventAsync(...);
+          ...
+      - pattern-not-inside: |
+          try { ... $E = $STRIPE.webhooks.constructEvent(...); ... } catch ($ERR) { ... }
+          ...
+      - pattern-not-inside: |
+          try { ... $E = await $STRIPE.webhooks.constructEventAsync(...); ... } catch ($ERR) { ... }
+          ...
+    metadata:
+      engine_severity: critical
+      cwe: CWE-345
+      category: access-control
+
+  # ---------------------------------------------------------------- 코드 실행
+  - id: js-eval-dynamic
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      eval()에 고정 문자열이 아닌 값을 넣고 있습니다. 이 값이 사용자 입력에서 오면 공격자가 원하는 코드를 실행할 수 있습니다.
+      JSON이면 JSON.parse를, 계산이면 전용 함수를 쓰세요.
+    patterns:
+      - pattern: eval($X)
+      - pattern-not: eval("...")
+    metadata:
+      engine_severity: high
+      cwe: CWE-95
+      category: injection
+
+  - id: js-new-function-dynamic
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: new Function()으로 문자열을 코드로 실행하고 있습니다. eval과 같은 위험이 있습니다.
+    patterns:
+      - pattern: new Function(..., $X)
+      - pattern-not: new Function(..., "...")
+    metadata:
+      engine_severity: high
+      cwe: CWE-95
+      category: injection
+
+  - id: node-command-injection
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      셸 명령을 문자열 이어붙이기로 만들어 실행하고 있습니다. 값에 ';' 같은 문자가 들어가면 다른 명령이 실행됩니다.
+      execFile/spawn에 인자를 배열로 넘기세요.
+    patterns:
+      - pattern-either:
+          - pattern: $CP.exec("..." + $X, ...)
+          - pattern: $CP.execSync("..." + $X, ...)
+          - pattern: $CP.exec(`...${$X}...`, ...)
+          - pattern: $CP.execSync(`...${$X}...`, ...)
+          - pattern: exec("..." + $X, ...)
+          - pattern: execSync("..." + $X, ...)
+          - pattern: exec(`...${$X}...`, ...)
+          - pattern: execSync(`...${$X}...`, ...)
+    metadata:
+      engine_severity: critical
+      cwe: CWE-78
+      category: injection
+
+  # ---------------------------------------------------------------- SQL
+  - id: sql-string-concat
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      SQL 문을 문자열 이어붙이기로 만들고 있습니다. 입력값에 따옴표를 넣으면 DB를 마음대로 조회·삭제할 수 있습니다(SQL 인젝션).
+      자리표시자(?, $1)와 값 배열을 따로 넘기세요.
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query("$SQL" + $X, ...)
+          - pattern: $DB.query(`$SQL${$X}...`, ...)
+          - pattern: $DB.execute("$SQL" + $X, ...)
+          - pattern: $DB.execute(`$SQL${$X}...`, ...)
+          - pattern: $DB.raw("$SQL" + $X, ...)
+          - pattern: $DB.raw(`$SQL${$X}...`, ...)
+          - pattern: $DB.$queryRawUnsafe(...)
+          - pattern: $DB.$executeRawUnsafe(...)
+    metadata:
+      engine_severity: critical
+      cwe: CWE-89
+      category: injection
+
+  - id: python-sql-format
+    languages: [python]
+    severity: ERROR
+    message: >-
+      SQL 문을 f-string/format/% 로 만들고 있습니다(SQL 인젝션 위험). cursor.execute(sql, params)처럼 값을 따로 넘기세요.
+    pattern-either:
+      - pattern: $CUR.execute(f"...", ...)
+      - pattern: $CUR.execute("..." % $X, ...)
+      - pattern: $CUR.execute("...".format(...), ...)
+      - pattern: $CUR.execute("..." + $X, ...)
+    metadata:
+      engine_severity: critical
+      cwe: CWE-89
+      category: injection
+
+  # ---------------------------------------------------------------- XSS
+  - id: dom-innerhtml-dynamic
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      innerHTML/outerHTML에 고정 문자열이 아닌 값을 넣고 있습니다. 값에 <script>나 이벤트 속성이 들어가면 방문자 브라우저에서 실행됩니다(XSS).
+      글자만 넣을 땐 textContent를, HTML이 꼭 필요하면 DOMPurify로 정리한 뒤 넣으세요.
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $X
+          - pattern: $EL.outerHTML = $X
+          - pattern: $EL.insertAdjacentHTML($POS, $X)
+      - pattern-not: $EL.innerHTML = "..."
+      - pattern-not: $EL.outerHTML = "..."
+      - pattern-not: $EL.insertAdjacentHTML($POS, "...")
+      - pattern-not: $EL.innerHTML = DOMPurify.sanitize(...)
+    metadata:
+      engine_severity: medium
+      cwe: CWE-79
+      category: xss
+
+  - id: document-write-dynamic
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: document.write()에 동적인 값을 넣고 있습니다(XSS 위험). DOM API와 textContent를 쓰세요.
+    patterns:
+      - pattern: document.write($X)
+      - pattern-not: document.write("...")
+    metadata:
+      engine_severity: medium
+      cwe: CWE-79
+      category: xss
+
+  - id: react-dangerously-set-inner-html
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      dangerouslySetInnerHTML로 HTML을 그대로 넣고 있습니다. 사용자·외부 데이터가 섞이면 XSS가 됩니다.
+      DOMPurify.sanitize()로 정리한 값만 넣거나, 일반 JSX로 바꾸세요.
+    patterns:
+      - pattern: "<$C dangerouslySetInnerHTML={$X} />"
+      - pattern-not: "<$C dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(...)}} />"
+    metadata:
+      engine_severity: medium
+      cwe: CWE-79
+      category: xss
+
+  # ---------------------------------------------------------------- 설정·인증
+  - id: cors-allow-any-origin
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      모든 사이트(*)에서 이 서버 API를 호출할 수 있도록 열려 있습니다. 로그인 정보가 필요한 API라면
+      허용할 도메인 목록만 적으세요.
+    pattern-either:
+      - pattern: 'cors({..., origin: "*", ...})'
+      - pattern: 'cors({..., origin: true, ...})'
+      - pattern: $RES.setHeader("Access-Control-Allow-Origin", "*")
+      - pattern: $RES.header("Access-Control-Allow-Origin", "*")
+      - pattern: $RES.set("Access-Control-Allow-Origin", "*")
+    metadata:
+      engine_severity: medium
+      cwe: CWE-942
+      category: misconfiguration
+
+  - id: jwt-hardcoded-secret
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      JWT 서명 비밀키가 코드에 고정 문자열로 들어 있습니다. 코드를 본 사람은 누구든 관리자 토큰을 만들 수 있습니다.
+      환경 변수로 옮기고 키를 새로 만드세요.
+    pattern-either:
+      - pattern: $JWT.sign($P, "...", ...)
+      - pattern: $JWT.verify($T, "...", ...)
+    metadata:
+      engine_severity: high
+      cwe: CWE-798
+      category: secret-exposure
+
+  - id: token-in-localstorage
+    languages: [javascript, typescript]
+    severity: INFO
+    message: >-
+      로그인 토큰을 localStorage에 저장하고 있습니다. XSS가 한 번이라도 생기면 토큰을 그대로 훔쳐갈 수 있습니다.
+      가능하면 HttpOnly 쿠키를 쓰세요.
+    patterns:
+      - pattern: localStorage.setItem($K, $V)
+      - metavariable-regex:
+          metavariable: $K
+          regex: (?i).*(token|jwt|session|auth).*
+    metadata:
+      engine_severity: low
+      cwe: CWE-922
+      category: misconfiguration
+
+  - id: python-flask-debug
+    languages: [python]
+    severity: WARNING
+    message: Flask를 debug=True로 실행하고 있습니다. 운영 서버에서 켜져 있으면 브라우저에서 서버 코드를 실행할 수 있는 디버거가 열립니다.
+    pattern: $APP.run(..., debug=True, ...)
+    metadata:
+      engine_severity: high
+      cwe: CWE-489
+      category: misconfiguration
+
+  - id: python-shell-true
+    languages: [python]
+    severity: WARNING
+    message: subprocess를 shell=True로 실행하고 있습니다. 명령 문자열에 입력값이 섞이면 다른 명령이 실행됩니다. 인자를 리스트로 넘기세요.
+    pattern-either:
+      - pattern: subprocess.$F(..., shell=True, ...)
+      - pattern: os.system($X)
+    metadata:
+      engine_severity: medium
+      cwe: CWE-78
+      category: injection
+
+  - id: tls-verify-disabled-python
+    languages: [python]
+    severity: WARNING
+    message: HTTPS 인증서 검사를 끄고 있습니다(verify=False). 중간에서 통신을 엿보거나 바꿔치기할 수 있습니다.
+    pattern: requests.$M(..., verify=False, ...)
+    metadata:
+      engine_severity: medium
+      cwe: CWE-295
+      category: misconfiguration
+
+  - id: tls-verify-disabled-node
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: HTTPS 인증서 검사를 끄고 있습니다. 중간에서 통신을 엿보거나 바꿔치기할 수 있습니다.
+    pattern-either:
+      - pattern: |
+          {..., rejectUnauthorized: false, ...}
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+    metadata:
+      engine_severity: medium
+      cwe: CWE-295
+      category: misconfiguration

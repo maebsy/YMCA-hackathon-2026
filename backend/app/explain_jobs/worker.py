@@ -64,7 +64,7 @@ async def main():
             if not worked:
                 await asyncio.sleep(job_settings.llm_job_poll_s)
     finally:
-        await explainer.client.aclose()
+        await explainer.aclose()  # LLM 연결과 위협 정보(KEV·EPSS) 연결을 함께 닫음
         engine.dispose()
 
 

@@ -23,7 +23,7 @@ pytestmark = [
 async def explainer():
     explainer = create_explainer()
     yield explainer
-    await explainer.client.aclose()
+    await explainer.aclose()
 
 
 def readable_korean(explanation) -> str:

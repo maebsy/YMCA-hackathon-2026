@@ -33,6 +33,8 @@
 | Gitleaks | 8.30.1 | 보안엔진: 코드 속 비밀값(API 키 등) 노출 검사 | MIT | https://github.com/gitleaks/gitleaks |
 | jsonschema | 4.26.0 | 보안엔진 출력 규격 검증 테스트 (개발용) | MIT | https://github.com/python-jsonschema/jsonschema |
 | OWASP NodeGoat | c5cb68a7084e4ae7dcc60e6a98768720a81841e8 | 공개 취약 앱 소스의 스캐너·OSV 온라인·마스킹 검증 (앱 실행 없음) | Apache-2.0 | https://github.com/OWASP/NodeGoat |
+| CERT/CC SSVC 결정표 (CISA Coordinator v2.0.3) | 커밋 c5be80f180f0 | 위험도 해석의 결정표 (`backend/app/llm/data/` 사본) | MIT (SEI) 계열, 전문은 `backend/app/llm/data/SSVC-LICENSE.txt` | https://github.com/CERTCC/SSVC |
+| OpenVEX 명세 (용어만 사용) | v0.2.0 | 문맥 분석 결과의 상태·사유 용어 | CC0-1.0 | https://github.com/openvex/spec |
 | MCP Python SDK (`mcp`) | 1.30.0 | 독립 stdio MCP 서버에서 로컬 LLM 수정 제안을 사용자 AI 에이전트에 전달 | MIT | https://github.com/modelcontextprotocol/python-sdk |
 
 ## 외부 API
@@ -45,6 +47,8 @@
 | OSV.dev API (api.osv.dev) | OSV-Scanner가 취약점 DB 조회 (무료, 키 없음) | OSV.dev 이용약관, 데이터는 출처(GitHub Advisory 등)별 라이선스 — 제출 전 확인 | https://osv.dev |
 | Semgrep Registry (semgrep.dev) | 내부 비교용 `p/default` 룰셋 다운로드 (기본 꺼짐) | Semgrep Rules License v1.0 | https://docs.semgrep.dev/licensing |
 | GitHub (공개 저장소 clone) | 검사 대상 사이트 소스 코드 받기 (공개 저장소만, 소스 분석만) | GitHub 이용약관 | https://github.com |
+| CISA KEV 카탈로그 | 실제 공격에 쓰인 취약점 목록 조회 (위험도 해석) | 미국 정부 공개 자료 | https://www.cisa.gov/known-exploited-vulnerabilities-catalog |
+| FIRST EPSS API | CVE별 30일 내 악용 확률 조회 (위험도 해석) | 무료 공개, 등록 불필요 | https://www.first.org/epss/api |
 
 ## 사전 보유 코드
 

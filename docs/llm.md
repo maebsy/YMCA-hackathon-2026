@@ -5,17 +5,50 @@
 
 ```mermaid
 flowchart LR
-    F["탐지 결과<br/>(finding)"] --> B["Blue<br/>설명 · 수정 지시"]
-    B --> R{"Red<br/>공격자 관점 판정"}
-    R -- pass --> OUT["④ 대응 안내<br/>(explanation)"]
+    F["탐지 결과<br/>(finding)"] --> C["① 문맥 분석<br/>규칙 신호 + LLM"]
+    C --> K["② 위험도<br/>SSVC 결정표 + KEV·EPSS<br/>(코드로 결정)"]
+    K --> G["③ 대응 가이드<br/>OS별 검증된 명령"]
+    G --> B["④ Blue<br/>설명 · 수정 지시"]
+    B --> R{"⑤ Red<br/>공격자 관점 판정"}
+    R -- pass --> OUT["대응 안내<br/>(explanation)"]
     R -- "bypass · breaks_function · incomplete<br/>지적을 붙여 다시 (최대 2회)" --> B
     R -- 끝까지 실패 --> M["수동 확인 필요 표시"] --> OUT
 ```
 
 | 모드 | 평가 | 호출 수 | 용도 |
 |---|---|---|---|
-| `blue` | C | Blue 1회 | 빠른 설명, GPU 효과(C − B) 비교 |
-| `red_blue` (기본) | D | Blue 1~3회 + Red 1~3회 | 서비스 기본, Red–Blue 효과(D − C) 비교 |
+| `blue` | C | 문맥 분석 1회 + Blue 1회 | 빠른 설명, GPU 효과(C − B) 비교 |
+| `red_blue` (기본) | D | 문맥 분석 1회 + Blue 1~3회 + Red 1~3회 | 서비스 기본, Red–Blue 효과(D − C) 비교 |
+
+모듈 구성 (`backend/app/llm/`)
+
+| 모듈 | 하는 일 | LLM 사용 |
+|---|---|---|
+| `context.py` | 경로·코드에서 규칙 신호(브라우저 번들, 공개 API, 테스트, 마이그레이션 등)를 뽑고, LLM 실패 시 대신 판단 | 안 씀 |
+| `prompts.py` 문맥 분석 | 실행 위치·노출 범위·도달 가능성·걸린 데이터·공격 조건·OpenVEX 상태 판단 | 씀 (`LLM_ANALYZE_CONTEXT`) |
+| `intel.py` | CISA KEV(실제 공격 사례)·FIRST EPSS(악용 확률) 조회와 캐시, 오프라인이면 "모름"(실패도 5분 기억해 매번 기다리지 않음) | 안 씀 (`LLM_THREAT_INTEL`) |
+| `risk.py` | 위 결과를 CISA SSVC 공식 결정표(v2.0.3)에 넣어 act·attend·track*·track 결정과 근거 | 안 씀 (같은 입력 → 같은 결정) |
+| `remediation.py` | Windows(PowerShell 5.1)·macOS(zsh)·Linux(bash) 명령 템플릿, 패키지 관리자 자동 감지, 키 재발급 링크, RLS SQL | 안 씀 (명령을 지어내지 않음) |
+| `pipeline.py` | ①~⑤를 묶고, Blue·Red 에 `<analysis>`·`<environment>`·`<actions>` 블록으로 근거를 넘김 | 씀 |
+
+### 위험도 해석 (SSVC)
+
+| 결정 | 우선순위 | 화면 문구 | 언제 |
+|---|---|---|---|
+| `act` | now | 지금 바로 고치세요 | 실제 공격 중 + 큰 피해 (예: 브라우저에 드러난 service_role 키) |
+| `attend` | soon | 이번 주 안에 고치세요 | 공개된 공격 방법 + 자동화 가능 + 민감 데이터 (예: 공개 API 의 SQL 주입) |
+| `track*` | later | 주의해서 지켜보세요 | 조건이 맞으면 커질 수 있음 |
+| `track` | later | 정해진 일정에 맞춰 고치세요 | 테스트 코드, 공개용 키, 영향 없음(OpenVEX not_affected) |
+
+- **Exploitation:** KEV 에 있으면 `active`, 공개된 곳에 드러난 키도 `active`(자동 수집 봇). EPSS 10% 이상 또는 상위 5%면 `public poc`, 코드·설정 탐지는 공격 방법이 널리 알려진 CWE 면 `public poc`
+- **Automatable:** 로그인 없이 인터넷에서 닿고(public) 도달 가능하면 `yes`
+- **Technical Impact:** 비밀값, 명령 실행·SQL 주입·인증 우회 같은 CWE, critical 이면 `total`
+- **Mission & Well-Being:** 계정·키·개인정보·결제가 걸리면 `high`, 테스트·미배포면 `low`
+- 결과의 `risk.factors`에 요인별 한국어 근거가, `risk.policy`에 규칙 버전이 들어 있어 평가·감사에 그대로 씁니다
+
+### OS별 대응 가이드
+
+요청에 `environment`(`os`: windows·macos·linux, `hosting`: vercel·netlify·cloudflare·supabase·render·railway…, `package_manager`)를 넣으면 그 환경의 명령만, 비우면 세 OS 명령을 모두 만듭니다. 명령은 템플릿에서만 나오고, 비밀값은 자리표시자만 넣어 편집기로 채우게 합니다(터미널 기록 방지). Blue 는 명령을 직접 쓰지 않고 "아래 Windows 명령"처럼 가리킵니다.
 
 ## 모델과 서버
 
@@ -50,7 +83,9 @@ tmux new -d -s vllm 'bash scripts/llm/serve.sh'
 | Red–Blue (D) | `.2` | 155.5초 | 137.8초 | 54.7 토큰/초 | 5건 모두 형식 통과, 한자 0 |
 | Red–Blue (D) | `.3` | 244.6초 | 116.4초 | 40.1 토큰/초 | 5건 모두 형식 통과, 한자 0. 키 노출 건 Red가 길게 생각해 244초 |
 | Red–Blue (D), 보안엔진 예시 입력 | `.4` | 115.0초 | 112.5초 | 37.4 토큰/초 | 열린 문제 3건 통과·한자 0, 코드에서 해결된 2건은 건너뜀 |
-| Blue (C), 의존성 12건(3개 패키지) 묶음 | `.5` (현재) | 46.5초 | 44.2초 | 35.0 토큰/초 | LLM 3회. 묶지 않으면 12회·105.5초. 목표 버전·업그레이드 명령·CVE 5건 모두 반영 |
+| Blue (C), 의존성 12건(3개 패키지) 묶음 | `.5` | 46.5초 | 44.2초 | 35.0 토큰/초 | LLM 3회. 묶지 않으면 12회·105.5초. 목표 버전·업그레이드 명령·CVE 5건 모두 반영 |
+| Blue (C) + 문맥 분석·위험도·OS 가이드 (Windows·Vercel) | `.6` (현재) | 74.5초 | 68.5초 | 50.9 토큰/초 | 5건 통과·한자 0. 문맥 분석 1회가 더해져 +28초. 위험도 act 1·attend 3·track* 1 |
+| Red–Blue (D) + 문맥 분석·위험도·OS 가이드 (Windows·Vercel) | `.6` (현재) | 647.0초 | 378.6초 | 35.6 토큰/초 | 5건 통과·한자 0. Red 재작성 요구가 늘어 느려짐: SQL 주입에서 IDOR·자리표시자 문법, RLS 에서 소유자 칼럼 부재를 잡음. 키 노출 건은 구조 변경이 필요해 수동 확인 |
 
 - 한 건만 보내면 초당 약 15토큰이라 Blue 1건에 40초 안팎이 걸립니다. 데모에서는 검사가 끝나는 대로 미리 돌려 저장해 두고 보여 줍니다.
 - GPU 메모리: 가중치 16.7GiB + KV 캐시(문맥 12K 기준 20,048토큰). 서버를 띄우는 데 약 3분 걸립니다(컴파일 결과는 캐시되어 다음부터 빨라짐).
@@ -58,7 +93,9 @@ tmux new -d -s vllm 'bash scripts/llm/serve.sh'
 
 ### 알려진 한계
 
-- **Red가 탐지 범위 밖의 문제는 잘 잡지 못합니다.** SQL 주입 건에서 매개변수 쿼리로 고친 뒤에도 URL의 `uid`만 바꾸면 남의 주문이 보이는 문제(권한 확인 누락, IDOR)를 `low`·`medium` 모두 통과시켰습니다. 이런 문제는 Red에게 맡기지 말고 탐지 규칙으로 따로 잡아야 합니다.
+- **문맥 분석을 넘기기 전(`.3`)에는 Red가 탐지 범위 밖의 문제를 놓쳤습니다.** SQL 주입 건의 권한 확인 누락(IDOR)을 `low`·`medium` 모두 통과시켰습니다. `.6`부터는 `<analysis>`(로그인 없이 공개, 도달 가능)를 근거로 받아 IDOR까지 지적합니다. 그래도 탐지 규칙으로 따로 잡는 것이 확실합니다.
+- **Red–Blue 가 느립니다.** `.6`에서 Red 가 더 엄격해져 5건 동시 647초가 걸렸습니다. 데모는 검사 직후 백그라운드로 미리 돌려 두고(#26), 일반 서버 예시 설정(`deploy/general-server/backend.env.example`)은 `LLM_RED_BLUE_MAX_REWRITES=1`로 둡니다. 더 급하면 Blue 단독(74.5초)을 씁니다.
+- 문맥 분석이 확신하지 못하면(`confidence: low`) 노출 범위가 `unknown`이 되어 위험도가 낮게 나올 수 있습니다(예: 후기 XSS 가 track*). 규칙 신호를 늘리거나 엔진이 라우트 정보를 넘겨 주면 좋아집니다.
 - Red의 생각 깊이는 `.env`의 `LLM_RED_REASONING_EFFORT`(기본 `low`)로 바꿀 수 있습니다. `medium`은 같은 건에서 Red 시간이 70초→122초로 늘었고 판정은 같았습니다.
 
 ### 서버에서 겪은 문제와 해결
@@ -115,6 +152,7 @@ curl -X POST http://localhost:8000/api/llm/explain \
 | 형식이 깨진 응답 | vLLM에 JSON 스키마를 강제하고, 검증에 실패하면 이유를 붙여 1회 재요청 |
 | 한국어 답에 한자·중국어가 섞임 | 섞이면 1회 다시 쓰게 하고 로그를 남김 |
 | Red가 공격 코드를 씀 | 시나리오 문장만 쓰게 하고, 코드 블록이 있으면 다시 쓰게 함 |
+| OS별 가이드 명령에 탐지 결과의 값이 섞여 명령 주입 | 경로·패키지·버전은 허용 문자에 맞을 때만 명령에 넣고(아니면 명령 없이 직접 하는 안내), 그래도 OS별로 인용(bash·zsh `shlex.quote`, PowerShell 작은따옴표). 공격 문자열 회귀 테스트 포함 (#35 리뷰) |
 | GPU 과부하·서버 꺼짐 | 동시 요청 8개 제한, 5xx·시간 초과는 2회 재시도 후 `LLM_UNAVAILABLE` |
 
 ## 테스트

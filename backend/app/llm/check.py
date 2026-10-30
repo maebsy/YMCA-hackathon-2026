@@ -4,6 +4,7 @@
     python -m app.llm.check                       # Blue(C)와 Red–Blue(D) 둘 다
     python -m app.llm.check --mode blue --repeat 2
     python -m app.llm.check --engine-input llm_input.json   # 보안엔진 출력 그대로
+    python -m app.llm.check --os windows --hosting vercel   # 사용자 환경에 맞춘 가이드
 
 결과 전체는 outputs/llm-check-<시각>.json 에 저장합니다 (커밋되지 않는 폴더).
 하나라도 실패하거나 한자가 섞이면 종료 코드 1을 돌려줍니다.
@@ -21,12 +22,14 @@ from app.config import ROOT_DIR
 from app.llm import create_explainer
 from app.llm.engine_adapter import from_engine_payload
 from app.llm.quality import foreign_script_count, hangul_ratio
-from app.llm.schemas import FindingInput
+from app.llm.schemas import FindingInput, UserEnvironment
 
 DEFAULT_FINDINGS = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "findings.json"
 
 
-async def run(findings: list[FindingInput], modes: list[str], repeat: int) -> tuple[dict, bool]:
+async def run(
+    findings: list[FindingInput], modes: list[str], repeat: int, environment: UserEnvironment | None = None
+) -> tuple[dict, bool]:
     explainer = create_explainer()
     report: dict = {"model": explainer.client.model, "runs": []}
     ok = True
@@ -36,14 +39,14 @@ async def run(findings: list[FindingInput], modes: list[str], repeat: int) -> tu
         for mode in modes:
             for i in range(repeat):
                 started = time.perf_counter()
-                results = await explainer.explain_many(findings, mode)
+                results = await explainer.explain_many(findings, mode, environment)
                 wall_ms = int((time.perf_counter() - started) * 1000)
                 ok &= summarize(mode, i, results, wall_ms)
                 report["runs"].append(
                     {"mode": mode, "repeat": i, "wall_ms": wall_ms, "results": [r.model_dump() for r in results]}
                 )
     finally:
-        await explainer.client.aclose()
+        await explainer.aclose()
     return report, ok
 
 
@@ -74,6 +77,14 @@ def summarize(mode: str, repeat: int, results, wall_ms: int) -> bool:
         if len(r.covers) > 1:
             print(f"     (탐지 결과 {len(r.covers)}건을 함께 설명)")
         print(f"     {e.summary}")
+        if e.risk:
+            print(f"     위험도 {e.risk.decision} ({e.risk.summary})")
+        if e.context:
+            print(f"     문맥 {e.context.runtime}/{e.context.exposure}/도달 {e.context.reachable}, 확신 {e.context.confidence}")
+        if e.guide:
+            ids = [a.id for a in e.guide.actions]
+            n_cmd = sum(len(b.lines) for a in e.guide.actions for b in a.commands)
+            print(f"     가이드 {ids}, 명령 {n_cmd}줄")
     if latencies:
         print(
             f"  건당 지연 중앙값 {statistics.median(latencies) / 1000:.1f}초, 최대 {max(latencies) / 1000:.1f}초, "
@@ -83,12 +94,18 @@ def summarize(mode: str, repeat: int, results, wall_ms: int) -> bool:
 
 
 def main() -> None:
+    # Windows 기본 콘솔(cp949)은 –·✓ 같은 글자를 못 찍어 멈춥니다
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--findings", type=Path, default=DEFAULT_FINDINGS, help="FindingInput 목록 JSON")
     parser.add_argument("--engine-input", type=Path, help="보안엔진 llm-input 결과 JSON (--findings 대신)")
     parser.add_argument("--no-group", action="store_true", help="의존성을 패키지 단위로 묶지 않고 건마다 설명 (비교용)")
     parser.add_argument("--mode", choices=["blue", "red_blue", "both"], default="both")
     parser.add_argument("--repeat", type=int, default=1)
+    parser.add_argument("--os", choices=["windows", "macos", "linux"], help="사용자 OS (비우면 세 OS 명령 모두)")
+    parser.add_argument("--hosting", help="배포 플랫폼 (vercel, netlify, ...)")
     args = parser.parse_args()
 
     if args.engine_input:
@@ -97,7 +114,8 @@ def main() -> None:
     else:
         findings = [FindingInput.model_validate(x) for x in json.loads(args.findings.read_text(encoding="utf-8"))]
     modes = ["blue", "red_blue"] if args.mode == "both" else [args.mode]
-    report, ok = asyncio.run(run(findings, modes, args.repeat))
+    environment = UserEnvironment(os=args.os, hosting=args.hosting) if (args.os or args.hosting) else None
+    report, ok = asyncio.run(run(findings, modes, args.repeat, environment))
 
     out_dir = ROOT_DIR / "outputs"
     out_dir.mkdir(exist_ok=True)

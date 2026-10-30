@@ -62,8 +62,9 @@ def skip_reason(finding: FindingInput) -> str | None:
     """
     if finding.status == "code_resolved":
         return "코드에서 이미 해결된 항목입니다"
-    if finding.status == "out_of_scope":
+    if finding.status == "out_of_scope" or (finding.status is None and finding.change == "unverifiable"):
         # 재검사에서 도구가 실패해 확인하지 못한 항목. "지금 문제 있음"으로 설명하면 안 됩니다
+        # (리포트 app/reports/plain.py 의 finding_state 와 같은 기준)
         return "이번 검사에서 확인하지 못했습니다. 다시 검사가 필요합니다"
     if finding.status is None and finding.change == "resolved":
         return "재검사에서 해결된 항목입니다"

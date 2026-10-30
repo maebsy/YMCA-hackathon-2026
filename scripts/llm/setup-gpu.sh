@@ -20,9 +20,18 @@ if ! command -v uv >/dev/null; then
   curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
 fi
 
+# Triton이 실행 중에 C 확장을 컴파일해서 Python.h 가 필요합니다. 서버 python3 에는 개발 헤더가 없고 apt는 쓰지 않으므로
+# 헤더가 들어 있는 uv 관리 파이썬을 씁니다
+has_headers() {
+  "$VENV/bin/python" -c 'import os, sysconfig, sys; sys.exit(not os.path.exists(os.path.join(sysconfig.get_paths()["include"], "Python.h")))'
+}
+if [[ -x "$VENV/bin/python" ]] && ! has_headers; then
+  echo "== $VENV 에 Python.h 가 없어 다시 만듭니다"
+  rm -rf "$VENV"
+fi
 if [[ ! -x "$VENV/bin/python" ]]; then
-  echo "== $VENV 만들기"
-  uv venv "$VENV" --python 3.12 --seed
+  echo "== $VENV 만들기 (uv 관리 Python 3.12)"
+  uv venv "$VENV" --python 3.12 --managed-python --seed
 fi
 
 echo "== vLLM $VLLM_VERSION 설치 (드라이버에 맞는 PyTorch 자동 선택)"

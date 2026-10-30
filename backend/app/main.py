@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
     # LLM 서버가 꺼져 있어도 API 서버는 뜹니다. 연결은 요청할 때 확인합니다 (/api/llm/health)
     app.state.explainer = create_explainer()
     yield
-    await app.state.explainer.client.aclose()
+    await app.state.explainer.aclose()
 
 
 app = FastAPI(title="YMCA Hackathon 2026 API", lifespan=lifespan)

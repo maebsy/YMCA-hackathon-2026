@@ -1,14 +1,17 @@
-"""Blue 단독(평가 C)과 Red–Blue(평가 D) 파이프라인.
+"""탐지 결과 1건을 해석하는 파이프라인 (docs/system-flow.md ③ 해석 · GPU).
 
-Red–Blue 흐름 (docs/system-flow.md ③ 해석 · GPU):
-  Blue가 설명·수정 지시 작성 → Red가 공격자 관점으로 판정
-  → pass면 끝, 아니면 Red의 지적을 붙여 Blue가 다시 작성 (최대 `max_rewrites`회)
-  → 끝까지 pass가 아니면 마지막 수정 지시에 needs_manual_review 를 붙여 내보냅니다.
+  ① 문맥 분석: 규칙 신호(context.py) + LLM 판단. LLM 이 실패하면 규칙 신호만으로 판단
+  ② 위험도: 문맥 분석 + KEV·EPSS → CISA SSVC 결정 (risk.py, 코드로 결정)
+  ③ 대응 가이드: 사용자 OS·배포 환경에 맞는 명령 (remediation.py, 검증된 템플릿)
+  ④ Blue: ①~③을 근거로 설명·수정 지시 작성 (평가 C 는 여기까지)
+  ⑤ Red (red_blue 모드, 평가 D): 공격자 관점 판정 → pass 가 아니면 지적을 붙여 Blue 재작성 (최대 max_rewrites)
+     끝까지 pass 가 아니면 마지막 수정 지시에 needs_manual_review 를 붙여 내보냅니다.
 """
 
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from typing import Literal
 
 from app.llm import prompts, quality
@@ -20,25 +23,34 @@ from app.llm.client import (
     LLMUnavailable,
     Sampling,
 )
+from app.llm.context import ContextSignals, analysis_from_signals, collect_signals
+from app.llm.intel import ThreatIntel
+from app.llm.risk import assess
 from app.llm.schemas import (
     BlueDraft,
+    ContextAnalysis,
     ExplainResult,
     Explanation,
     FindingInput,
     RedReview,
     RedRound,
+    RemediationGuide,
+    RiskAssessment,
+    ThreatIntelRecord,
+    UserEnvironment,
 )
 
 log = logging.getLogger(__name__)
 
 Mode = Literal["blue", "red_blue"]
 
-# Blue는 생각 모드를 끄고 바로 씁니다. Red는 우회 경로를 따져야 해서 짧게 생각하게 합니다
 # 문맥 길이를 넘으면 입력 예산을 이 비율로 차례로 줄여 다시 보냅니다
 BUDGET_SCALES = (1.0, 0.5, 0.25)
-# 출력 한도는 프롬프트 길이 예산(prompts.py)과 함께 문맥 12K(serve.sh --max-model-len) 안에 들어가게 정했습니다
+# 출력 한도는 프롬프트 길이 예산(prompts.py)과 함께 문맥 12K(serve.sh --max-model-len) 안에 들어가게 정했습니다.
+# Blue·문맥 분석은 생각 모드를 끄고 바로 씁니다. Red 는 우회 경로를 따져야 해서 짧게 생각하게 합니다
 BLUE_SAMPLING = Sampling(max_tokens=2500)
 RED_SAMPLING = Sampling(max_tokens=3500)
+CONTEXT_SAMPLING = Sampling(temperature=0.3, max_tokens=900)
 
 
 def skip_reason(finding: FindingInput) -> str | None:
@@ -57,28 +69,67 @@ def skip_reason(finding: FindingInput) -> str | None:
     return None
 
 
+@dataclass
+class Briefing:
+    """Blue·Red 앞 단계(①~③)의 결과. 탐지 결과와 함께 모델에 넘기고 최종 결과에도 담습니다."""
+
+    signals: ContextSignals
+    analysis: ContextAnalysis
+    risk: RiskAssessment
+    environment: UserEnvironment | None = None
+    guide: RemediationGuide | None = None
+    tokens: int = 0
+
+    def render(self) -> str:
+        return prompts.render_briefing(self.analysis, self.risk, self.environment, self.guide)
+
+
 class Explainer:
     def __init__(
-        self, client: LLMClient, max_rewrites: int = 2, red_thinking: bool = True, red_reasoning_effort: str = "low"
+        self,
+        client: LLMClient,
+        max_rewrites: int = 2,
+        red_thinking: bool = True,
+        red_reasoning_effort: str = "low",
+        analyze_context: bool = False,
+        intel: ThreatIntel | None = None,
     ) -> None:
         self.client = client
         self.max_rewrites = max_rewrites
         self.red_thinking = red_thinking
         self.red_reasoning_effort = red_reasoning_effort
+        # False 면 문맥 분석을 LLM 없이 규칙 신호로만 합니다 (호출 1회 절약)
+        self.analyze_context = analyze_context
+        self.intel = intel
 
-    async def explain_many(self, findings: list[FindingInput], mode: Mode) -> list[ExplainResult]:
+    async def aclose(self) -> None:
+        await self.client.aclose()
+        if close := getattr(self.intel, "aclose", None):
+            await close()
+
+    async def explain_many(
+        self, findings: list[FindingInput], mode: Mode, environment: UserEnvironment | None = None
+    ) -> list[ExplainResult]:
         """여러 건을 동시에 보냅니다. GPU가 묶어서 처리해야 L4에서 전체 시간이 줄어듭니다.
 
         한 건이 실패해도 나머지는 그대로 돌려줍니다. 코드에서 이미 해결된 항목은 GPU를 쓰지 않고 건너뜁니다.
         """
+        intel = await self._intel_for([f for f in findings if not skip_reason(f)])
         run = self.blue if mode == "blue" else self.red_blue
-        return list(await asyncio.gather(*(self._safe(run, f) for f in findings)))
+        return list(await asyncio.gather(*(self._safe(run, f, intel, environment) for f in findings)))
 
-    async def _safe(self, run, finding: FindingInput) -> ExplainResult:
+    async def _intel_for(self, findings: list[FindingInput]) -> dict[str, ThreatIntelRecord]:
+        """요청 안의 CVE 를 한 번에 조회합니다 (EPSS 는 100개씩 묶어 조회)."""
+        cves = sorted({c for f in findings for c in f.refs.cve})
+        if not self.intel or not cves:
+            return {}
+        return await self.intel.lookup(cves)
+
+    async def _safe(self, run, finding, intel, environment) -> ExplainResult:
         if reason := skip_reason(finding):
             return ExplainResult(fingerprint=finding.fingerprint, status="skipped", reason=reason, covers=finding.covers)
         try:
-            explanation = await run(finding)
+            explanation = await run(finding, intel, environment)
         except LLMError as exc:
             log.warning("LLM 해석 실패 %s: %s", finding.fingerprint, exc)
             code = (
@@ -97,20 +148,60 @@ class Explainer:
             fingerprint=finding.fingerprint, status="done", explanation=explanation, covers=finding.covers
         )
 
-    async def blue(self, finding: FindingInput) -> Explanation:
-        started = time.perf_counter()
-        draft = await self._blue_draft(lambda scale: prompts.blue_messages(finding, scale))
-        return self._explanation(finding, "C", draft.data, started, draft.completion_tokens)
+    async def brief(
+        self,
+        finding: FindingInput,
+        intel: dict[str, ThreatIntelRecord] | None = None,
+        environment: UserEnvironment | None = None,
+    ) -> Briefing:
+        """①~③: 문맥 분석, 위험도 결정, 대응 가이드."""
+        signals = collect_signals(finding)
+        analysis, tokens = await self._analyze(finding, signals)
+        if intel is None:
+            intel = await self._intel_for([finding])
+        risk = assess(finding, analysis, signals, intel)
+        return Briefing(signals, analysis, risk, environment, guide=None, tokens=tokens)
 
-    async def red_blue(self, finding: FindingInput) -> Explanation:
+    async def _analyze(self, finding: FindingInput, signals: ContextSignals) -> tuple[ContextAnalysis, int]:
+        if not self.analyze_context:
+            return analysis_from_signals(finding, signals), 0
+        try:
+            result = await self._fitted(
+                lambda scale: prompts.context_messages(finding, signals, scale),
+                ContextAnalysis,
+                thinking=False,
+                sampling=CONTEXT_SAMPLING,
+                check=quality.problems,
+            )
+        except LLMUnavailable:
+            raise
+        except LLMError as exc:
+            # 문맥 분석이 안 돼도 설명은 계속합니다. 규칙 신호로 판단하고 확신도는 low 로 둡니다
+            log.warning("문맥 분석 실패, 규칙 신호로 대신합니다 %s: %s", finding.fingerprint, exc)
+            return analysis_from_signals(finding, signals), 0
+        return result.data, result.completion_tokens
+
+    async def blue(self, finding: FindingInput, intel=None, environment: UserEnvironment | None = None) -> Explanation:
         started = time.perf_counter()
-        draft = await self._blue_draft(lambda scale: prompts.blue_messages(finding, scale))
-        tokens = draft.completion_tokens
+        briefing = await self.brief(finding, intel, environment)
+        extra = briefing.render()
+        draft = await self._blue_draft(lambda scale: prompts.blue_messages(finding, scale, extra))
+        tokens = briefing.tokens + draft.completion_tokens
+        return self._explanation(finding, "C", draft.data, briefing, started, tokens)
+
+    async def red_blue(
+        self, finding: FindingInput, intel=None, environment: UserEnvironment | None = None
+    ) -> Explanation:
+        started = time.perf_counter()
+        briefing = await self.brief(finding, intel, environment)
+        extra = briefing.render()
+        draft = await self._blue_draft(lambda scale: prompts.blue_messages(finding, scale, extra))
+        tokens = briefing.tokens + draft.completion_tokens
         rounds: list[RedRound] = []
         for round_no in range(self.max_rewrites + 1):
             current = draft.data
             review = await self._fitted(
-                lambda scale, current=current: prompts.red_messages(finding, current, scale),
+                lambda scale, current=current: prompts.red_messages(finding, current, scale, extra),
                 RedReview,
                 thinking=self.red_thinking,
                 reasoning_effort=self.red_reasoning_effort,
@@ -129,11 +220,13 @@ class Explainer:
             if review.data.verdict == "pass" or round_no == self.max_rewrites:
                 break
             draft = await self._blue_draft(
-                lambda scale, prev=draft.data, rev=review.data: prompts.blue_revise_messages(finding, prev, rev, scale)
+                lambda scale, prev=draft.data, rev=review.data: prompts.blue_revise_messages(
+                    finding, prev, rev, scale, extra
+                )
             )
             tokens += draft.completion_tokens
 
-        explanation = self._explanation(finding, "D", draft.data, started, tokens)
+        explanation = self._explanation(finding, "D", draft.data, briefing, started, tokens)
         explanation.attack_scenario = prompts.redact_secrets(review.data.attack_scenario)
         explanation.red_verdict = review.data.verdict
         explanation.red_rounds = rounds
@@ -154,16 +247,23 @@ class Explainer:
                 log.warning("입력이 문맥 길이를 넘어 예산 %.0f%% 로 줄여 다시 보냅니다", BUDGET_SCALES[i + 1] * 100)
 
     def _explanation(
-        self, finding: FindingInput, variant: str, draft: BlueDraft, started: float, tokens: int
+        self, finding: FindingInput, variant: str, draft: BlueDraft, briefing: Briefing, started: float, tokens: int
     ) -> Explanation:
         # 모델이 실수로 비밀값을 다시 적어도 밖으로 나가지 않게 가립니다 (수정 지시는 외부 AI 코딩툴로 갑니다)
         redact = prompts.redact_secrets
+        analysis = briefing.analysis.model_copy(
+            update={
+                "evidence": [redact(e) for e in briefing.analysis.evidence],
+                "attacker_needs": [redact(a) for a in briefing.analysis.attacker_needs],
+            }
+        )
         return Explanation(
             fingerprint=finding.fingerprint,
             variant=variant,
             summary=redact(draft.summary),
             why_risky=redact(draft.why_risky),
-            priority=draft.priority,
+            # 우선순위는 모델이 아니라 SSVC 결정에서 나옵니다
+            priority=briefing.risk.priority,
             fix_steps=[
                 step.model_copy(update={"title": redact(step.title), "detail": redact(step.detail)})
                 for step in draft.fix_steps
@@ -172,6 +272,9 @@ class Explainer:
             false_positive_suspect=draft.false_positive_suspect,
             # 모델이 오탐이 아니라고 하면서 이유를 적는 경우가 있어, 오탐 의심일 때만 남깁니다
             false_positive_reason=redact(draft.false_positive_reason) if draft.false_positive_suspect else None,
+            context=analysis,
+            risk=briefing.risk,
+            guide=briefing.guide,
             model=self.client.model,
             prompt_version=prompts.PROMPT_VERSION,
             latency_ms=int((time.perf_counter() - started) * 1000),

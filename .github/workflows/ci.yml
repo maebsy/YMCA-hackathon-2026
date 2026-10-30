@@ -22,6 +22,23 @@ jobs:
       - name: 파이썬 치명적 오류 검사 (문법 오류, 정의되지 않은 이름)
         run: pipx run ruff check --select E9,F63,F7,F82 --output-format=github .
 
+  # 필수 검사는 아닙니다. 실제 LLM 없이 가짜 vLLM 응답으로 백엔드를 검사합니다
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: 백엔드 테스트 (pytest)
+        working-directory: backend
+        run: |
+          pip install -r requirements-dev.txt
+          pytest -q
+
   secret-scan:
     name: secret-scan
     runs-on: ubuntu-latest

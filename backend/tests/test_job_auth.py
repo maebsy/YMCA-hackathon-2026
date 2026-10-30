@@ -61,13 +61,20 @@ def test_auth_config_rejects_unsafe_endpoints(url):
         JobSettings(_env_file=None, supabase_url=url, supabase_publishable_key="test-public").validate_auth()
 
 
-def test_enabled_mode_does_not_register_raw_prompt_or_example_api():
-    script = """from app.main import app
+@pytest.mark.parametrize("enabled", ["true", "false"])
+def test_feature_mode_preserves_route_boundaries_and_reports(enabled):
+    script = """import os
+import warnings
+from app.main import app
+warnings.filterwarnings('error', message='Duplicate Operation ID')
 paths = app.openapi()['paths']
-assert '/api/llm/explain' not in paths
-assert '/api/items' not in paths
-assert '/api/scans/{scan_id}/explanations' in paths
+enabled = os.environ['LLM_JOBS_ENABLED'] == 'true'
+assert ('/api/llm/explain' in paths) is not enabled
+assert ('/api/items' in paths) is not enabled
+assert ('/api/scans/{scan_id}/explanations' in paths) is enabled
 assert '/api/llm/health' in paths
+for name in ('plain', 'assess', 'incident-24h', 'privacy-72h'):
+    assert 'post' in paths[f'/api/reports/{name}']
 """
     subprocess.run([sys.executable, "-c", script], check=True,
-                   env={**os.environ, "LLM_JOBS_ENABLED": "true"})
+                   env={**os.environ, "LLM_JOBS_ENABLED": enabled})

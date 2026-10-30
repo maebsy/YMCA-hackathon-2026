@@ -44,7 +44,5 @@ else:
     # Existing evaluation/development API stays unchanged when the feature is disabled.
     api.include_router(items.router)
     api.include_router(llm.router)
-api.include_router(items.router)
-api.include_router(llm.router)
 api.include_router(reports.router)
 app.include_router(api)

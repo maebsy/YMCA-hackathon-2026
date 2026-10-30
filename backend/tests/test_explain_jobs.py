@@ -45,11 +45,11 @@ def pg_engine():
         with engine.begin() as conn:
             conn.exec_driver_sql("CREATE SCHEMA auth")
             conn.exec_driver_sql("CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb)")
-        # Exact #7 fixture, then #26 twice to verify re-application.
+        # The service schema is the source of truth; verify the queue migration twice.
         raw = engine.raw_connection()
         try:
             with raw.cursor() as cursor:
-                cursor.execute((ROOT / "backend/tests/fixtures/db_schema_7.sql").read_text(encoding="utf-8"))
+                cursor.execute((ROOT / "docs/db-schema.sql").read_text(encoding="utf-8"))
                 migration = (ROOT / "docs/migrations/026-async-llm.sql").read_text(encoding="utf-8")
                 cursor.execute(migration)
                 cursor.execute(migration)
@@ -140,14 +140,18 @@ def test_worker_persists_result_and_polling_sees_it(api, store):
         async def explain_many(self, findings, mode):
             assert mode == "red_blue"
             assert len(findings) == 1 and findings[0].fingerprint == "finding-1"
-            return [result()]
+            completed = result()
+            completed.covers = ["finding-1", "same-package-cve"]
+            return [completed]
     assert asyncio.run(run_once(store, Explainer()))  # automatic enqueue after committed scanner status
     response = api.get("/api/scans/1/explanations", headers=headers())
     item = response.json()["items"][0]
     assert item["explain_status"] == "done" and item["result"]["explanation"]["red_verdict"] == "pass"
+    assert item["result"]["covers"] == ["finding-1", "same-package-cve"]
     assert response.headers["Cache-Control"] == "no-store"
     with store.engine.connect() as conn:
         assert conn.scalar(select(store.explanation.c.variant)) == "D"
+        assert conn.scalar(select(store.explanation.c.covers)) == ["finding-1", "same-package-cve"]
         assert conn.scalar(select(store.scan.c.status).where(store.scan.c.id == 1)) == "done"
 
 

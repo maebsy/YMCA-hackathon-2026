@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from app.db import engine, init_db
 from app.llm import create_explainer
-from app.routers import items, llm
+from app.routers import items, llm, reports
 
 
 @asynccontextmanager
@@ -32,4 +32,5 @@ def health():
 
 api.include_router(items.router)
 api.include_router(llm.router)
+api.include_router(reports.router)
 app.include_router(api)

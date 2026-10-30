@@ -1,0 +1,19 @@
+[Unit]
+Description=72hours frontend (enable after the frontend team supplies a build)
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=%h/apps/72hours/frontend
+Environment=NODE_ENV=production
+Environment=PATH=%h/.local/share/72hours/node/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-%h/.config/72hours/frontend.env
+# Next.js convention; adjust this unit if the frontend uses a different runtime.
+ExecStart=%h/.local/share/72hours/node/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

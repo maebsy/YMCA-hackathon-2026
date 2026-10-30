@@ -12,7 +12,7 @@ bash scripts/setup-dev.sh      # Windows는 Git Bash에서 실행
 cp .env.example .env           # 값은 팀 채팅에서 받아 채우기
 ```
 
-`setup-dev.sh`는 커밋할 때 **메시지 형식**과 **비밀정보·대용량 파일**을 검사하는 훅을 켜고, 커밋 메시지 양식을 연결합니다.
+`setup-dev.sh`는 커밋할 때 **메시지 형식**과 **비밀정보·대용량 파일**을, push할 때 **브랜치 이름**을 검사하는 훅을 켜고, 커밋 메시지 양식을 연결합니다.
 
 ## 1. 작업 흐름
 
@@ -44,6 +44,8 @@ cp .env.example .env           # 값은 팀 채팅에서 받아 채우기
 | `hotfix/demo-crash` | 제출 직전 긴급 수정 |
 
 타입은 커밋 타입과 같고, `hotfix`가 하나 더 있습니다. `main`에는 아무도 직접 push할 수 없습니다.
+
+이름이 틀리면 **push할 때 훅이 막고**, 훅 없이 올라가더라도 **PR의 `branch-name` 검사가 머지를 막습니다.**
 
 ## 3. 커밋 메시지
 
@@ -143,7 +145,12 @@ git push --force-with-lease
 
 ### 브랜치 이름을 잘못 지었다
 
-GitHub 저장소의 **Branches** 화면에서 브랜치 옆 연필 아이콘으로 이름을 바꿉니다. 열린 PR은 자동으로 따라가고, 로컬에서 해야 할 명령은 GitHub가 안내해 줍니다.
+push 전이라면 로컬에서 이름만 바꾸면 됩니다:
+```bash
+git branch -m 옛-이름 feat/12-new-name
+```
+
+이미 push했다면 GitHub 저장소의 **Branches** 화면에서 브랜치 옆 연필 아이콘으로 이름을 바꿉니다. 열린 PR은 자동으로 따라가고, 로컬에서 해야 할 명령은 GitHub가 안내해 줍니다.
 
 ### main이 바뀌어서 충돌이 난다
 

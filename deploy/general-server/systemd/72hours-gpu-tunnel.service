@@ -1,0 +1,13 @@
+[Unit]
+Description=72hours private connection to existing GPU vLLM
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/bin/ssh -F %h/.config/72hours/gpu-ssh.conf -N -T 72hours-gpu
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

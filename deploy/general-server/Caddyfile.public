@@ -9,7 +9,9 @@
 	basic_auth {
 		{$DEMO_USER} {$DEMO_PASSWORD_HASH}
 	}
-	respond /healthz "gateway ready" 200
+	handle /healthz {
+		respond "gateway ready" 200
+	}
 	@api path /api /api/*
 	handle @api {
 		header Cache-Control "no-store"

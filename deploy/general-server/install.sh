@@ -22,7 +22,9 @@ fi
 mkdir -p "$config_dir" "$HOME/.config/systemd/user" "$HOME/.local/share/72hours" "$app_root/runtime"
 chmod 700 "$config_dir" "$HOME/.local/share/72hours"
 cp "$runtime_dir/Caddyfile" "$app_root/runtime/Caddyfile"
-cp "$runtime_dir"/systemd/72hours-*.service "$HOME/.config/systemd/user/"
+for service in gpu-tunnel backend web frontend; do
+  cp "$runtime_dir/systemd/72hours-$service.service" "$HOME/.config/systemd/user/"
+done
 if [[ ! -e "$config_dir/web.env" ]]; then
   printf '%s\n' 'SITE_ADDRESS=http://127.0.0.1:8080' 'WEB_BIND=127.0.0.1' > "$config_dir/web.env"
 fi

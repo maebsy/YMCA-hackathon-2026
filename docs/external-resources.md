@@ -10,6 +10,7 @@
 |---|---|---|---|---|
 | FastAPI | 0.162.0 | 백엔드 API 서버 | MIT | https://github.com/fastapi/fastapi |
 | Caddy | 2.11.7 | 일반 서버의 웹·API 프록시, 공개 시연 HTTPS 및 접근 인증 | Apache-2.0 | https://github.com/caddyserver/caddy |
+| cloudflared | 2026.10.7 | 승인된 시연용 HTTPS 터널 클라이언트, 공식 SHA-256 고정 검증 | Apache-2.0 | https://github.com/cloudflare/cloudflared |
 | Node.js | 24.19.0 | 별도 담당자가 구현할 프론트엔드의 서버 실행 환경 | MIT 및 포함 구성요소별 라이선스 | https://nodejs.org/ |
 | Uvicorn | 0.54.0 | 백엔드 실행 서버 | BSD-3-Clause | https://github.com/encode/uvicorn |
 | SQLModel | 0.0.48 | DB 테이블 정의·조회 | MIT | https://github.com/fastapi/sqlmodel |
@@ -24,6 +25,7 @@
 | 명칭 | 용도 | 라이선스·이용약관 | 출처 |
 |---|---|---|---|
 | Supabase | 팀 공용 PostgreSQL DB 호스팅 | Supabase Terms of Service | https://supabase.com |
+| Cloudflare Quick Tunnels | 공인 IP 없이 일반 서버의 시연 웹/API를 임시 HTTPS 주소로 공개 | Cloudflare 이용약관 | https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/ |
 
 ## 사전 보유 코드
 

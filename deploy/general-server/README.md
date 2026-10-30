@@ -17,6 +17,8 @@
 | `72hours-web` | systemd 사용자 서비스 | 로컬 `127.0.0.1:8080`, API와 프론트 경로 분리 |
 | `72hours-frontend` | systemd 사용자 서비스 | Next.js 실행 예시, **설치 후 기본 비활성** |
 | `72hours-public-web` | 선택적 systemd 시스템 서비스 | 도메인 HTTPS·시연용 인증, 80/443 바인딩 권한만 부여 |
+| `72hours-quick-web` | 선택적 사용자 서비스 | 터널 전용 루프백 8088, 시연 계정 인증 |
+| `72hours-quick-tunnel` | 선택적 사용자 서비스 | 승인된 Cloudflare 임시 HTTPS 진입점 |
 
 `/healthz`는 프록시만, `/api/health`는 API/DB, `/api/llm/health`는 GPU 모델 연결을 확인합니다. 프론트가 없으면 일반 페이지는 502가 정상이며 이를 완성된 서비스로 표시하지 않습니다. 프론트는 상대 경로 `/api/...`를 사용하고 GPU 주소·키를 브라우저에 넣지 않습니다.
 
@@ -103,7 +105,27 @@ pnpm 등 다른 패키지 매니저나 Next.js standalone 출력이면 담당자
 
 ### 공인 IP가 없는 경우
 
-운영진에게 공인 IP 또는 외부 로드밸런서 연결을 요청하거나, 사용자가 승인한 HTTPS 터널 서비스로 로컬 프록시를 연결할 수 있습니다. 외부 터널은 웹/API 요청·응답이 해당 제공자를 거치므로 선택과 승인을 받은 뒤 구성합니다. 이 PR의 기본 설정은 임의의 터널 계정을 만들거나 공개하지 않습니다.
+운영진에게 공인 IP 또는 외부 로드밸런서 연결을 요청하거나, 사용자가 승인한 HTTPS 터널 서비스로 로컬 프록시를 연결할 수 있습니다. 외부 터널은 웹/API 요청·응답이 해당 제공자를 거치므로 선택과 승인을 받은 뒤 구성합니다. 기본 설치는 터널을 설치하거나 시작하지 않습니다.
+
+사용자가 **Cloudflare Quick Tunnel을 통한 시연 공개를 승인한 경우** 다음 선택 기능을 사용합니다. GPU API 키는 터널의 설정이나 환경에 넣지 않습니다. Cloudflare 계정·도메인은 만들지 않으며, 서버의 8088 루프백 프록시만 연결합니다.
+
+```bash
+# Python 3.12 필요: libc bcrypt를 사용하며 crypt 모듈은 Python 3.13에서 제거됨
+python3 deploy/general-server/prepare-quick-tunnel.py
+systemctl --user enable --now 72hours-quick-web
+curl -i http://127.0.0.1:8088/healthz  # 반드시 401이어야 함
+# 서버 내부 ~/.config/72hours/demo-access.json의 시연 계정으로 200도 확인한 뒤:
+systemctl --user enable --now 72hours-quick-tunnel
+journalctl --user -u 72hours-quick-tunnel -n 80 --no-pager
+```
+
+준비 스크립트는 고정 버전 cloudflared를 공식 SHA-256으로 검증하고, 무작위 시연 비밀번호와 bcrypt 해시를 서버 내부에서 생성합니다. 원문 접속정보 `demo-access.json`과 Caddy용 `quick-web.env`는 권한 600이며 출력하거나 Git에 넣지 않습니다. 계정 원문은 시연 참가자에게 승인된 경로로만 전달합니다. 터널을 시작하기 전 무인증·오인증 401과 정상 인증 200을 확인하세요.
+
+로그의 `https://...trycloudflare.com`이 임시 공개 주소입니다. 외부에서 `/healthz`, `/api/health`, `/api/llm/health`가 인증 후 200인지 확인합니다. `/`는 별도 프론트가 3000 포트에서 실행되기 전까지 502가 나옵니다. 이는 서버 연결 성공과 프론트 배포 완료가 다르다는 뜻입니다.
+
+터널은 **재생성/프로세스 재시작 시 주소가 바뀝니다**. 종료는 `systemctl --user disable --now 72hours-quick-tunnel 72hours-quick-web`입니다. 재시작 후에는 로그에서 새 주소를 확인하고 이전 공유 주소를 갱신해야 합니다. 기존 로컬 프록시·백엔드·GPU는 이 명령으로 중지되지 않습니다.
+
+[Quick Tunnel 공식 제한](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/): 가용성 보장 없음, 동시 진행 요청 200개, SSE 미지원. 이 터널은 웹 시연용이며 기존 stdio MCP를 HTTP MCP로 바꾸지 않습니다. Cloudflare의 요청 시간 제한도 별도로 적용되므로 Caddy의 900초 설정만으로 긴 동기 LLM 호출 성공을 보장하지 않습니다. 실제 배포에는 고정 호스트·앱 인증·작업 큐를 별도로 구성해야 합니다.
 
 ## 검증과 변경 범위
 

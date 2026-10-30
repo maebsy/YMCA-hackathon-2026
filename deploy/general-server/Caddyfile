@@ -5,7 +5,9 @@
 
 {$SITE_ADDRESS:http://127.0.0.1:8080} {
 	bind {$WEB_BIND:127.0.0.1}
-	respond /healthz "gateway ready" 200
+	handle /healthz {
+		respond "gateway ready" 200
+	}
 	@api path /api /api/*
 	handle @api {
 		header Cache-Control "no-store"

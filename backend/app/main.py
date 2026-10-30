@@ -4,13 +4,17 @@ from fastapi import APIRouter, FastAPI
 from sqlalchemy import text
 
 from app.db import engine, init_db
-from app.routers import items
+from app.llm import create_explainer
+from app.routers import items, llm
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # LLM 서버가 꺼져 있어도 API 서버는 뜹니다. 연결은 요청할 때 확인합니다 (/api/llm/health)
+    app.state.explainer = create_explainer()
     yield
+    await app.state.explainer.client.aclose()
 
 
 app = FastAPI(title="YMCA Hackathon 2026 API", lifespan=lifespan)
@@ -27,4 +31,5 @@ def health():
 
 
 api.include_router(items.router)
+api.include_router(llm.router)
 app.include_router(api)

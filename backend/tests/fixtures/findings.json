@@ -1,0 +1,70 @@
+[
+  {
+    "fingerprint": "demo-secret-supabase-service-role",
+    "tool": "gitleaks",
+    "category": "secret",
+    "rule_id": "supabase-service-role-key",
+    "title": "브라우저 코드에 Supabase service_role 키가 들어 있음",
+    "severity": "critical",
+    "file_path": "src/lib/supabase.ts",
+    "start_line": 4,
+    "end_line": 4,
+    "refs": {"cwe": ["CWE-798"], "cve": [], "urls": []},
+    "snippet": "import { createClient } from '@supabase/supabase-js'\n\nexport const supabase = createClient(\n  'https://abcd1234.supabase.co', '[가림]'\n)",
+    "context": "// 이 파일은 'use client' 컴포넌트에서 import 됩니다\n// src/app/admin/page.tsx 에서 supabase.from('customers').select('*') 호출"
+  },
+  {
+    "fingerprint": "demo-code-sqli-orders",
+    "tool": "semgrep",
+    "category": "code",
+    "rule_id": "vibe.nextjs.sql-injection-template-literal",
+    "title": "SQL 문에 URL 파라미터를 그대로 이어 붙임",
+    "severity": "high",
+    "file_path": "src/app/api/orders/route.ts",
+    "start_line": 9,
+    "end_line": 11,
+    "refs": {"cwe": ["CWE-89"], "cve": [], "urls": []},
+    "snippet": "export async function GET(req: Request) {\n  const uid = new URL(req.url).searchParams.get('uid')\n  const { rows } = await pool.query(`SELECT * FROM orders WHERE user_id = '${uid}'`)\n  return Response.json(rows)\n}"
+  },
+  {
+    "fingerprint": "demo-config-rls-disabled-customers",
+    "tool": "own-checker",
+    "category": "config",
+    "rule_id": "vibe.supabase.rls-disabled",
+    "title": "고객 정보 테이블에 RLS(행 단위 접근 제한)가 꺼져 있음",
+    "severity": "high",
+    "file_path": "supabase/migrations/20261001_init.sql",
+    "start_line": 1,
+    "end_line": 6,
+    "refs": {"cwe": ["CWE-284"], "cve": [], "urls": []},
+    "snippet": "create table public.customers (\n  id uuid primary key default gen_random_uuid(),\n  name text,\n  phone text,\n  address text\n);"
+  },
+  {
+    "fingerprint": "demo-dep-next-middleware-bypass",
+    "tool": "osv-scanner",
+    "category": "dependency",
+    "rule_id": "GHSA-f82v-jwr5-mffw",
+    "title": "Next.js 미들웨어 인증 우회 취약점",
+    "severity": "critical",
+    "file_path": "package-lock.json",
+    "package_name": "next",
+    "package_ecosystem": "npm",
+    "installed_version": "15.1.0",
+    "fixed_version": "15.2.3",
+    "refs": {"cve": ["CVE-2025-29927"], "cwe": ["CWE-285"], "urls": ["https://github.com/advisories/GHSA-f82v-jwr5-mffw"]},
+    "context": "src/middleware.ts 에서 /admin 경로 접근을 로그인 여부로 막고 있음"
+  },
+  {
+    "fingerprint": "demo-code-xss-review",
+    "tool": "semgrep",
+    "category": "code",
+    "rule_id": "vibe.react.dangerously-set-inner-html",
+    "title": "사용자가 쓴 후기를 HTML로 그대로 화면에 넣음",
+    "severity": "medium",
+    "file_path": "src/components/ReviewCard.tsx",
+    "start_line": 14,
+    "end_line": 14,
+    "refs": {"cwe": ["CWE-79"], "cve": [], "urls": []},
+    "snippet": "<div className=\"review-body\" dangerouslySetInnerHTML={{ __html: review.content }} />"
+  }
+]

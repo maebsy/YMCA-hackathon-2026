@@ -14,7 +14,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, field_validator
 
 from app.llm.schemas import ExplainResult, FindingInput
 
@@ -24,6 +24,22 @@ ReportFormat = Literal["json", "markdown", "html"]
 
 
 # ── 입력 ──
+
+
+class NotChecked(BaseModel):
+    """이번 검사에서 확인하지 못한 영역. 보안엔진 LLM 입력의 `not_checked`를 그대로 받습니다 (#28)."""
+
+    tool: str = Field(max_length=50)
+    category: str | None = Field(default=None, max_length=50)
+    reason: str = Field(default="", max_length=1000)
+
+    @field_validator("tool", "category", "reason", mode="before")
+    @classmethod
+    def _clip(cls, value, info):
+        # 엔진은 도구 오류를 개수 제한 없이 이어 붙입니다. 도구가 실패한 바로 그 상황에서 리포트가 422로
+        # 막히면 안 되므로 거부하지 않고 한도까지 잘라 받습니다. 화면에는 앞부분이면 충분합니다
+        limit = cls.model_fields[info.field_name].metadata[0].max_length
+        return value[:limit] if isinstance(value, str) else value
 
 
 class ScanContext(BaseModel):
@@ -37,6 +53,9 @@ class ScanContext(BaseModel):
         default=None, description="처음 취약점이 발견된 시각. 72시간 타이머 시작점"
     )
     resolved_at: AwareDatetime | None = Field(default=None, description="재검사를 통과한 시각. 있으면 완료 리포트")
+    not_checked: list[NotChecked] = Field(
+        default_factory=list, max_length=20, description="도구 실패·lockfile 없음 등으로 검사하지 못한 영역"
+    )
 
 
 class PlainReportRequest(BaseModel):

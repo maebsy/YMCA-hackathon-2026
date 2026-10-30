@@ -1,0 +1,48 @@
+# ── 비밀정보 (절대 커밋 금지) ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.streamlit/secrets.toml
+
+# ── 파이썬 ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# ── 데이터·모델 (용량이 크고 개인정보 위험 → 서버에 두고 경로만 기록) ──
+data/raw/
+data/private/
+models/
+checkpoints/
+outputs/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.gguf
+wandb/
+mlruns/
+
+# ── 데모 앱 ──
+flagged/
+.gradio/
+node_modules/
+
+# ── 에디터·OS ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

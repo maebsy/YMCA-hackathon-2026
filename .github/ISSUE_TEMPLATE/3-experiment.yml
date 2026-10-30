@@ -1,0 +1,66 @@
+name: "🧪 실험"
+description: 데이터·모델·프롬프트 실험을 계획하고 결과를 남깁니다
+title: "[실험] "
+labels: ["type: experiment"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        실험 결과는 발표의 **기술 완성도** 근거가 됩니다. 실패한 실험도 결과를 남겨 주세요.
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: 가설과 목표
+      placeholder: 예) 합성 데이터 2천 건을 더하면 F1이 0.80 → 0.88 이상으로 오른다
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: 방법
+      description: 데이터, 모델, 하이퍼파라미터, 실행 위치(GPU 서버 등)
+      value: |
+        - 데이터:
+        - 모델:
+        - 설정:
+    validations:
+      required: true
+  - type: textarea
+    id: metric
+    attributes:
+      label: 평가 지표와 채택 기준
+      description: 평가셋은 증강하지 않은 원본에서만 나눕니다.
+      placeholder: 예) 원본 테스트셋 F1 0.85 이상이면 채택
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 결과
+      description: 실험 후에 채웁니다. 수치, 표, 그래프, 결론(채택/기각)
+  - type: checkboxes
+    id: resources
+    attributes:
+      label: 외부 자원
+      options:
+        - label: 새로 쓴 모델·데이터셋·라이브러리를 docs/external-resources.md 에 적었습니다 (안 적으면 실격)
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 우선순위
+      options:
+        - P0 (데모 필수)
+        - P1 (중요)
+        - P2 (있으면 좋음)
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 파트
+      options:
+        - AI·모델
+        - 데이터
+      default: 0
+    validations:
+      required: true

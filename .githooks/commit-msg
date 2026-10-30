@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# 커밋 메시지가 팀 규칙을 따르는지 검사합니다. 규칙 본체: scripts/check-commit-msg.sh
+exec bash "$(git rev-parse --show-toplevel)/scripts/check-commit-msg.sh" --file "$1"

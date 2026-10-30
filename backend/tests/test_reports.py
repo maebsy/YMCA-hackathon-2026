@@ -178,6 +178,99 @@ def test_plain_report_out_of_scope_needs_recheck_not_completion():
     assert report.deadline.stopped_at is None
 
 
+def dep(fp: str, cve: str, severity: str = "high") -> dict:
+    return {
+        "fingerprint": fp,
+        "tool": "osv",
+        "category": "dependency",
+        "rule_id": cve,
+        "title": f"lodash 취약점 {cve}",
+        "severity": severity,
+        "file_path": "package-lock.json",
+        "package_name": "lodash",
+        "package_ecosystem": "npm",
+        "installed_version": "4.17.15",
+        "fixed_version": "4.17.21",
+        "refs": {"cve": [cve]},
+    }
+
+
+def test_package_explanation_covers_grouped_findings_in_one_card():
+    # #27: 같은 패키지 취약점 3건을 한 번에 설명한 결과(covers)는 카드 하나로 묶습니다
+    findings = [
+        dep("d1", "CVE-2020-8203"),
+        dep("d2", "CVE-2021-23337", "critical"),
+        dep("d3", "CVE-2020-28500", "medium"),
+    ]
+    pkg = explanation("pkg:npm:lodash:package-lock.json", summary="lodash를 4.17.21로 올리세요", priority="soon")
+    pkg["covers"] = ["d1", "d2", "d3"]
+    report = plain.build_plain_report(plain_request(findings=findings, results=[pkg]), NOW)
+
+    cards = section(report, "고칠 것 자세히").cards
+    assert len(cards) == 1
+    card = cards[0]
+    assert card.title == "lodash를 4.17.21로 올리세요"
+    assert "매우 위험" in {b.text for b in card.badges}  # 묶음 중 가장 위험한 심각도
+    together = field(card, "함께 해결되는 문제")
+    assert together.value.startswith("3건")
+    assert "CVE-2021-23337" in field(card, "관련 번호").value
+    assert field(section(report, "한눈에 보기"), "고칠 것").value.startswith("1건")
+
+
+def test_not_checked_area_blocks_completion_and_safe_wording():
+    # #28: 문제가 0건이어도 검사하지 못한 영역이 있으면 완료·안전이라고 하지 않습니다
+    findings = [{**f, "status": "code_resolved"} for f in findings_data()]
+    req = plain_request(
+        findings=findings,
+        not_checked=[
+            {"tool": "osv", "category": "dependency", "reason": "취약점 DB에 접속하지 못했습니다.\n자세한 로그..."}
+        ],
+    )
+    report = plain.build_plain_report(req, NOW)
+
+    assert report.status.text == "다시 검사 필요"
+    assert "완료" not in report.title
+    assert report.deadline.stopped_at is None
+    assert "안전하다고 말할 수 없습니다" in section(report, "한눈에 보기").paragraphs[0]
+    area = section(report, "이번에 검사하지 못한 영역")
+    assert area.bullets == ["외부 부품(라이브러리) 검사: 취약점 DB에 접속하지 못했습니다."]
+    assert field(section(report, "한눈에 보기"), "검사하지 못한 영역").value.startswith("1곳")
+    assert section(report, "다음 단계").steps[0].startswith("'이번에 검사하지 못한 영역'")
+
+
+@pytest.mark.parametrize(
+    ("raw", "shown"),
+    [
+        (
+            "종료 코드 127 (취약점 DB에 접속하지 못했습니다. 인터넷 연결을 확인하세요.): Scanning dir /tmp/site",
+            "취약점 DB에 접속하지 못했습니다. 인터넷 연결을 확인하세요.",
+        ),
+        ("lockfile not found in /srv/scans/abc/repo", "lockfile not found in (경로)"),
+        ("", "도구가 결과를 내지 못했습니다"),
+    ],
+    ids=["engine-format", "raw-path", "empty"],
+)
+def test_not_checked_reason_is_friendly_and_hides_server_paths(raw, shown):
+    assert plain.friendly_reason(raw) == shown
+
+
+def test_unverifiable_change_is_recheck_not_open():
+    findings = [{**findings_data()[0], "change": "unverifiable"}]
+    report = plain.build_plain_report(plain_request(findings=findings), NOW)
+
+    assert report.status.text == "다시 검사 필요"
+    assert section(report, "다시 검사가 필요한 것").bullets
+
+
+def test_api_accepts_engine_not_checked_as_is(api):
+    body = plain_request().model_dump(mode="json")
+    body["scan"]["not_checked"] = [{"tool": "semgrep", "category": "code", "reason": "시간 초과"}]
+
+    md = api.post("/api/reports/plain?format=markdown", json=body).text
+    assert "## 이번에 검사하지 못한 영역" in md
+    assert "- 코드 검사: 시간 초과" in md
+
+
 def test_glossary_matches_exact_cwe_only():
     # CWE-798(비밀키)만 있을 때 CWE-79(XSS) 풀이가 붙으면 안 됩니다
     report = plain.build_plain_report(plain_request(findings=findings_data()[:1]), NOW)

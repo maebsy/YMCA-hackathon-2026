@@ -8,13 +8,18 @@
 
 | 명칭 | 버전 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|---|
-| | | | | |
+| FastAPI | 0.162.0 | 백엔드 API 서버 | MIT | https://github.com/fastapi/fastapi |
+| Uvicorn | 0.54.0 | 백엔드 실행 서버 | BSD-3-Clause | https://github.com/encode/uvicorn |
+| SQLModel | 0.0.48 | DB 테이블 정의·조회 | MIT | https://github.com/fastapi/sqlmodel |
+| SQLAlchemy | 2.1.6 | DB 연결 (SQLModel 기반) | MIT | https://github.com/sqlalchemy/sqlalchemy |
+| psycopg | 3.3.6 | PostgreSQL(Supabase) 드라이버 | LGPL-3.0 | https://github.com/psycopg/psycopg |
+| pydantic-settings | 2.16.2 | `.env` 설정 읽기 | MIT | https://github.com/pydantic/pydantic-settings |
 
 ## 외부 API
 
 | 명칭 | 용도 | 라이선스·이용약관 | 출처 |
 |---|---|---|---|
-| | | | |
+| Supabase | 팀 공용 PostgreSQL DB 호스팅 | Supabase Terms of Service | https://supabase.com |
 
 ## 사전 보유 코드
 
@@ -26,4 +31,4 @@
 
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
-| | | | |
+| Claude Code (Anthropic) | 백엔드 골격 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |

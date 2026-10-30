@@ -5,7 +5,7 @@ Qwen 계열은 한국어 답에 한자·중국어가 섞이는 일이 있어, �
 
 import re
 
-from app.llm.schemas import BlueDraft, FixStep, RedReview
+from app.llm.schemas import BlueDraft, ContextAnalysis, FixStep, RedReview
 
 _HAN = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 _KANA = re.compile(r"[぀-ヿ]")
@@ -25,18 +25,22 @@ def hangul_ratio(text: str) -> float:
     return len(_HANGUL.findall(text)) / len(letters)
 
 
-def user_facing_text(item: BlueDraft | RedReview) -> str:
+def user_facing_text(item: BlueDraft | RedReview | ContextAnalysis) -> str:
     if isinstance(item, BlueDraft):
         parts = [item.summary, item.why_risky, *(f"{s.title} {s.detail}" for s in item.fix_steps)]
         if item.false_positive_reason:
             parts.append(item.false_positive_reason)
+    elif isinstance(item, ContextAnalysis):
+        parts = [*item.evidence, *item.attacker_needs]
     else:
         parts = [item.attack_scenario, *item.issues]
     return "\n".join(parts)
 
 
-def _cut_off_fields(item: BlueDraft | RedReview) -> list[str]:
+def _cut_off_fields(item: BlueDraft | RedReview | ContextAnalysis) -> list[str]:
     """글자 수 한도까지 꽉 찬 항목. vLLM이 스키마 한도에서 문장 중간을 자른 것입니다."""
+    if isinstance(item, ContextAnalysis):
+        return []
     if isinstance(item, BlueDraft):
         fields = [("summary", item.summary), ("why_risky", item.why_risky), ("ai_fix_prompt", item.ai_fix_prompt)]
         fields += [("fix_steps.detail", step.detail) for step in item.fix_steps]
@@ -57,7 +61,7 @@ def _cut_off_fields(item: BlueDraft | RedReview) -> list[str]:
     return cut
 
 
-def problems(item: BlueDraft | RedReview) -> list[str]:
+def problems(item: BlueDraft | RedReview | ContextAnalysis) -> list[str]:
     """다시 쓰게 할 문제 목록. 비어 있으면 통과."""
     text = user_facing_text(item)
     found = []

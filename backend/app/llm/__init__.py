@@ -2,6 +2,7 @@
 
 from app.config import settings
 from app.llm.client import LLMClient
+from app.llm.intel import HttpThreatIntel
 from app.llm.pipeline import Explainer
 
 
@@ -17,4 +18,6 @@ def create_explainer() -> Explainer:
         client,
         max_rewrites=settings.llm_red_blue_max_rewrites,
         red_reasoning_effort=settings.llm_red_reasoning_effort,
+        analyze_context=settings.llm_analyze_context,
+        intel=HttpThreatIntel() if settings.llm_threat_intel else None,
     )

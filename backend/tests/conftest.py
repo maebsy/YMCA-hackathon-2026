@@ -122,3 +122,19 @@ class FakeVLLM:
 @pytest.fixture
 def fake_vllm() -> FakeVLLM:
     return FakeVLLM()
+
+
+def context_analysis(**overrides) -> dict:
+    base = {
+        "runtime": "server",
+        "exposure": "public",
+        "reachable": "yes",
+        "data_at_risk": ["personal"],
+        "attacker_needs": ["로그인 필요 없음"],
+        "evidence": ["주문 조회 API 가 주소창의 uid 값을 그대로 SQL 에 붙입니다"],
+        "vex_status": "affected",
+        "vex_justification": None,
+        "confidence": "high",
+    }
+    base.update(overrides)
+    return base

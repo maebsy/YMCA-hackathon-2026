@@ -30,7 +30,7 @@ async def test_request_forces_json_schema_and_turns_off_thinking(fake_vllm):
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
     assert body["max_tokens"] == 777
     assert fake_vllm.headers[0]["authorization"] == "Bearer test-key"
-    assert result.data.priority == "now"
+    assert result.data.summary.startswith("주문 조회")
     assert result.completion_tokens == 50
 
 
@@ -79,7 +79,7 @@ async def test_invalid_json_is_repaired_once(fake_vllm):
 
     result = await fake_vllm.client().chat_json(user(), BlueDraft)
 
-    assert result.data.priority == "now"
+    assert result.data.summary.startswith("주문 조회")
     retry_messages = fake_vllm.requests[1]["messages"]
     assert retry_messages[-2] == {"role": "assistant", "content": "설명입니다 (JSON 아님)"}
     assert "JSON이 아닙니다" in retry_messages[-1]["content"]

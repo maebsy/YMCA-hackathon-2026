@@ -83,6 +83,33 @@ class FindingInput(BaseModel):
 
 # ── 모델이 만드는 JSON ──
 
+Runtime = Literal["browser", "server", "database", "build", "test", "config", "dependency", "unknown"]
+Exposure = Literal["public", "authenticated", "internal", "not_deployed", "unknown"]
+DataKind = Literal["credentials", "personal", "payment", "business", "none", "unknown"]
+# OpenVEX 상태·사유 (https://github.com/openvex/spec). 나중에 VEX 문서로 내보낼 수 있게 같은 용어를 씁니다
+VexStatus = Literal["affected", "not_affected", "under_investigation"]
+VexJustification = Literal[
+    "component_not_present",
+    "vulnerable_code_not_present",
+    "vulnerable_code_not_in_execute_path",
+    "vulnerable_code_cannot_be_controlled_by_adversary",
+    "inline_mitigations_already_exist",
+]
+
+
+class ContextAnalysis(BaseModel):
+    """탐지 결과가 실제 서비스에서 악용될 수 있는 환경인지에 대한 판단 (문맥 분석)."""
+
+    runtime: Runtime = Field(description="이 코드가 실행되는 곳")
+    exposure: Exposure = Field(description="누가 이 코드·값에 닿을 수 있나")
+    reachable: Literal["yes", "no", "unknown"] = Field(description="공격자 입력이 문제 지점까지 도달하나")
+    data_at_risk: list[DataKind] = Field(description="악용되면 걸리는 데이터", min_length=1, max_length=3)
+    attacker_needs: list[str] = Field(default_factory=list, description="공격자가 갖춰야 할 조건", max_length=3)
+    evidence: list[str] = Field(description="판단 근거 (코드·경로에서 본 것)", min_length=1, max_length=3)
+    vex_status: VexStatus
+    vex_justification: VexJustification | None = None
+    confidence: Literal["high", "medium", "low"]
+
 
 class FixStep(BaseModel):
     title: str = Field(description="단계 이름, 한 줄", max_length=120)
@@ -92,7 +119,7 @@ class FixStep(BaseModel):
 class BlueDraft(BaseModel):
     summary: str = Field(description="무엇이 문제인지 한 문장", max_length=200)
     why_risky: str = Field(description="방치하면 어떤 일이 생기는지, 비개발자 눈높이로", max_length=800)
-    priority: Priority = Field(description="now: 바로 악용 가능·비밀값 노출, soon: 조건부, later: 영향 낮음")
+    # 우선순위는 모델이 정하지 않습니다. risk.py 가 문맥 분석·KEV·EPSS로 SSVC 결정을 내립니다
     fix_steps: list[FixStep] = Field(min_length=1, max_length=6)
     ai_fix_prompt: str = Field(
         description="AI 코딩툴에 그대로 붙여 넣을 수정 지시. 파일 경로·줄·규칙 ID만 쓰고 코드 원문과 비밀값은 넣지 않음",
@@ -113,6 +140,76 @@ class RedReview(BaseModel):
     issues: list[str] = Field(
         default_factory=list, description="pass가 아니면 수정 지시의 구멍을 구체적으로", max_length=5
     )
+
+
+# ── 위험도 해석 (risk.py, 코드로 결정) ──
+
+SsvcDecision = Literal["act", "attend", "track*", "track"]
+
+
+class RiskFactor(BaseModel):
+    name: str  # SSVC 결정 요소 또는 보정 이름
+    value: str
+    reason: str  # 비개발자가 읽을 한국어 근거
+
+
+class ThreatIntelRecord(BaseModel):
+    cve: str
+    kev: bool = False  # CISA KEV: 실제 공격에 쓰인 것이 확인됨
+    kev_date_added: str | None = None
+    epss: float | None = None  # FIRST EPSS: 30일 안에 악용될 확률 (0~1)
+    epss_percentile: float | None = None
+
+
+class RiskAssessment(BaseModel):
+    decision: SsvcDecision
+    priority: Priority
+    score: int = Field(ge=0, le=100)  # 같은 결정 안에서 정렬용
+    exploitation: Literal["none", "public poc", "active"]
+    automatable: Literal["yes", "no"]
+    technical_impact: Literal["partial", "total"]
+    mission_impact: Literal["low", "medium", "high"]
+    summary: str  # 한 줄 결론
+    factors: list[RiskFactor]
+    intel: list[ThreatIntelRecord] = Field(default_factory=list)
+    policy: str  # 결정 규칙 버전 (평가·감사용)
+
+
+# ── OS별 대응 가이드 (remediation.py, 검증된 템플릿) ──
+
+TargetOS = Literal["windows", "macos", "linux"]
+Hosting = Literal["vercel", "netlify", "cloudflare", "supabase", "render", "railway", "self_hosted", "unknown"]
+PackageManager = Literal["npm", "pnpm", "yarn", "bun", "pip", "uv", "poetry", "composer", "bundler", "go", "cargo"]
+
+
+class UserEnvironment(BaseModel):
+    """사용자 작업 환경. 비우면 세 OS 명령을 모두 만들고, 패키지 관리자는 lockfile 로 알아냅니다."""
+
+    os: TargetOS | None = None
+    hosting: Hosting | None = None
+    package_manager: PackageManager | None = None
+
+
+class CommandBlock(BaseModel):
+    os: TargetOS
+    shell: Literal["powershell", "zsh", "bash"]
+    lines: list[str]
+
+
+class GuideAction(BaseModel):
+    id: str  # upgrade_dependency, rotate_secret, ...
+    title: str
+    why: str
+    commands: list[CommandBlock] = Field(default_factory=list)  # OS별. OS와 무관한 작업이면 비어 있음
+    manual_steps: list[str] = Field(default_factory=list)  # 대시보드에서 하는 일 등
+    links: list[str] = Field(default_factory=list)
+    optional: bool = False
+
+
+class RemediationGuide(BaseModel):
+    environment: UserEnvironment
+    package_manager: PackageManager | None = None
+    actions: list[GuideAction] = Field(default_factory=list)
 
 
 # ── 최종 결과 ──
@@ -141,6 +238,10 @@ class Explanation(BaseModel):
     red_rounds: list[RedRound] = Field(default_factory=list)
     # Red 검토를 끝내 통과하지 못하면 대시보드에 경고로 띄웁니다
     needs_manual_review: bool = False
+    # 문맥 분석 (LLM 또는 규칙 신호), 위험도 (SSVC 결정), OS별 명령
+    context: ContextAnalysis | None = None
+    risk: RiskAssessment | None = None
+    guide: RemediationGuide | None = None
     model: str
     prompt_version: str
     latency_ms: int

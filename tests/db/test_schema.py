@@ -117,3 +117,35 @@ def test_rls_blocks_even_explicitly_granted_client(db):
             conn.execute("INSERT INTO plan(code) VALUES ('demo')")
     finally:
         conn.execute("ROLLBACK")
+
+
+def test_supabase_client_roles_cannot_truncate(db):
+    """Supabase 기본 권한(anon·authenticated에 테이블 전체 권한)이 있어도 TRUNCATE로 RLS를 우회하지 못합니다."""
+    conn, owner = db
+    project_and_scan(conn, owner)
+    clients = ("anon", "authenticated")
+    created = []
+    for client in clients:
+        if not conn.execute("SELECT 1 FROM pg_roles WHERE rolname=%s", (client,)).fetchone():
+            conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(client)))
+            created.append(client)
+    try:
+        for client in clients:
+            conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(client)))
+            conn.execute(sql.SQL("GRANT ALL ON ALL TABLES IN SCHEMA public TO {}").format(sql.Identifier(client)))
+        conn.execute(SCHEMA)  # 다시 적용하면 두 역할의 테이블 권한을 회수해야 합니다
+        for client in clients:
+            conn.execute("BEGIN")
+            try:
+                conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(client)))
+                with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                    conn.execute("TRUNCATE project CASCADE")
+            finally:
+                conn.execute("ROLLBACK")
+        assert conn.execute("SELECT count(*) FROM project").fetchone()[0] == 1
+    finally:
+        for client in clients:
+            conn.execute(sql.SQL("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {}").format(sql.Identifier(client)))
+            conn.execute(sql.SQL("REVOKE USAGE ON SCHEMA public FROM {}").format(sql.Identifier(client)))
+        for client in created:
+            conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(client)))

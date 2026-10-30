@@ -234,4 +234,19 @@ alter table public.plan        enable row level security;
 revoke all on public.plan, public.profile, public.project, public.scan,
   public.tool_run, public.finding, public.explanation from public;
 
+-- Supabase는 anon·authenticated 역할에 public 스키마 테이블 권한을 따로 줍니다(기본 권한).
+-- 위의 "from public"으로는 회수되지 않고, TRUNCATE는 RLS를 거치지 않아 두 역할이 데이터를 통째로 지울 수 있습니다.
+-- 두 역할이 있을 때만(=Supabase) 명시적으로 회수합니다. 일반 PostgreSQL에서는 아무 일도 하지 않습니다.
+do $$
+declare client text;
+begin
+  foreach client in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = client) then
+      execute format('revoke all on public.plan, public.profile, public.project, public.scan, '
+                     'public.tool_run, public.finding, public.explanation from %I', client);
+      execute format('revoke all on all sequences in schema public from %I', client);
+    end if;
+  end loop;
+end $$;
+
 commit;

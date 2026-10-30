@@ -61,8 +61,9 @@ uvicorn app.main:app --reload
 GPU 서버의 vLLM은 **8001 포트**로 띄웁니다. 백엔드(8000)와 겹치지 않게 서버와 내 PC 모두 같은 번호를 씁니다.
 
 ```bash
-# GPU 서버: 127.0.0.1에만 열어 서버 밖에서 직접 들어오지 못하게 합니다
-vllm serve <모델> --host 127.0.0.1 --port 8001
+# GPU 서버: 처음 한 번 setup-gpu.sh, 그다음 serve.sh. 127.0.0.1에만 열고 API 키를 요구합니다
+bash scripts/llm/setup-gpu.sh
+tmux new -d -s vllm 'bash scripts/llm/serve.sh'
 
 # 내 PC: 서버의 8001을 내 PC의 8001로 가져옵니다 (SSH 터널 허용 여부는 운영진 확인 필요)
 ssh -N -L 8001:127.0.0.1:8001 <GPU 서버>
@@ -71,6 +72,7 @@ ssh -N -L 8001:127.0.0.1:8001 <GPU 서버>
 - 백엔드를 직접 띄우면 `.env`의 `LLM_BASE_URL=http://localhost:8001/v1`을 그대로 씁니다
 - Docker로 띄우면 compose가 `http://host.docker.internal:8001/v1`(내 PC의 8001)로 바꿔 연결합니다
 - vLLM은 OpenAI 호환 API라, 개발 중에는 OpenAI·Ollama 주소로 바꿔도 코드는 그대로입니다
+- 모델(Qwen3.8-27B), Red–Blue 흐름, API, 테스트 방법: [docs/llm.md](docs/llm.md)
 
 ## 규칙
 

@@ -1,9 +1,22 @@
--- YMCA 해커톤 백엔드 DB 스키마 (Supabase / PostgreSQL) — 초안 2026-10-31
+-- YMCA 해커톤 DB 스키마 (Supabase / PostgreSQL) — #7 검토안 2026-10-31
 -- 사용법: Supabase 대시보드 > SQL Editor 에 전체를 붙여 넣고 Run
 --         그 다음 Database > Schema Visualizer 에서 ERD 확인
 -- 설계 설명: docs/db-erd.md (ERD, 설계 이유, 적용 방법)
 -- 로그인은 선택: 로그인 없이도 검사할 수 있고, 리포트를 받으려면 가입 (Google·GitHub OAuth)
 -- 가입 계정은 Supabase Auth가 관리하는 auth.users 를 씀 (Supabase 프로젝트에 기본으로 있음)
+
+begin;
+
+-- 무료 데모 플랜 하나. 한도는 DB 설정값이며 null은 미설정(제한 없음).
+-- 실제 신규 검사/프로젝트 접수 API에서 이 값을 확인해야 하며 결제 기능은 없음.
+create table if not exists public.plan (
+  code text primary key check (code = 'demo'),
+  name text not null default '무료 데모',
+  monthly_price integer not null default 0 check (monthly_price = 0),
+  max_projects integer check (max_projects > 0),
+  max_scans_per_day integer check (max_scans_per_day > 0)
+);
+insert into public.plan(code) values ('demo') on conflict (code) do nothing;
 
 -- ─────────────────────────────────────────────
 -- 1. profile : 가입한 사용자의 서비스 정보 (auth.users 와 1:1)
@@ -16,6 +29,8 @@ create table if not exists public.profile (
   created_at    timestamptz not null default now()
 );
 comment on table public.profile is '가입한 사용자. 가입하면 트리거가 자동으로 만듦';
+alter table public.profile add column if not exists plan_code text not null default 'demo'
+  references public.plan(code);
 
 -- 회원가입(auth.users 행 생성) 때 profile 자동 생성. GitHub·Google 로그인 정보에서 이름·사진을 가져옴
 create or replace function public.handle_new_user()
@@ -37,11 +52,19 @@ begin
   return new;
 end;
 $$;
+revoke all on function public.handle_new_user() from public;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- 스키마 적용 전에 이미 가입한 사용자도 profile을 갖게 함. 기존 프로필은 덮어쓰지 않음.
+insert into public.profile(id, display_name, avatar_url)
+select id, coalesce(raw_user_meta_data ->> 'user_name', raw_user_meta_data ->> 'full_name',
+                    raw_user_meta_data ->> 'name', split_part(email, '@', 1)),
+       coalesce(raw_user_meta_data ->> 'avatar_url', raw_user_meta_data ->> 'picture')
+from auth.users on conflict (id) do nothing;
 
 -- ─────────────────────────────────────────────
 -- 2. project : 검사 대상 사이트
@@ -104,6 +127,15 @@ create table if not exists public.tool_run (
 );
 comment on table public.tool_run is '스캐너별 실행 결과. 하나가 실패해도 나머지로 진행';
 
+-- #15의 실제 도구명과 검사 범위 기록. 레지스트리 미사용/도구 실패를 해결로 오판하지 않도록 보관.
+alter table public.tool_run drop constraint if exists tool_run_tool_check;
+alter table public.tool_run add constraint tool_run_tool_check
+  check (tool in ('osv', 'osv-scanner', 'semgrep', 'opengrep', 'gitleaks', 'config'));
+alter table public.tool_run drop constraint if exists tool_run_status_check;
+alter table public.tool_run add constraint tool_run_status_check
+  check (status in ('queued', 'running', 'done', 'failed', 'skipped'));
+alter table public.tool_run add column if not exists coverage jsonb not null default '{}'::jsonb;
+
 -- ─────────────────────────────────────────────
 -- 5. finding : 정규화된 발견 항목 (공통 JSON 규격)
 -- ─────────────────────────────────────────────
@@ -135,6 +167,22 @@ create table if not exists public.finding (
 );
 comment on table public.finding is '스캐너 결과를 공통 형식으로 맞춘 발견 항목. 비밀값은 저장 전에 마스킹';
 
+-- 기존 초안이 적용된 DB도 비파괴적으로 확장. 원본 finding/설명 데이터는 유지.
+alter table public.finding drop constraint if exists finding_tool_check;
+alter table public.finding add constraint finding_tool_check
+  check (tool in ('osv', 'osv-scanner', 'semgrep', 'opengrep', 'gitleaks', 'config'));
+alter table public.finding drop constraint if exists finding_category_check;
+alter table public.finding add constraint finding_category_check
+  check (category in ('dependency', 'code', 'secret', 'config'));
+alter table public.finding drop constraint if exists finding_severity_check;
+alter table public.finding add constraint finding_severity_check
+  check (severity in ('critical', 'high', 'medium', 'low', 'info', 'unknown'));
+alter table public.finding drop constraint if exists finding_explain_status_check;
+alter table public.finding add constraint finding_explain_status_check
+  check (explain_status in ('none', 'pending', 'done', 'failed', 'skipped'));
+alter table public.finding add column if not exists llm_context jsonb not null default '{}'::jsonb;
+comment on column public.finding.llm_context is '서버가 저장한 LLM 보충 입력: status/change/flags/fix_hint/what/context/covers';
+
 create index if not exists finding_fingerprint_idx on public.finding (fingerprint);  -- 재검사 비교, 설명 캐시
 create index if not exists finding_scan_severity_idx on public.finding (scan_id, severity);
 
@@ -158,7 +206,15 @@ create table if not exists public.explanation (
   created_at              timestamptz not null default now(),
   unique (finding_id, variant)
 );
-comment on table public.explanation is 'LLM이 만든 쉬운 설명과 수정 지시. variant B=일반 설명, C=코드 맥락 반영';
+alter table public.explanation drop constraint if exists explanation_variant_check;
+alter table public.explanation add constraint explanation_variant_check check (variant in ('B', 'C', 'D'));
+alter table public.explanation add column if not exists attack_scenario text;
+alter table public.explanation add column if not exists red_verdict text;
+alter table public.explanation add column if not exists red_rounds jsonb not null default '[]'::jsonb;
+alter table public.explanation add column if not exists needs_manual_review boolean not null default true;
+alter table public.explanation add column if not exists completion_tokens integer;
+alter table public.explanation add column if not exists covers jsonb not null default '[]'::jsonb;
+comment on table public.explanation is 'LLM 설명: C=Blue, D=Red-Blue. B는 과거 기록 보존용. 실제 코드 수정 완료 의미 아님';
 
 -- ─────────────────────────────────────────────
 -- 보안: RLS 켜기 (정책 없음)
@@ -172,3 +228,10 @@ alter table public.scan        enable row level security;
 alter table public.tool_run    enable row level security;
 alter table public.finding     enable row level security;
 alter table public.explanation enable row level security;
+alter table public.plan        enable row level security;
+
+-- 익명/로그인 클라이언트가 직접 데이터 테이블에 접근하는 정책은 만들지 않음.
+revoke all on public.plan, public.profile, public.project, public.scan,
+  public.tool_run, public.finding, public.explanation from public;
+
+commit;

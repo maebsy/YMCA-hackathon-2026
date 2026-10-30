@@ -74,6 +74,11 @@ ssh -N -L 8001:127.0.0.1:8001 <GPU 서버>
 - vLLM은 OpenAI 호환 API라, 개발 중에는 OpenAI·Ollama 주소로 바꿔도 코드는 그대로입니다
 - 모델(Qwen3.8-27B), Red–Blue 흐름, API, 테스트 방법: [docs/llm.md](docs/llm.md)
 
+## 리포트·신고서
+
+- 비전공자용 점검 리포트(완료 리포트 포함)와 KISA 침해사고 신고(24시간)·개인정보 유출 신고(72시간) 초안: [docs/reports.md](docs/reports.md)
+- `POST /api/reports/plain` · `/assess` · `/incident-24h` · `/privacy-72h`, `?format=json|markdown|html`
+
 ## 규칙
 
 - 이슈·브랜치·커밋·PR 규칙: [CONTRIBUTING.md](CONTRIBUTING.md)

@@ -40,5 +40,5 @@
 
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
-| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
+| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
 | Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |

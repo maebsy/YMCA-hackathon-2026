@@ -3,6 +3,7 @@
     cd backend
     python -m app.llm.check                       # Blue(C)와 Red–Blue(D) 둘 다
     python -m app.llm.check --mode blue --repeat 2
+    python -m app.llm.check --engine-input llm_input.json   # 보안엔진 출력 그대로
 
 결과 전체는 outputs/llm-check-<시각>.json 에 저장합니다 (커밋되지 않는 폴더).
 하나라도 실패하거나 한자가 섞이면 종료 코드 1을 돌려줍니다.
@@ -18,6 +19,7 @@ from pathlib import Path
 
 from app.config import ROOT_DIR
 from app.llm import create_explainer
+from app.llm.engine_adapter import from_engine_payload
 from app.llm.quality import foreign_script_count, hangul_ratio
 from app.llm.schemas import FindingInput
 
@@ -50,6 +52,9 @@ def summarize(mode: str, repeat: int, results, wall_ms: int) -> bool:
     print(f"\n== {mode} #{repeat + 1}: {len(results)}건 동시, 전체 {wall_ms / 1000:.1f}초")
     latencies, tokens = [], 0
     for r in results:
+        if r.status == "skipped":
+            print(f"  - {r.fingerprint}: 건너뜀 ({r.reason})")
+            continue
         if r.status != "done":
             ok = False
             print(f"  ✗ {r.fingerprint}: {r.error_code} {r.error}")
@@ -77,12 +82,16 @@ def summarize(mode: str, repeat: int, results, wall_ms: int) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--findings", type=Path, default=DEFAULT_FINDINGS)
+    parser.add_argument("--findings", type=Path, default=DEFAULT_FINDINGS, help="FindingInput 목록 JSON")
+    parser.add_argument("--engine-input", type=Path, help="보안엔진 llm-input 결과 JSON (--findings 대신)")
     parser.add_argument("--mode", choices=["blue", "red_blue", "both"], default="both")
     parser.add_argument("--repeat", type=int, default=1)
     args = parser.parse_args()
 
-    findings = [FindingInput.model_validate(x) for x in json.loads(args.findings.read_text(encoding="utf-8"))]
+    if args.engine_input:
+        findings = from_engine_payload(json.loads(args.engine_input.read_text(encoding="utf-8")))
+    else:
+        findings = [FindingInput.model_validate(x) for x in json.loads(args.findings.read_text(encoding="utf-8"))]
     modes = ["blue", "red_blue"] if args.mode == "both" else [args.mode]
     report, ok = asyncio.run(run(findings, modes, args.repeat))
 

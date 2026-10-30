@@ -47,9 +47,10 @@ async def explain(body: ExplainRequest, explainer: ExplainerDep):
     """탐지 결과를 쉬운 설명·수정 지시로 바꿉니다. mode=blue 는 평가 C, red_blue 는 평가 D 입니다."""
     started = time.perf_counter()
     results = await explainer.explain_many(body.findings, body.mode)
-    # 전부 서버 문제로 실패했으면 결과 목록 대신 503 으로 알려 프론트가 "잠시 후 다시"를 띄우게 합니다
-    if all(r.error_code == "LLM_UNAVAILABLE" for r in results):
-        raise HTTPException(503, detail={"code": "LLM_UNAVAILABLE", "message": results[0].error})
+    # 부른 항목이 전부 서버 문제로 실패했으면 결과 목록 대신 503 으로 알려 프론트가 "잠시 후 다시"를 띄우게 합니다
+    attempted = [r for r in results if r.status != "skipped"]
+    if attempted and all(r.error_code == "LLM_UNAVAILABLE" for r in attempted):
+        raise HTTPException(503, detail={"code": "LLM_UNAVAILABLE", "message": attempted[0].error})
     return ExplainResponse(
         mode=body.mode,
         model=explainer.client.model,

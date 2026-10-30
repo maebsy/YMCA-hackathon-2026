@@ -65,7 +65,7 @@ def red_review(verdict: str = "pass", **overrides) -> dict:
 class FakeVLLM:
     """vLLM 의 /v1/chat/completions·/v1/models 흉내. 응답 스키마 이름(BlueDraft·RedReview)별로 줄 세운 답을 돌려줍니다.
 
-    큐에는 dict(JSON으로 보낼 답), str(본문 그대로), int(그 HTTP 상태), Exception(연결 오류)을 넣을 수 있습니다.
+    큐에는 dict(JSON으로 보낼 답), str(본문 그대로), int(그 HTTP 상태), (상태, 본문), Exception(연결 오류)을 넣을 수 있습니다.
     """
 
     def __init__(self, models: tuple[str, ...] = ("qwen3.8-27b",)) -> None:
@@ -93,6 +93,8 @@ class FakeVLLM:
             raise item
         if isinstance(item, int):
             return httpx.Response(item, text="error")
+        if isinstance(item, tuple) and isinstance(item[0], int):  # (상태, 본문)
+            return httpx.Response(item[0], text=item[1])
         finish = "stop"
         if isinstance(item, tuple):  # (본문, finish_reason)
             item, finish = item

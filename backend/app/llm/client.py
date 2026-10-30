@@ -36,6 +36,14 @@ class LLMBadOutput(LLMError):
     """응답이 규격(JSON 스키마)에 맞지 않습니다."""
 
 
+class LLMContextOverflow(LLMError):
+    """입력 + 출력 한도가 모델 문맥 길이(--max-model-len)를 넘어 서버가 거부했습니다. 입력을 줄여 다시 보내면 됩니다."""
+
+
+# vLLM 이 문맥 초과로 400 을 줄 때의 문구 ("maximum context length is ...", "max_model_len" 등)
+_CONTEXT_OVERFLOW = re.compile(r"maximum context length|max_model_len|context length|too long", re.IGNORECASE)
+
+
 @dataclass
 class ChatResult(Generic[T]):
     data: T
@@ -176,7 +184,9 @@ class LLMClient:
                 last_error = f"서버 응답 {resp.status_code}"
                 continue
             if resp.status_code != 200:
-                # 4xx 는 요청이 잘못된 것이라 다시 보내도 같습니다
+                # 4xx 는 요청이 잘못된 것이라 같은 요청을 다시 보내도 같습니다
+                if resp.status_code == 400 and _CONTEXT_OVERFLOW.search(resp.text):
+                    raise LLMContextOverflow(f"입력이 모델 문맥 길이를 넘었습니다: {resp.text[:300]}")
                 raise LLMError(f"LLM 요청 거부 {resp.status_code}: {resp.text[:300]}")
             return resp.json()
         raise LLMUnavailable(last_error)

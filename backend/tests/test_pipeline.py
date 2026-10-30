@@ -101,3 +101,25 @@ async def test_false_positive_reason_only_when_suspected(fake_vllm, findings):
 
     assert (await explainer.blue(findings[1])).false_positive_reason is None
     assert (await explainer.blue(findings[1])).false_positive_reason == "테스트 폴더의 예시 값입니다"
+
+
+async def test_context_overflow_retries_with_smaller_input(fake_vllm, findings):
+    overflow = (400, '{"error": {"message": "This model\'s maximum context length is 12288 tokens."}}')
+    long = findings[1].model_copy(update={"context": "x" * 8000})
+    fake_vllm.queue("BlueDraft", overflow, overflow, blue_draft())
+
+    result = await Explainer(fake_vllm.client()).blue(long)
+
+    sizes = [len(r["messages"][-1]["content"]) for r in fake_vllm.calls("BlueDraft")]
+    assert len(sizes) == 3 and sizes[0] > sizes[1] > sizes[2]
+    assert result.summary
+
+
+async def test_context_overflow_gives_up_with_clear_code(fake_vllm, findings):
+    overflow = (400, "maximum context length exceeded")
+    fake_vllm.queue("BlueDraft", overflow, overflow, overflow)
+
+    [result] = await Explainer(fake_vllm.client()).explain_many(findings[1:2], "blue")
+
+    assert result.status == "failed"
+    assert result.error_code == "LLM_INPUT_TOO_LONG"

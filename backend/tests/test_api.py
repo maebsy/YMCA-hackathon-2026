@@ -88,3 +88,31 @@ def test_default_mode_is_red_blue(api, fake_vllm):
     explanation = resp.json()["results"][0]["explanation"]
     assert explanation["variant"] == "D"
     assert explanation["red_verdict"] == "pass"
+
+
+def test_unknown_severity_is_accepted(api, fake_vllm):
+    fake_vllm.queue("BlueDraft", blue_draft())
+
+    resp = api.post(
+        "/api/llm/explain", json={"findings": [{**sample_findings(1)[0], "severity": "unknown"}], "mode": "blue"}
+    )
+
+    assert resp.status_code == 200
+
+
+def test_skipped_items_do_not_hide_an_outage(api, fake_vllm):
+    resolved = {**sample_findings(1)[0], "fingerprint": "done-already", "status": "code_resolved"}
+    fake_vllm.queue("BlueDraft", 503, 503, 503)
+
+    resp = api.post("/api/llm/explain", json={"findings": [resolved, sample_findings(2)[1]], "mode": "blue"})
+
+    assert resp.status_code == 503
+
+
+def test_all_skipped_returns_200(api):
+    resolved = {**sample_findings(1)[0], "status": "code_resolved"}
+
+    resp = api.post("/api/llm/explain", json={"findings": [resolved], "mode": "blue"})
+
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["status"] == "skipped"

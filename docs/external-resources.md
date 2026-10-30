@@ -21,7 +21,7 @@
 | vLLM | 0.32.0 | GPU 서버 LLM 서빙 (OpenAI 호환 API) | Apache-2.0 | https://github.com/vllm-project/vllm |
 | Qwen3.8-27B (모델) | 2026-08 공개본 | Blue·Red 해석 LLM의 원본 모델 | Apache-2.0 | https://huggingface.co/Qwen/Qwen3.8-27B |
 | Qwen3.8-27B AWQ INT4 (양자화 체크포인트) | 커밋 5a2ee524cbc9 | L4 24GB에 올리기 위한 4비트 모델 | Apache-2.0 | https://huggingface.co/avyukth/Qwen3.8-27B-AWQ-INT4 |
-| uv | 최신 | GPU 서버 파이썬 환경 설치 | Apache-2.0 / MIT | https://github.com/astral-sh/uv |
+| uv | 0.13.6 (GPU 서버) | GPU 서버 파이썬 환경 설치, Python 3.12.16 관리 | Apache-2.0 / MIT | https://github.com/astral-sh/uv |
 
 ## 외부 API
 

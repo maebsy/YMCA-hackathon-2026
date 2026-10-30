@@ -29,13 +29,14 @@ fi
 # FlashInfer 샘플러는 처음 쓸 때 CUDA 커널을 컴파일하는데 서버에 nvcc·ninja 가 없습니다. PyTorch 샘플러를 씁니다
 export VLLM_USE_FLASHINFER_SAMPLER=0
 
-# L4 메모리 배분: 가중치 16.7GiB(비전 인코더 제외) + 나머지를 KV 캐시로. 문맥 8K, 동시 최대 8개
+# L4 메모리 배분: 가중치 16.7GiB(비전 인코더 제외) + 나머지를 KV 캐시로. 문맥 12K, 동시 최대 8개
+# 문맥 12K 는 backend/app/llm/prompts.py 의 입력 길이 예산과 짝입니다. 줄이면 그쪽 예산도 줄이세요
 # prefix caching 은 하이브리드(Gated DeltaNet) 모델에서 실험 기능('align' 모드)이라 끕니다
 exec "$VENV/bin/vllm" serve "$MODEL_REPO" \
   --revision "$MODEL_REV" \
   --served-model-name "$SERVED_NAME" \
   --host 127.0.0.1 --port "$PORT" \
-  --max-model-len 8192 \
+  --max-model-len 12288 \
   --max-num-seqs 8 \
   --gpu-memory-utilization 0.95 \
   --language-model-only \

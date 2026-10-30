@@ -19,7 +19,7 @@
 
 | 명칭 | 용도 | 라이선스·이용약관 | 출처 |
 |---|---|---|---|
-| Supabase | 팀 공용 PostgreSQL DB 호스팅 | Supabase Terms of Service | https://supabase.com |
+| Supabase | PostgreSQL DB 호스팅, 로그인(Supabase Auth) | Supabase Terms of Service | https://supabase.com |
 
 ## 사전 보유 코드
 

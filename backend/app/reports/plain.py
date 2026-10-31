@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Literal
 
 from app.llm.prompts import redact_secrets
-from app.llm.schemas import Explanation, FindingInput, Priority, Severity
+from app.llm.schemas import BROWSER_SECRET_REVIEW, Explanation, FindingInput, Priority, Severity
 from app.reports.common import deadline, deadline_sentence, fmt_time
 from app.reports.legal import SERVICE_FIX_HOURS
 from app.reports.schemas import Badge, Card, FormField, PlainReportRequest, Report, Section
@@ -169,7 +169,10 @@ def finding_card(item: Item) -> Card:
             paragraphs.append(f"공격자는 이렇게 노릴 수 있어요: {e.attack_scenario}")
         if e.false_positive_suspect and e.false_positive_reason:
             paragraphs.append(f"오탐일 수 있는 이유: {e.false_positive_reason}")
-        if e.needs_manual_review:
+        if e.manual_review_reason or (e.needs_manual_review and e.red_verdict == "pass"):
+            # Red 는 통과했지만 키 권한처럼 코드 밖에서 확인할 것이 남은 경우 (#100)
+            paragraphs.append(e.manual_review_reason or BROWSER_SECRET_REVIEW)
+        elif e.needs_manual_review:
             paragraphs.append(
                 "아래 고치는 방법을 공격 관점에서 끝까지 통과시키지 못했습니다. 적용한 뒤 개발자나 보안 담당자에게 한 번 더 봐 달라고 하세요."
             )

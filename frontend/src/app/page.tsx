@@ -1,322 +1,52 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { Header } from "@/components/Header";
-import { Toast } from "@/components/Toast";
-import { LoginModal } from "@/components/LoginModal";
-import { CommandPalette } from "@/components/CommandPalette";
-import { WorkspaceTab } from "@/components/tabs/WorkspaceTab";
-import { ArchitectureTab } from "@/components/tabs/ArchitectureTab";
-import { IncidentTab } from "@/components/tabs/IncidentTab";
-import { ReportTab } from "@/components/tabs/ReportTab";
-import { TabType, OS, Hosting, Finding, LogItem } from "@/types/security";
-import { startScan, llmHealthy, explain, itemToFinding, mergeExplanation, now, saveLast, loadLast } from "@/lib/api";
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useRef, useState, type FormEvent } from "react";
+import { ArrowRight, Code2, LoaderCircle, ShieldCheck, Sparkles, Unplug } from "lucide-react";
+import { normalizeRepositoryUrl, useRepository } from "@/components/repository-provider";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>("workspace");
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [findings, setFindings] = useState<Finding[]>([]);
-  const [selectedFindingId, setSelectedFindingId] = useState<string>("");
-  const [logs, setLogs] = useState<LogItem[]>([]);
-  const [isScanning, setIsScanning] = useState(false);
-  const scanBusy = useRef(false);
-  const [gpuStatus, setGpuStatus] = useState<"checking" | "online" | "offline">("checking");
-  // 실제 검사 상태: 직전 엔진 결과(재검사 비교용), 리포트 입력(scan·findings·explain_results)
-  const [lastResult, setLastResult] = useState<any>(null);
-  const [reportInput, setReportInput] = useState<any>(null);
-
-  const [os, setOs] = useState<OS>("windows");
-  const [hosting, setHosting] = useState<Hosting>("vercel");
-  const [repoInput, setRepoInput] = useState(
-    ""
-  );
-  const [authUser, setAuthUser] = useState("로그인 예제");
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [isCmdPaletteOpen, setIsCmdPaletteOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
-  const [toastVisible, setToastVisible] = useState(false);
-
-  // 새로고침해도 마지막 실제 검사 결과를 되살립니다 (브라우저 보관)
-  useEffect(() => {
-    const saved = loadLast<any>();
-    if (!Array.isArray(saved?.findings)) return;
-    const explanations = new Map<string, any>();
-    for (const result of saved.reportInput?.explain_results || [])
-      for (const fp of [result.fingerprint, ...(result.covers || [])]) explanations.set(fp, result);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFindings(saved.findings.map((finding: Finding) => explanations.has(finding.id)
-      ? mergeExplanation(finding, explanations.get(finding.id)) : finding));
-    setSelectedFindingId(saved.findings[0]?.id ?? "");
-    setLastResult(saved.result ?? null);
-    setReportInput(saved.reportInput ?? null);
-    if (saved.repoUrl) setRepoInput(saved.repoUrl);
-    if (saved.logs) setLogs(saved.logs);
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const refresh = async () => {
-      const healthy = await llmHealthy();
-      if (active) setGpuStatus(healthy ? "online" : "offline");
-    };
-    void refresh();
-    const timer = setInterval(refresh, 30_000);
-    return () => { active = false; clearInterval(timer); };
-  }, []);
-
-  // 72시간 실시간 카운트다운 타이머
-  const [remainingSeconds, setRemainingSeconds] = useState(
-    0
-  );
-
-  // 실제 검사 결과가 있으면 72시간 타이머를 첫 발견 시각(detected_at) 기준으로 맞춥니다
-  useEffect(() => {
-    const scan = reportInput?.scan;
-    if (!scan?.detected_at) return;
-    const deadline = new Date(scan.detected_at).getTime() + 72 * 3600 * 1000;
-    const left = scan.resolved_at ? 0 : Math.max(0, Math.floor((deadline - Date.now()) / 1000));
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRemainingSeconds(left);
-  }, [reportInput]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setRemainingSeconds((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatCountdown = () => {
-    const h = String(Math.floor(remainingSeconds / 3600)).padStart(2, "0");
-    const m = String(Math.floor((remainingSeconds % 3600) / 60)).padStart(2, "0");
-    const s = String(remainingSeconds % 60).padStart(2, "0");
-    return `${h}:${m}:${s}`;
-  };
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setToastVisible(true);
-    setTimeout(() => {
-      setToastVisible(false);
-    }, 2400);
-  };
-
-  const handleToggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-    document.documentElement.setAttribute("data-theme", newTheme);
-    showToast(
-      newTheme === "dark"
-        ? "다크 모드(#0a0a0a)로 전환되었습니다."
-        : "라이트 모드(#fafafa)로 전환되었습니다."
-    );
-  };
-
-  // 전역 단축키 (⌘K / Ctrl+K, ESC)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setIsCmdPaletteOpen(true);
-      } else if (e.key === "Escape") {
-        setIsCmdPaletteOpen(false);
-        setIsLoginModalOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  // 실제 검사: /api/scans(보안엔진) → /api/llm/explain(GPU Red–Blue)
-  const handleRunScan = async (url: string) => {
-    if (scanBusy.current) return;
-    scanBusy.current = true;
-    setIsScanning(true);
-    const log = (step: string, msg: string, status: string, type: "ok" | "warn" = "ok") =>
-      setLogs((prev) => [...prev, { time: now(), step, msg, status, type }]);
-    setLogs([]);
-    const prev = lastResult?.target?.repo_url === url ? lastResult : null;
-    log("clone   ", `${url.replace("https://github.com/", "")} ${prev ? "재검사" : "검사"} 중 (OSV·Opengrep·Gitleaks·설정 검사)...`, "…");
-    const collected: LogItem[] = [];
-    const log2 = (step: string, msg: string, status: string, type: "ok" | "warn" = "ok") => {
-      collected.push({ time: now(), step, msg, status, type });
-      log(step, msg, status, type);
-    };
-    try {
-      const data = await startScan(url, prev);
-      for (const [tool, c] of Object.entries<any>(data.coverage)) {
-        log2(tool.padEnd(8), `${c.engine || tool} ${c.status}${c.message ? " · " + c.message.slice(0, 80) : ""}`,
-          `${c.count}건`, c.status === "ok" || c.status === "skipped" ? "ok" : "warn");
-      }
-      log2("cleanup ", "검사한 소스 코드 임시 폴더 삭제", "✓ 삭제됨");
-      if (data.comparison) {
-        const c = data.comparison;
-        log2("rescan  ", `새로 ${c.new ?? 0} · 계속 ${c.persisting ?? 0} · 해결 ${c.resolved ?? 0} · 확인불가 ${c.unverifiable ?? 0}`,
-          (c.new ?? 0) === 0 && (c.persisting ?? 0) === 0 ? "✓ 통과" : "! 남은 문제", (c.new ?? 0) + (c.persisting ?? 0) ? "warn" : "ok");
-      }
-      let mapped: Finding[] = (data.llm_input?.items || []).map(itemToFinding);
-      let explainResults: any[] = [];
-      const rInput = { scan: data.report_scan, findings: data.findings || [], explain_results: explainResults };
-      const persist = () => saveLast({ repoUrl: url, findings: mapped, result: data.result,
-        reportInput: { ...rInput, explain_results: explainResults }, logs: collected });
-      setFindings(mapped);
-      setLastResult(data.result);
-      setReportInput(rInput);
-      if (mapped[0]) setSelectedFindingId(mapped[0].id);
-      persist();
-      showToast(`${prev ? "재검사" : "검사"} 완료: ${mapped.length}건 (${data.duration_sec}초)`);
-
-      if (!data.findings?.length) return;
-      const healthy = await llmHealthy();
-      setGpuStatus(healthy ? "online" : "offline");
-      if (!healthy) {
-        log2("gpu-llm ", "GPU LLM 서버에 연결할 수 없어 엔진 결과만 표시합니다", "! 연결 안 됨", "warn");
-        persist();
-        return;
-      }
-      // #55의 한 건씩 처리·즉시 반영 흐름을 유지합니다.
-      const open = (data.findings as any[]).filter((f) => f.status !== "code_resolved").slice(0, 5);
-      for (const [i, finding] of open.entries()) {
-        log2("gpu-llm ", `Red–Blue 해석 중 (${i + 1}/${open.length}). 나머지 항목은 엔진 결과입니다.`, "…");
-        try {
-          explainResults = [...explainResults, ...(await explain([finding], os, hosting))];
-        } catch (error) {
-          explainResults.push({ fingerprint: finding.fingerprint, covers: finding.covers,
-            status: "failed", error_code: "LLM_ERROR" });
-          log2("gpu-llm ", `${i + 1}번째 해석 실패: ${error instanceof Error ? error.message : "연결 오류"}`, "! 엔진 결과 유지", "warn");
-        }
-        const byFp = new Map<string, any>();
-        for (const r of explainResults) for (const fp of [r.fingerprint, ...(r.covers || [])]) byFp.set(fp, r);
-        mapped = mapped.map((f) => (byFp.has(f.id) ? mergeExplanation(f, byFp.get(f.id)) : f));
-        setFindings(mapped);
-        setReportInput({ ...rInput, explain_results: explainResults });
-        persist();
-      }
-      const done = explainResults.filter((r) => r.status === "done").length;
-      const failed = explainResults.filter((r) => r.status === "failed").length;
-      const skipped = explainResults.filter((r) => r.status === "skipped").length;
-      const manual = explainResults.filter((r) => r.explanation?.needs_manual_review).length;
-      log2("gpu-llm ", `해석 완료 ${done} · 실패 ${failed} · 생략 ${skipped} · 수동 확인 ${manual}`,
-        failed || manual ? "! 확인 필요" : "✓ 완료", failed || manual ? "warn" : "ok");
-      persist();
-    } catch (e: any) {
-      log("error   ", String(e?.message || e), "✗ 실패", "warn");
-      showToast(`검사 실패: ${e?.message || e}`);
-    } finally {
-      scanBusy.current = false;
-      setIsScanning(false);
-    }
-  };
-
-  const handleToggleFindingFixed = (id: string) => {
-    if (lastResult) {
-      void handleRunScan(lastResult.target.repo_url);
+  const repository = useRepository();
+  const router = useRouter();
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState("");
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!repository.restored || repository.isScanning) return;
+    const url = normalizeRepositoryUrl(repository.repoInput);
+    if (!url) {
+      setError("공개 GitHub 저장소의 HTTPS 주소를 입력해 주세요. 예: https://github.com/owner/repository");
+      input.current?.focus();
       return;
     }
-    setFindings((prev) =>
-      prev.map((f) => {
-        if (f.id === id) {
-          const nextFixed = !f.fixed;
-          showToast(
-            nextFixed
-              ? `[${f.id}] 재검사 통과! 취약점이 해결 처리되었습니다.`
-              : `[${f.id}] 미해결 상태로 변경되었습니다.`
-          );
-          return { ...f, fixed: nextFixed };
-        }
-        return f;
-      })
-    );
-  };
-
-  const handleSelectProvider = (provider: string) => {
-    setIsLoginModalOpen(false);
-    setAuthUser(`${provider} 로그인 예제`);
-    showToast(
-      `${provider} 로그인 화면 예제입니다. 실제 인증과 토큰 발급은 아직 연결되지 않았습니다.`
-    );
-  };
-
-  return (
-    <div className="min-h-screen relative overflow-x-hidden">
-      {/* 배경 그리드 & 오로라 글로우 */}
-      <div className="bg-grid fixed inset-0 pointer-events-none z-0" />
-      <div className="glow-orb fixed -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[350px] rounded-full pointer-events-none z-0" />
-
-      {/* 상단 네비게이션 헤더 */}
-      <Header
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onOpenCmdPalette={() => setIsCmdPaletteOpen(true)}
-        onOpenLoginModal={() => setIsLoginModalOpen(true)}
-        authUser={authUser}
-        gpuStatus={gpuStatus}
-        theme={theme}
-        onToggleTheme={handleToggleTheme}
-      />
-
-      {/* 메인 콘텐츠 영역 */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-10 relative z-10">
-        <p className="mb-6 rounded-lg border border-[#ff9f43]/50 bg-[#ff9f43]/10 p-3 font-mono text-xs text-[#ff9f43]">
-          실제 연결 · 검사·재검사는 보안엔진(/api/scans)과 GPU LLM(/api/llm/explain)을, 리포트 탭의 「실제 검사 리포트」는 /api/reports/plain을 호출합니다. 로그인·공격 재현·예제 리포트는 아직 예제입니다.
-          실제 인증·보안 검증을 수행하지 않으며, 리포트를 실제 증빙으로 사용할 수 없습니다.
-        </p>
-        {activeTab === "workspace" && (
-          <WorkspaceTab
-            findings={findings}
-            onToggleFindingFixed={handleToggleFindingFixed}
-            selectedFindingId={selectedFindingId}
-            onSelectFindingId={setSelectedFindingId}
-            logs={logs}
-            onRunScan={handleRunScan}
-            isScanning={isScanning}
-            hasRealScan={Boolean(lastResult)}
-            os={os}
-            onChangeOS={setOs}
-            hosting={hosting}
-            onChangeHosting={setHosting}
-            countdown={formatCountdown()}
-            onShowToast={showToast}
-            repoInput={repoInput}
-            onChangeRepoInput={setRepoInput}
-          />
-        )}
-
-        {activeTab === "architecture" && <ArchitectureTab />}
-
-        <div hidden={activeTab !== "incident"}>
-          <IncidentTab onShowToast={showToast} />
-        </div>
-
-        {activeTab === "report" && (
-          <ReportTab
-            reportInput={reportInput}
-            onShowToast={showToast}
-            onOpenLoginModal={() => setIsLoginModalOpen(true)}
-          />
-        )}
-      </main>
-
-      {/* 모달 및 알림 */}
-      <LoginModal
-        isOpen={isLoginModalOpen}
-        onClose={() => setIsLoginModalOpen(false)}
-        onSelectProvider={handleSelectProvider}
-      />
-
-      <CommandPalette
-        isOpen={isCmdPaletteOpen}
-        onClose={() => setIsCmdPaletteOpen(false)}
-        onSelectRepo={(url) => {
-          setRepoInput(url);
-          handleRunScan(url);
-        }}
-        onSwitchTab={setActiveTab}
-        onToggleTheme={handleToggleTheme}
-      />
-
-      <Toast message={toastMessage} visible={toastVisible} />
+    setError("");
+    void repository.runScan(url);
+    router.push("/repository");
+  }
+  return <main id="main" className="entry container" tabIndex={-1}>
+    <div className="entry-intro">
+      <p className="eyebrow"><span className="status-dot"/> SECURITY FOR BUILDERS</p>
+      <h1>내 코드의 보안,<br/>GitHub 주소로 점검하세요.</h1>
+      <p className="entry-description">실제 엔진으로 위험의 근거를 찾고,<br/>GPU Red–Blue 해석과 MCP로 다음 조치를 준비하세요.</p>
     </div>
-  );
+    <section className="entry-panel card" aria-label="GitHub 저장소 실제 검사">
+      <div className="entry-panel-top"><label htmlFor="repository">공개 GitHub 저장소</label><span className="status-label">실제 엔진 검사</span></div>
+      <form onSubmit={submit} noValidate>
+        <div className="url-form-row">
+          <div className="url-field"><Code2 size={20}/><input ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="https://github.com/owner/repository" value={repository.repoInput} onChange={event => { repository.setRepoInput(event.target.value); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={error ? "repository-error repository-hint" : "repository-hint"}/></div>
+          <button className="button primary" type="submit" disabled={!repository.restored || repository.isScanning}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : null}{repository.isScanning ? "검사 진행 중" : "실제 검사 시작"}<ArrowRight size={16}/></button>
+        </div>
+        {error && <p id="repository-error" className="form-error" role="alert">{error}</p>}
+        <p id="repository-hint" className="field-hint">저장소 루트 주소를 입력하세요. 웹사이트 주소나 파일 경로는 검사할 수 없습니다.</p>
+      </form>
+      <div className="entry-disclosure"><ShieldCheck size={17}/><p><strong>주소를 검사 서버로 보내 실제 코드를 점검합니다.</strong><br/>서버의 로그인·저장소 접근 정책이 적용되며, 검사와 추가 AI 해석은 수 분 걸릴 수 있습니다.</p></div>
+    </section>
+    <div className="repository-entry"><Link className="text-link" href="/repository">{repository.isScanning ? "진행 중인 검사 보기" : "검사 환경과 저장된 결과 보기"}<ArrowRight size={14}/></Link></div>
+    <section className="entry-benefits" aria-label="실제 검사에서 다음 조치까지">
+      <article><ShieldCheck size={20}/><h2>엔진으로 발견</h2><p>코드·의존성·비밀정보의<br/>실제 관찰 근거를 확인하세요.</p></article>
+      <article><Sparkles size={20}/><h2>GPU로 해석</h2><p>연결 가능한 경우 Red–Blue가<br/>위험과 수정 방향을 설명합니다.</p></article>
+      <article><Unplug size={20}/><h2>MCP로 전달</h2><p>결과를 코딩 도구에 전달하고<br/>수정 후 다시 검사하세요.</p></article>
+    </section>
+  </main>;
 }

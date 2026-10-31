@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test:domain": "node --test tests/entry.test.mjs",
+    "test:integration": "node scripts/verify-integration.mjs && node scripts/verify-provider.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {

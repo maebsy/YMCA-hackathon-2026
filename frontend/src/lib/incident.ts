@@ -145,7 +145,9 @@ export function scanSummary(repo: string, findings: unknown[], scannedAt?: strin
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
   const urgent = records.filter(item => ["critical", "high"].includes(String(item.severity))).length;
-  const date = scannedAt && /^\d{4}-\d{2}-\d{2}/.test(scannedAt) ? `${scannedAt.slice(0, 10)} ` : "";
+  // 서버 시각은 UTC(Z)라 앞 10글자를 그대로 쓰면 한국 날짜와 하루 어긋날 수 있습니다. 한국 시간 날짜로 바꿉니다
+  const parsed = scannedAt ? Date.parse(scannedAt) : NaN;
+  const date = Number.isFinite(parsed) ? `${new Date(parsed + 9 * 3600 * 1000).toISOString().slice(0, 10)} ` : "";
   const breakdown = [...counts].map(([label, count]) => `${label} ${count}`).join(", ");
   return `${date}보안 점검에서 ${name} 저장소의 보안 문제 ${records.length}건을 확인했습니다${breakdown ? `(${breakdown}` : ""}${breakdown && urgent ? `, 위험도 높음 ${urgent}건)` : breakdown ? ")" : ""}. `
     + "실제 무단 접근·변조·유출이 있었는지는 확인 중입니다.";

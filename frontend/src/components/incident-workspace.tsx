@@ -123,7 +123,9 @@ function ScanImport() {
     return [{ repo: repository.resultRepo, fingerprint: String(finding.fingerprint), title: String(finding.title || finding.fingerprint), finding: value }];
   });
   const scannedAt = typeof repository.reportInput.scan?.scanned_at === "string" ? repository.reportInput.scan.scanned_at : undefined;
-  const summary = scanSummary(repository.resultRepo, repository.reportInput.findings ?? [], scannedAt);
+  // 조치 기록 줄(scanCheckLine)과 같은 목록으로 셉니다. reportInput.findings는 같은 패키지 취약점을 묶어 건수가 다릅니다
+  const summary = scanSummary(repository.resultRepo, repository.findings.map(finding => ({ category: finding.scope,
+    severity: finding.confidence.replace(/^위험도\s*/, "") })), scannedAt);
   const toSelect = urgentEvidence(candidates).filter(item => !d.evidence.some(value => value.repo === item.repo && value.fingerprint === item.fingerprint));
   const filledFromScan = !fresh.length && !toSelect.length && d.form.summary.includes(summary);
   // 검사 결과로 초안의 빈 칸을 한 번에 채웁니다. 이미 적은 내용은 덮어쓰지 않고, 확인한 사실에는 덧붙입니다

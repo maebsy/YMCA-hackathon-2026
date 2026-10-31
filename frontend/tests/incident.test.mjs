@@ -303,6 +303,8 @@ test('scan results fill the draft: a factual summary that does not claim a breac
   const summary = domain.scanSummary('https://github.com/maebsy/cafe-order-demo', findings, '2026-11-01T07:20:00+09:00');
   assert.equal(summary, '2026-11-01 보안 점검에서 maebsy/cafe-order-demo 저장소의 보안 문제 5건을 확인했습니다(코드 2, 비밀키 노출 1, 외부 부품 1, 설정 1, 위험도 높음 3건). 실제 무단 접근·변조·유출이 있었는지는 확인 중입니다.');
   assert.match(domain.scanSummary('https://github.com/a/b', []), /^보안 점검에서 a\/b 저장소의 보안 문제 0건을 확인했습니다\. /);
+  // 서버의 UTC 시각은 한국 날짜로 (23:33Z = 다음 날 08:33 KST)
+  assert.match(domain.scanSummary('https://github.com/a/b', [], '2026-10-31T23:33:16Z'), /^2026-11-01 보안 점검/);
   assert.doesNotThrow(() => domain.buildIncidentInput(form({summary})));
   const finding = {fingerprint:'f1', tool:'semgrep', category:'code', rule_id:'r', title:'t', severity:'high'};
   const body = domain.buildFilingRequest(form(), [finding], ['https://github.com/a/b', 'https://github.com/a/b', ' ']);

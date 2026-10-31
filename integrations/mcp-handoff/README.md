@@ -47,6 +47,14 @@ integrations/mcp-handoff/.venv/Scripts/python.exe integrations/mcp-handoff/serve
 
 ## 사용자 에이전트에 연결
 
+### 실제 웹 검사 연결 (#71)
+
+`live_server.py` 배포에서는 `/mcp/connect`가 같은 브라우저의 실제 검사 결과를 읽습니다.
+사용자가 확인 후 전용 연결을 만들고, **수정 요청 복사** 문장을 자기 AI 에이전트에게 전달합니다.
+파일 설치 없이 해당 검사에만 연결하며 24시간 만료와 직접 폐기를 지원합니다.
+공용 샘플은 자동 대체하지 않습니다. 브라우저 export임을 명시하고 에이전트가 저장소·커밋·코드 근거를 확인합니다.
+자세한 데이터 경계·배포·검증은 [실제 검사 MCP 안내](../../deploy/general-server/live-mcp.md)를 참고하세요.
+
 ### 설치 없는 원격 연결 (#68)
 
 공개 허용된 결과를 운영자가 `http_server.py`로 배포하면 사용자는 ZIP/Python 설치 없이

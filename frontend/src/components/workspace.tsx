@@ -6,7 +6,7 @@ import IncidentWorkspace from "./incident-workspace";
 
 type View = "incident" | "help";
 const titles: Record<View, [string, string, string]> = {
-  incident: ["INCIDENT · REPORTING SUPPORT", "확인한 사실부터, 신고 준비까지.", "사고를 기록하고 필요한 대응과 기한을 확인하세요. 같은 사실로 신고서 초안을 준비합니다."],
+  incident: ["INCIDENT · REPORTING SUPPORT", "확인한 사실부터, 신고 준비까지.", "필요한 사실만 답하면 신고 대상·기한과 두 신고서 초안을 함께 만듭니다. 이후 비어 있는 칸만 이어서 묻습니다."],
   help: ["HELP & SCOPE", "시작하기 전에 알아두세요.", "GitHub 저장소 검사부터 수정 안내와 결과 전달까지 안내합니다."],
 };
 function Help() {

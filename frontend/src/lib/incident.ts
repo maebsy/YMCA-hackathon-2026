@@ -1,4 +1,4 @@
-import type { FilingFinding, FilingKind, FilingRequest, IncidentForm, IncidentInput, IncidentType, PersonalInfoBreach } from "@/types/incident";
+import type { FilingFinding, FilingKind, FilingReport, FilingRequest, IncidentForm, IncidentInput, IncidentType, PersonalInfoBreach } from "@/types/incident";
 
 export const initialIncidentForm: IncidentForm = {
   organizationName: "", serviceName: "", discoveredAt: "", occurredAt: "", summary: "", cause: "", damage: "", actions: "",
@@ -93,7 +93,9 @@ export function getAssessmentGaps(form: IncidentForm, kind: FilingKind): string[
   if (kind === "incident_24h") {
     const gaps = [];
     if (!form.incidentTypes.length) gaps.push("사고 유형을 아직 확인하지 않았습니다.");
-    if (form.externalAccess === "unknown") gaps.push("외부의 불법 접근 여부를 아직 확인하지 않았습니다.");
+    // The API reads external access only from personal_info, so ask it only where the form can send it.
+    const sendsPersonalInfo = form.leakState === "suspected" || form.leakState === "confirmed";
+    if (sendsPersonalInfo && form.externalAccess === "unknown") gaps.push("외부의 불법 접근 여부를 아직 확인하지 않았습니다.");
     return gaps;
   }
   if (form.leakState === "unknown") return ["개인정보 유출 여부를 아직 확인하지 않았습니다."];
@@ -124,4 +126,122 @@ export function buildFilingRequest(form: IncidentForm, selectedFindings: unknown
   const fingerprints = selectedFindings.map(finding => finding.fingerprint);
   if (new Set(fingerprints).size !== fingerprints.length) throw new Error("관련 검사 발견에 중복된 항목이 있습니다.");
   return { incident: { ...buildIncidentInput(form), related_fingerprints: fingerprints }, findings: [...selectedFindings] };
+}
+
+// ── Server-driven flow ──
+// The reports API already decides which fields are missing and which values it suggested (auto). The UI asks only
+// the facts the API would otherwise default, then maps the API's missing labels back onto the shared incident form.
+
+/** datetime-local value for the current Korea time. KST has no daylight saving, so a fixed +9h offset is exact. */
+export function koreaNow(date = new Date()): string {
+  return new Date(date.getTime() + 9 * 3_600_000).toISOString().slice(0, 16);
+}
+
+/** Facts the API would silently default (status → ongoing, is_supplement → false, subjects_notified → false). */
+export function draftBlockers(form: IncidentForm): Record<FilingKind, string[]> {
+  const common: string[] = [];
+  if (form.incidentStatus === "unknown") common.push("현재 대응 상태");
+  if (form.filingType === "unknown") common.push("최초·보완 신고 구분");
+  const privacy = [...common];
+  if (form.leakState !== "suspected" && form.leakState !== "confirmed") privacy.push("개인정보 유출 의심 또는 확인");
+  else if (form.subjectsNotified === "unknown") privacy.push("영향받은 분들께 이미 통지했는지");
+  return { incident_24h: common, privacy_72h: privacy };
+}
+
+export type QuestionKey = "organizationName" | "occurredAt" | "cause" | "damage" | "actions" | "department" | "contactName"
+  | "contactPhone" | "personalItems" | "affectedCount" | "summary";
+export type QuestionField = { key: QuestionKey; label: string; type: "text" | "textarea" | "datetime-local" | "tel" | "number"; hint?: string };
+export type RemainingQuestion = QuestionField & { kinds: FilingKind[] };
+
+const actionsQuestion: QuestionField = { key: "actions", label: "지금까지 한 조치", type: "textarea", hint: "실제로 한 조치를 한 줄에 하나씩 적어 주세요." };
+// Keys are FormField labels from backend/app/reports/filing.py. The API reports them as "<section> · <label>".
+const questionFields: Record<string, QuestionField> = {
+  "회사(기관) 이름": { key: "organizationName", label: "회사·기관명", type: "text" },
+  "발생 일시": { key: "occurredAt", label: "사고가 실제로 일어난 시각 · 한국 시간", type: "datetime-local", hint: "모르면 비워 두고 먼저 신고한 뒤 확인되면 보완하세요." },
+  "원인": { key: "cause", label: "확인한 원인", type: "textarea", hint: "모르면 ‘조사 중’이라고 적고, 확인되면 보완 신고하세요." },
+  "피해 내용": { key: "damage", label: "확인한 피해 내용", type: "textarea", hint: "어떤 시스템·데이터가 어떻게 영향을 받았는지 확인한 만큼 적어 주세요." },
+  "조치 사항": actionsQuestion,
+  "피해 최소화 대책·조치 및 결과": actionsQuestion,
+  "담당 부서": { key: "department", label: "담당 부서", type: "text" },
+  "담당자": { key: "contactName", label: "담당자", type: "text" },
+  "연락처(전화)": { key: "contactPhone", label: "연락처(전화)", type: "tel", hint: "신고 기관이 바로 연락할 수 있는 번호" },
+  "유출된 개인정보 항목": { key: "personalItems", label: "유출된 개인정보 항목", type: "text", hint: "이메일, 이름처럼 항목명만 쉼표로 구분하세요." },
+  "유출 규모": { key: "affectedCount", label: "영향받은 인원", type: "number", hint: "모르면 비워 두세요. 빈칸은 0명이 아닙니다." },
+  "유출 시점과 경위": { key: "summary", label: "확인한 사실과 경위", type: "textarea" },
+};
+
+/** Turns each draft's `missing` list into one shared question per form field, so one answer fills both drafts. */
+export function remainingQuestions(missing: Partial<Record<FilingKind, string[]>>): { questions: RemainingQuestion[]; unmapped: string[] } {
+  const byKey = new Map<QuestionKey, RemainingQuestion>();
+  const unmapped: string[] = [];
+  for (const kind of ["incident_24h", "privacy_72h"] as const) {
+    for (const entry of missing[kind] ?? []) {
+      const split = entry.indexOf(" · ");
+      const label = split >= 0 ? entry.slice(split + 3) : entry;
+      const field = questionFields[label];
+      if (!field) { if (!unmapped.includes(label)) unmapped.push(label); continue; }
+      const existing = byKey.get(field.key);
+      if (!existing) byKey.set(field.key, { ...field, kinds: [kind] });
+      else if (!existing.kinds.includes(kind)) existing.kinds.push(kind);
+    }
+  }
+  return { questions: [...byKey.values()], unmapped };
+}
+
+export type AutoSuggestion = { label: string; value: string; kinds: FilingKind[]; usableAs?: "cause" };
+/** Values the API filled in by itself (`auto`), so the user can confirm them instead of retyping. */
+export function autoSuggestions(reports: Partial<Record<FilingKind, FilingReport>>): AutoSuggestion[] {
+  const found = new Map<string, AutoSuggestion>();
+  for (const kind of ["incident_24h", "privacy_72h"] as const) {
+    const fields = (reports[kind]?.sections ?? []).flatMap(section => [...section.fields, ...section.cards.flatMap(card => card.fields)]);
+    for (const field of fields) {
+      if (!field.auto || !field.value) continue;
+      const id = `${field.label}\n${field.value}`;
+      const existing = found.get(id);
+      if (existing) { if (!existing.kinds.includes(kind)) existing.kinds.push(kind); continue; }
+      found.set(id, { label: field.label, value: field.value, kinds: [kind], ...(field.label === "원인" ? { usableAs: "cause" as const } : {}) });
+    }
+  }
+  return [...found.values()];
+}
+
+export type ScanFinding = { id: string; title: string; fixed: boolean };
+const tokenLike = /[A-Za-z0-9_\-+/=]{24,}/g;
+/** Actions the app already recorded during scanning: fixes verified by a rescan, and fixes the user marked by hand. */
+export function scanActions(findings: ScanFinding[], pendingIds: string[]): string[] {
+  const title = (value: string) => [...value.replace(tokenLike, "[가림]").trim()].slice(0, 200).join("");
+  const actions: string[] = [];
+  for (const finding of findings) {
+    const line = finding.fixed ? `취약점 수정 후 재검사에서 해결 확인: ${title(finding.title)}`
+      : pendingIds.includes(finding.id) ? `취약점 수정 조치(재검사 확인 전): ${title(finding.title)}` : "";
+    if (line && !actions.includes(line)) actions.push(line);
+  }
+  return actions.slice(0, 30);
+}
+
+export function mergeActions(current: string, additions: string[]): string {
+  const lines = current.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  for (const line of additions) if (!lines.includes(line)) lines.push(line);
+  return lines.slice(0, 30).join("\n");
+}
+
+const notRequiredStatus = "신고 대상 아닐 수 있음";
+export const heldStatus = "신고 대상 판단 보류 · 미확인 사실 있음";
+/**
+ * The API treats omitted yes/no answers as "no", so an unanswered privacy draft would say the filing criteria are not
+ * met. Until the API accepts unknown answers, replace that conclusion with the questions that are still open.
+ */
+export function qualifyPrivacyDraft(report: FilingReport, markdown: string, gaps: string[]): { report: FilingReport; markdown: string } {
+  if (report.kind !== "privacy_72h" || !gaps.length || !report.status.text.startsWith(notRequiredStatus)) return { report, markdown };
+  const bullets = ["아직 확인하지 못한 사실이 있어 신고 대상인지 판단하지 않았습니다.", ...gaps,
+    "확인한 뒤 초안을 다시 만들면 판단을 갱신합니다. 모르는 채로 기한이 다가오면 먼저 신고하는 편이 안전합니다."];
+  const section = /^## 신고 대상인지\n\n(?:- .*\n)+/m;
+  let next = markdown.replace(/^(\*\*상태\*\* )\S+ 신고 대상 아닐 수 있음 · 통지는 필요/m, `$1⚠️ ${heldStatus}`);
+  next = section.test(next) ? next.replace(section, `## 신고 대상인지\n\n${bullets.map(line => `- ${line}`).join("\n")}\n`)
+    : `> ${bullets.join(" ")}\n\n${next}`;
+  return {
+    report: { ...report, status: { text: heldStatus, tone: "warning" },
+      sections: report.sections.map(item => item.heading === "신고 대상인지" ? { ...item, bullets } : item) },
+    markdown: next,
+  };
 }

@@ -219,3 +219,68 @@ test('wrong report kinds, invalid dates and malformed nested fields are rejected
     }
   } finally {global.fetch = original;}
 });
+
+// Captured from backend/app/reports (TestClient) with sensitive/unique-id/external/recovered answers left unknown.
+const unknownPrivacy = JSON.parse(fs.readFileSync(path.join(directory, 'fixtures/privacy-72h-unknown-facts.json'), 'utf8'));
+
+test('external access is asked for the 24h duty only when the form can send it', () => {
+  const gaps = leakState => domain.getAssessmentGaps(form({incidentTypes:['data_leak'], leakState}), 'incident_24h');
+  assert.deepEqual(gaps('none'), []);
+  assert.deepEqual(gaps('unknown'), []);
+  assert.ok(gaps('suspected').some(gap => /외부의 불법 접근/.test(gap)));
+});
+
+test('draft blockers list only the facts the API would otherwise default', () => {
+  assert.deepEqual(domain.draftBlockers(form()), {incident_24h:['현재 대응 상태', '최초·보완 신고 구분'],
+    privacy_72h:['현재 대응 상태', '최초·보완 신고 구분', '개인정보 유출 의심 또는 확인']});
+  const known = form({incidentStatus:'contained', filingType:'initial', leakState:'suspected'});
+  assert.deepEqual(domain.draftBlockers(known), {incident_24h:[], privacy_72h:['영향받은 분들께 이미 통지했는지']});
+  assert.deepEqual(domain.draftBlockers({...known, subjectsNotified:'no'}).privacy_72h, []);
+});
+
+test('missing labels from both real drafts become one shared question per fact', () => {
+  const {questions, unmapped} = domain.remainingQuestions({incident_24h:unknownPrivacy.incident_missing, privacy_72h:unknownPrivacy.report.missing});
+  assert.deepEqual(unmapped, []);
+  assert.deepEqual(questions.map(question => question.key), ['occurredAt', 'cause', 'damage', 'department', 'contactName', 'contactPhone']);
+  assert.deepEqual(questions.find(question => question.key === 'contactName').kinds, ['incident_24h', 'privacy_72h']);
+  assert.deepEqual(domain.remainingQuestions({privacy_72h:['신고서 · 새 칸']}).unmapped, ['새 칸']);
+});
+
+test('auto-filled API values are surfaced for confirmation, and only a cause can be moved into the facts', () => {
+  const suggestions = domain.autoSuggestions({privacy_72h:unknownPrivacy.report});
+  assert.ok(suggestions.length >= 2);
+  assert.ok(suggestions.every(item => item.value && item.kinds[0] === 'privacy_72h' && !item.usableAs));
+  const cause = {...report(), sections:[{...report().sections[0], fields:[{label:'원인', value:'점검 발견이 원인일 수 있습니다', required:true, auto:true}]}]};
+  assert.deepEqual(domain.autoSuggestions({incident_24h:cause, privacy_72h:cause})[0], {label:'원인', value:'점검 발견이 원인일 수 있습니다', kinds:['incident_24h', 'privacy_72h'], usableAs:'cause'});
+});
+
+test('unknown privacy answers never reach the draft as a not-required conclusion', () => {
+  const gaps = domain.getAssessmentGaps(form({leakState:'suspected', affectedCount:'200'}), 'privacy_72h');
+  const {report: qualified, markdown} = domain.qualifyPrivacyDraft(unknownPrivacy.report, unknownPrivacy.markdown, gaps);
+  assert.match(unknownPrivacy.markdown, /해당하지 않습니다/);
+  assert.doesNotMatch(markdown, /해당하지 않습니다|신고 대상 아닐 수 있음/);
+  assert.match(markdown, /\*\*상태\*\* ⚠️ 신고 대상 판단 보류/);
+  assert.match(markdown, /## 신고 대상인지\n\n- 아직 확인하지 못한 사실이 있어[\s\S]*민감정보 포함 여부[\s\S]*\n\n## 기한/);
+  assert.equal(qualified.status.text, domain.heldStatus);
+  assert.ok(qualified.sections.find(section => section.heading === '신고 대상인지').bullets.some(line => /고유식별정보/.test(line)));
+  // Known answers keep the API's own conclusion.
+  assert.equal(domain.qualifyPrivacyDraft(unknownPrivacy.report, unknownPrivacy.markdown, []).markdown, unknownPrivacy.markdown);
+  const required = {...unknownPrivacy.report, status:{text:'작성 중 · 3칸 남음', tone:'warning'}};
+  assert.equal(domain.qualifyPrivacyDraft(required, unknownPrivacy.markdown, gaps).markdown, unknownPrivacy.markdown);
+});
+
+test('scan records become action lines without exposing token-like strings or exceeding API limits', () => {
+  const tokenLike = 'tok_' + 'a1'.repeat(15); // built at runtime: any 24+ char token-like run must be masked
+  const findings = [{id:'a', title:'SQL 인젝션', fixed:true}, {id:'b', title:`노출된 키 ${tokenLike}`, fixed:false}, {id:'c', title:'열린 항목', fixed:false}];
+  assert.deepEqual(domain.scanActions(findings, ['b']), ['취약점 수정 후 재검사에서 해결 확인: SQL 인젝션', '취약점 수정 조치(재검사 확인 전): 노출된 키 [가림]']);
+  const many = Array.from({length:40}, (_, index) => ({id:String(index), title:`${index} ${'긴 제목'.repeat(100)}`, fixed:true}));
+  const lines = domain.scanActions(many, []);
+  assert.equal(lines.length, 30);
+  assert.ok(lines.every(line => [...line].length <= 500));
+  assert.equal(domain.mergeActions('노출된 키 폐기\n', ['노출된 키 폐기', '새 조치']), '노출된 키 폐기\n새 조치');
+  assert.doesNotThrow(() => domain.buildIncidentInput(form({actions:domain.mergeActions('', lines)})));
+});
+
+test('the "now" shortcut is Korea time regardless of the device time zone', () => {
+  assert.equal(domain.koreaNow(new Date('2026-10-31T15:30:45Z')), '2026-11-01T00:30');
+});

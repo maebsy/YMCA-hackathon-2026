@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { assessIncident, getFilingDocument, getFilingReport } from "@/lib/api";
-import { buildFilingRequest, buildIncidentInput, initialIncidentForm } from "@/lib/incident";
+import { buildFilingRequest, buildIncidentInput, draftBlockers, getAssessmentGaps, initialIncidentForm, qualifyPrivacyDraft } from "@/lib/incident";
 import type { AssessResponse, FilingKind, FilingReport, FilingRequest, IncidentForm } from "@/types/incident";
 
 export type IncidentEvidence = { repo: string; fingerprint: string; title: string; finding: unknown };
@@ -42,6 +42,13 @@ function useIncidentState() {
     setForm(previous => ({ ...previous, [key]: value }));
   }
 
+  // One change for several facts (e.g. importing scan records), so drafts go stale once.
+  function applyFacts(patch: Partial<IncidentForm>) {
+    if (!Object.keys(patch).length) return;
+    changed();
+    setForm(previous => ({ ...previous, ...patch }));
+  }
+
   function toggleEvidence(item: IncidentEvidence) {
     const exists = evidence.some(value => value.repo === item.repo && value.fingerprint === item.fingerprint);
     if (!exists && evidence.length >= 50) return;
@@ -51,11 +58,11 @@ function useIncidentState() {
       : [...previous, item]);
   }
 
-  async function assess() {
-    if (pending.current.assessment) return;
+  async function assess(): Promise<boolean> {
+    if (pending.current.assessment) return false;
     let input;
     try { input = buildIncidentInput(form); }
-    catch (caught) { setErrors(previous => ({ ...previous, assessment: message(caught) })); setStep(0); return; }
+    catch (caught) { setErrors(previous => ({ ...previous, assessment: message(caught) })); setStep(0); return false; }
     const token = ++sequence.current.assessment;
     const requestedRevision = version.current;
     pending.current.assessment = true;
@@ -63,11 +70,13 @@ function useIncidentState() {
     setErrors(previous => ({ ...previous, assessment: "" }));
     try {
       const result = await assessIncident(input);
-      if (token !== sequence.current.assessment) return;
+      if (token !== sequence.current.assessment) return false;
       setAssessment({ result, revision: requestedRevision });
       setStep(1);
+      return true;
     } catch (caught) {
       if (token === sequence.current.assessment) setErrors(previous => ({ ...previous, assessment: message(caught) }));
+      return false;
     } finally {
       if (token === sequence.current.assessment) {
         pending.current.assessment = false;
@@ -78,14 +87,12 @@ function useIncidentState() {
 
   async function generate(kind: FilingKind, replaceEdited = false) {
     if (pending.current[kind] || (documents[kind]?.edited && !replaceEdited)) return;
-    if (form.incidentStatus === "unknown" || form.filingType === "unknown") {
-      setErrors(previous => ({ ...previous, [kind]: "초안을 만들기 전에 현재 대응 상태와 최초·보완 신고 구분을 확인해 주세요. 미확인 내용을 ‘대응 중’이나 ‘최초 신고’로 채우지 않습니다." }));
+    const blockers = draftBlockers(form)[kind];
+    if (blockers.length) {
+      setErrors(previous => ({ ...previous, [kind]: `초안을 만들기 전에 확인해 주세요: ${blockers.join(", ")}. 확인하지 못한 내용을 ‘대응 중’·‘최초 신고’·‘통지하지 않음’ 같은 기본값으로 채우지 않습니다.` }));
       return;
     }
-    if (kind === "privacy_72h" && (form.leakState === "unknown" || form.leakState === "none" || form.subjectsNotified === "unknown")) {
-      setErrors(previous => ({ ...previous, [kind]: "개인정보 문서를 만들기 전에 유출 확인 상태와 실제 통지 여부를 사실 기록에서 보완해 주세요. 확인하지 못한 내용을 ‘통지하지 않음’으로 채우지 않습니다." }));
-      return;
-    }
+    const gaps = getAssessmentGaps(form, kind);
     let body: FilingRequest;
     try { body = buildFilingRequest(form, evidence.map(item => item.finding)); }
     catch (caught) { setErrors(previous => ({ ...previous, [kind]: message(caught) })); return; }
@@ -95,8 +102,9 @@ function useIncidentState() {
     setBusy(previous => ({ ...previous, [kind]: true }));
     setErrors(previous => ({ ...previous, [kind]: "" }));
     try {
-      const [report, markdown] = await Promise.all([getFilingReport(body, kind), getFilingDocument(body, kind, "markdown")]);
+      const [rawReport, rawMarkdown] = await Promise.all([getFilingReport(body, kind), getFilingDocument(body, kind, "markdown")]);
       if (token !== sequence.current[kind]) return;
+      const { report, markdown } = qualifyPrivacyDraft(rawReport, rawMarkdown, gaps);
       setDocuments(previous => ({ ...previous, [kind]: { report, markdown, edited: false, revision: requestedRevision, body } }));
     } catch (caught) {
       if (token === sequence.current[kind]) setErrors(previous => ({ ...previous, [kind]: message(caught) }));
@@ -118,7 +126,15 @@ function useIncidentState() {
     });
   }
 
-  return { form, updateForm, evidence, toggleEvidence, step, setStep, revision, assessment, documents, busy, errors, assess, generate, editDocument };
+  // One action: check filing duties, then draft every document whose required facts are known.
+  // Edited drafts are kept; the document card asks before replacing them.
+  async function prepare() {
+    if (!await assess()) return;
+    const blockers = draftBlockers(form);
+    await Promise.all(kinds.filter(kind => !blockers[kind].length).map(kind => generate(kind)));
+  }
+
+  return { form, updateForm, applyFacts, evidence, toggleEvidence, step, setStep, revision, assessment, documents, busy, errors, assess, generate, prepare, editDocument };
 }
 
 function message(caught: unknown) { return caught instanceof Error ? caught.message : "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."; }

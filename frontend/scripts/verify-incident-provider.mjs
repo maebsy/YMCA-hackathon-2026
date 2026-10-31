@@ -384,4 +384,57 @@ await check("Late API responses cannot update an unmounted provider", async () =
   await Promise.all([assessmentRequest, filingRequest]);
 });
 
+async function prepare(provider) { const running = provider.value.prepare(); provider.flush(); await running; provider.flush(); }
+
+await check("One prepare action assesses duties and drafts every document whose facts are known", async () => {
+  const provider = mountProvider(); fill(provider);
+  await prepare(provider);
+  assert.equal(provider.calls.assessments.length, 1); assert.equal(provider.value.step, 1);
+  assert.deepEqual(provider.calls.reports.map(call => call.kind).sort(), ["incident_24h", "privacy_72h"]);
+  assert.ok(provider.value.documents.incident_24h && provider.value.documents.privacy_72h);
+  provider.unmount();
+});
+
+await check("Prepare skips drafts blocked by unknown facts instead of defaulting them", async () => {
+  const provider = mountProvider(); fill(provider, { leakState: "none", filingType: "unknown" });
+  await prepare(provider);
+  assert.equal(provider.calls.assessments.length, 1); assert.equal(provider.calls.reports.length, 0);
+  assert.equal(Object.keys(provider.value.documents).length, 0); assert.equal(provider.value.errors.incident_24h, "");
+  provider.update("filingType", "initial");
+  await prepare(provider);
+  assert.deepEqual(provider.calls.reports.map(call => call.kind), ["incident_24h"]);
+  provider.unmount();
+});
+
+await check("Prepare keeps edited drafts and failed assessment drafts nothing", async () => {
+  const provider = mountProvider(); fill(provider);
+  await prepare(provider); provider.edit("incident_24h", "# 사용자 편집");
+  provider.update("summary", "보완한 사실");
+  await prepare(provider);
+  assert.equal(provider.value.documents.incident_24h.markdown, "# 사용자 편집");
+  assert.equal(provider.calls.reports.filter(call => call.kind === "incident_24h").length, 1);
+  assert.equal(provider.calls.reports.filter(call => call.kind === "privacy_72h").length, 2);
+  provider.unmount();
+  const failing = mountProvider({ assess: async () => { throw new Error("신고 대상 확인 실패 (500): 검증용"); } }); fill(failing);
+  await prepare(failing);
+  assert.equal(failing.calls.reports.length, 0); assert.match(failing.value.errors.assessment, /500/);
+  failing.unmount();
+});
+
+await check("Unknown privacy answers are replaced in the stored draft, not only on screen", async () => {
+  const notRequired = kind => ({ ...report(kind), status: { text: "신고 대상 아닐 수 있음 · 통지는 필요", tone: "info" },
+    sections: [{ heading: "신고 대상인지", paragraphs: [], fields: [], bullets: ["신고 기준(1천명 이상, 민감·고유식별정보, 외부 불법 접근)에 해당하지 않습니다."], steps: [], cards: [] }] });
+  const markdown = "# 개인정보 유출 신고서 초안\n\n**상태** 🔵 신고 대상 아닐 수 있음 · 통지는 필요 · 작성 2026-10-31\n\n## 신고 대상인지\n\n- 신고 기준(1천명 이상, 민감·고유식별정보, 외부 불법 접근)에 해당하지 않습니다.\n\n## 기한\n";
+  const provider = mountProvider({ filing: async (_, kind) => notRequired(kind), document: async () => markdown });
+  fill(provider, { affectedCount: "200" });
+  await provider.generate("privacy_72h");
+  const stored = provider.value.documents.privacy_72h;
+  assert.doesNotMatch(stored.markdown, /해당하지 않습니다|아닐 수 있음/); assert.match(stored.markdown, /민감정보 포함 여부/);
+  assert.equal(stored.report.status.text, domain.heldStatus);
+  provider.update("includesSensitive", "no"); provider.update("includesUniqueId", "no"); provider.update("externalAccess", "no"); provider.update("recoveredLowRisk", "no");
+  await provider.generate("privacy_72h");
+  assert.match(provider.value.documents.privacy_72h.markdown, /해당하지 않습니다/, "Fully answered facts keep the API conclusion");
+  provider.unmount();
+});
+
 console.log(`Verified ${checks} incident provider scenarios. Real input/evidence mapping with local report API fixtures; no external scan or incident submission was performed.`);

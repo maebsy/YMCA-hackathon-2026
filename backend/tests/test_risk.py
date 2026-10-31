@@ -219,8 +219,10 @@ async def test_intel_offline_returns_unknown_and_backs_off():
     result = await intel.lookup(["CVE-2025-0001"])
     again = await intel.lookup(["CVE-2025-0002"])
 
-    assert result["CVE-2025-0001"].kev is False and result["CVE-2025-0001"].epss is None
-    assert again["CVE-2025-0002"].epss is None
+    # 목록을 한 번도 받지 못했으면 '없음(False)'이 아니라 '모름(None)' (#93)
+    assert result["CVE-2025-0001"].kev is None and result["CVE-2025-0001"].epss is None
+    assert result["CVE-2025-0001"].kev_checked_at is None
+    assert again["CVE-2025-0002"].kev is None and again["CVE-2025-0002"].epss is None
     # 실패한 뒤에는 기다리는 동안(기본 5분) 다시 받으러 가지 않습니다: KEV 1번 + EPSS 1번뿐
     assert len(calls) == 2
     await intel.aclose()
@@ -261,3 +263,84 @@ def test_render_briefing_is_fenced_data():
 def test_browser_bundle_signals(code):
     f = finding(category="secret", file_path="src/lib/client.ts", snippet=code)
     assert collect_signals(f).browser_code
+
+
+# ── #93: KEV 조회 실패는 '목록에 없음'이 아니라 '모름' ──
+
+
+async def test_kev_http_error_is_unknown_not_absent():
+    """이슈 재현: KEV를 한 번도 받지 못한 채 503이면 kev=None이어야 합니다."""
+    intel = HttpThreatIntel(transport=httpx.MockTransport(lambda request: httpx.Response(503)))
+    try:
+        record = (await intel.lookup(["CVE-2021-23337"]))["CVE-2021-23337"]
+    finally:
+        await intel.aclose()
+
+    assert record.kev is None and record.kev_date_added is None
+    assert record.kev_checked_at is None and record.kev_stale is False
+
+
+async def test_kev_absent_after_successful_download_is_false_with_time():
+    calls: list[str] = []
+    intel = HttpThreatIntel(transport=_intel_transport(calls))
+    result = await intel.lookup(["CVE-2025-0001", "CVE-2020-9999"])
+    await intel.aclose()
+
+    assert result["CVE-2025-0001"].kev is True
+    assert result["CVE-2020-9999"].kev is False  # 목록을 받아 확인했는데 없음
+    for record in result.values():
+        assert record.kev_checked_at and record.kev_checked_at.endswith("+00:00")
+        assert record.kev_stale is False
+
+
+async def test_kev_refresh_failure_keeps_old_list_marked_stale(monkeypatch):
+    import app.llm.intel as intel_module
+
+    fail = {"on": False}
+    clock = {"now": 1000.0}
+    base = _intel_transport([])
+
+    async def flaky(request: httpx.Request) -> httpx.Response:
+        if fail["on"]:
+            raise httpx.ConnectError("offline")
+        return await base.handle_async_request(request)
+
+    monkeypatch.setattr(intel_module.time, "monotonic", lambda: clock["now"])
+    intel = HttpThreatIntel(ttl_s=3600, failure_backoff_s=0, transport=httpx.MockTransport(flaky))
+    first = (await intel.lookup(["CVE-2025-0001"]))["CVE-2025-0001"]
+    fail["on"], clock["now"] = True, clock["now"] + 7200  # 보관 기간(1시간)이 지난 뒤 다시 받기 실패
+    later = (await intel.lookup(["CVE-2025-0001"]))["CVE-2025-0001"]
+    await intel.aclose()
+
+    assert first.kev is True and first.kev_stale is False
+    # 새로 못 받으면 지난 목록으로 판정하되, 오래된 목록임과 받은 시각을 알립니다
+    assert later.kev is True and later.kev_stale is True
+    assert later.kev_checked_at == first.kev_checked_at
+
+
+def test_unknown_kev_is_not_reported_as_no_attack():
+    f = finding(category="dependency", rule_id="CVE-2021-23337", refs={"cve": ["CVE-2021-23337"]}, file_path="package-lock.json")
+    unknown = {"CVE-2021-23337": ThreatIntelRecord(cve="CVE-2021-23337", kev=None)}
+    absent = {"CVE-2021-23337": ThreatIntelRecord(cve="CVE-2021-23337", kev=False)}
+
+    risk_unknown = assess(f, analysis(runtime="dependency", reachable="unknown"), collect_signals(f), unknown)
+    risk_absent = assess(f, analysis(runtime="dependency", reachable="unknown"), collect_signals(f), absent)
+
+    assert "확인하지 못했습니다" in risk_unknown.factors[0].reason
+    assert "KEV" in risk_unknown.factors[0].reason
+    assert risk_absent.factors[0].reason == "실제 공격이나 공개된 공격 방법은 확인되지 않았습니다"
+    # SSVC 결정 자체는 지금 규칙(none) 그대로 — 설명만 정직하게 바뀝니다
+    assert risk_unknown.decision == risk_absent.decision
+
+
+@pytest.mark.parametrize(("kev", "expected"), [(True, True), (False, False), (None, None)])
+def test_briefing_passes_kev_unknown_to_the_model(kev, expected):
+    from app.llm import prompts
+
+    f = finding(category="dependency", rule_id="CVE-2021-23337", refs={"cve": ["CVE-2021-23337"]}, file_path="package-lock.json")
+    intel = {"CVE-2021-23337": ThreatIntelRecord(cve="CVE-2021-23337", kev=kev)}
+    risk = assess(f, analysis(runtime="dependency"), collect_signals(f), intel)
+
+    block = prompts.render_briefing(analysis(runtime="dependency"), risk)
+    data = json.loads(block.split("<analysis>\n", 1)[1].rsplit("\n</analysis>", 1)[0].replace("<\\/", "</"))
+    assert data["risk"]["known_exploited"] is expected

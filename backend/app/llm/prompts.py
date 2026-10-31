@@ -231,7 +231,9 @@ def render_briefing(analysis, risk, environment=None, guide=None) -> str:
             "decision": risk.decision,
             "summary": risk.summary,
             "reasons": [f.reason for f in risk.factors],
-            "known_exploited": any(r.kev for r in risk.intel),
+            # True=KEV 확인, False=KEV 목록에 없음, None=KEV 목록을 받지 못해 모름 (#93)
+            "known_exploited": True if any(r.kev for r in risk.intel)
+            else (None if any(r.kev is None for r in risk.intel) else False),
         },
     }
     parts = ["<analysis>\n" + json.dumps(block, ensure_ascii=False, indent=2).replace("</analysis", "<\\/analysis") + "\n</analysis>"]

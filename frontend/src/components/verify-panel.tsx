@@ -111,7 +111,8 @@ export default function VerifyPanel() {
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("run");
     if (requested !== "reference" && requested !== "ai") return;
-    window.history.replaceState(null, "", window.location.pathname);
+    // Next.js가 쓰는 history state(__NA 등)는 그대로 두고 주소의 ?run=만 지웁니다
+    window.history.replaceState(window.history.state, "", window.location.pathname);
     const timer = window.setTimeout(() => { void start(requested); }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps

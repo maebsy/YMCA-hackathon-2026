@@ -1,26 +1,11 @@
 import type { Metadata } from "next";
+import { DemoProvider } from "@/components/demo-provider";
+import Shell from "@/components/shell";
+import { RepositoryProvider } from "@/components/repository-provider";
 import "./globals.css";
+import "./flow.css";
 
-export const metadata: Metadata = {
-  title: "72hours — 바이브 코더 보안 플랫폼 | 찾고, 고치고, 72시간 안에 끝냅니다.",
-  description:
-    "바이브코더와 비개발자도 즉시 다음 행동이 보이는 웹사이트 보안 서비스. Opengrep·OSV·Gitleaks 및 자체 특화 룰셋으로 진단하고, 로컬 GPU LLM의 Red–Blue 검증 루프를 통과한 안전한 수정 지시만 코딩툴(MCP)로 전달합니다.",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="ko">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      </head>
-      <body className="min-h-screen bg-[#0a0a0a] text-[#fafafa] selection:bg-[#d4ff3a] selection:text-black antialiased font-sans">
-        {children}
-      </body>
-    </html>
-  );
+export const metadata: Metadata = { title: "72hours — 만드는 사람 곁의 보안 가이드", description: "URL로 시작하는 샘플 체험과 GitHub 저장소 실제 검사. 근거를 이해하고 다음 조치를 준비하세요." };
+export default function RootLayout({ children }: Readonly<{children: React.ReactNode}>) {
+  return <html lang="ko" data-theme="dark" suppressHydrationWarning><body><DemoProvider><RepositoryProvider><Shell>{children}</Shell></RepositoryProvider></DemoProvider></body></html>;
 }

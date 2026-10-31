@@ -131,6 +131,24 @@ journalctl --user -u 72hours-quick-tunnel -n 80 --no-pager
 
 ## 검증과 변경 범위
 
+### 공용 로그인 창 없이 공개 체험 제공
+
+운영자가 비회원의 웹·검사·LLM 사용을 승인한 시연에서는 서버에서
+`python3 deploy/general-server/open-quick-web.py`를 실행합니다. 공유 아이디/비밀번호를
+묻는 프록시 `basic_auth`만 제거하며, Supabase 가입이나 앱의 인증 설정을 변경하지 않습니다.
+현재 legacy 모드의 검사·LLM API도 익명으로 사용할 수 있으므로 기존 작업 상한은 유지합니다.
+
+스크립트는 설정을 백업하고 Caddy 검증 후 `SIGUSR1`으로 재적용합니다.
+웹 프록시·Cloudflare 터널 PID가 유지되어 임시 URL이 바뀌지 않았는지 확인하고,
+익명 루트·API·health 응답이 실패하면 설정을 복구합니다. Caddy 2.11 이상이 필요합니다.
+준비 스크립트를 다시 실행해도 기존 프록시 설정은 덮어쓰지 않습니다.
+외부의 새 브라우저에서 로그인 창 없이 화면이 열리고 검사 접수·조회가 되는지 별도로 확인하세요.
+복구는 출력된 백업을 `~/apps/72hours/runtime/Caddyfile.quick`로 되돌린 뒤
+`systemctl --user kill --kill-whom=main --signal=USR1 72hours-quick-web`으로 적용합니다.
+
+[Caddy의 신호 기반 재적용](https://caddyserver.com/docs/command-line#signals)은
+`caddy run --config`로 시작하고 관리 API로 설정을 바꾸지 않은 경우에만 지원됩니다.
+
 ```bash
 python3 -m unittest discover -s deploy/general-server/tests -v
 bash -n deploy/general-server/install.sh

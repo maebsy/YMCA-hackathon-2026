@@ -78,7 +78,9 @@ def main() -> None:
     source = Path(__file__).resolve().parent
     runtime = home / "apps/72hours/runtime"
     runtime.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source / "Caddyfile.quick", runtime / "Caddyfile.quick")
+    # Keep the operator's existing access policy (including explicitly opened demos).
+    if not (runtime / "Caddyfile.quick").exists():
+        shutil.copyfile(source / "Caddyfile.quick", runtime / "Caddyfile.quick")
     units = home / ".config/systemd/user"
     units.mkdir(parents=True, exist_ok=True)
     for name in ("72hours-quick-web.service", "72hours-quick-tunnel.service"):

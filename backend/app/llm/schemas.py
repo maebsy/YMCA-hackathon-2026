@@ -225,6 +225,13 @@ class RedRound(BaseModel):
     latency_ms: int
 
 
+# 브라우저로 전달되는 비밀값: 코드만 보고는 키 권한(검색 전용인지, 쓰기·관리 권한인지)을 알 수 없습니다 (#100)
+BROWSER_SECRET_REVIEW = (
+    "이 키는 페이지와 함께 방문자 브라우저로 전달됩니다. 검색 전용처럼 공개해도 되는 키인지, "
+    "쓰기·관리 권한이 있는 키인지 키를 발급한 서비스 관리 화면에서 직접 확인해야 합니다."
+)
+
+
 class Explanation(BaseModel):
     fingerprint: str
     variant: Variant
@@ -241,6 +248,8 @@ class Explanation(BaseModel):
     red_rounds: list[RedRound] = Field(default_factory=list)
     # Red 검토를 끝내 통과하지 못하면 대시보드에 경고로 띄웁니다
     needs_manual_review: bool = False
+    # 사람 확인이 필요한 이유 (Red 미통과 말고 다른 이유일 때). 예) 브라우저로 나가는 키라 권한 확인 필요
+    manual_review_reason: str | None = None
     # 문맥 분석 (LLM 또는 규칙 신호), 위험도 (SSVC 결정), OS별 명령
     context: ContextAnalysis | None = None
     risk: RiskAssessment | None = None

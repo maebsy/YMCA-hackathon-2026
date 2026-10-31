@@ -1,18 +1,20 @@
 <!doctype html><html lang="ko"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>72hours · AI에서 서비스 시작</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>72hours · MCP 연결</title>
 <style>
-:root{color-scheme:dark}body{margin:0;background:#0b1120;color:#e8edf8;font:16px/1.7 system-ui,sans-serif}main{max-width:860px;margin:4vh auto;padding:24px}h1{font-size:clamp(30px,5vw,44px);line-height:1.25}h2{font-size:22px}details{margin:18px 0;padding:12px 0;border-top:1px solid #30405e}summary{cursor:pointer}section{background:#151f33;border:1px solid #30405e;border-radius:18px;padding:24px;margin:24px 0}a{color:#9ec5ff}button,.button{display:inline-block;border:0;border-radius:8px;padding:12px 18px;background:#8ab8ff;color:#10192b;cursor:pointer;font:600 16px system-ui;text-decoration:none;margin:4px}textarea,input{box-sizing:border-box;width:100%;background:#0b1120;color:#e8edf8;border:1px solid #506080;border-radius:8px;padding:14px;font:15px/1.6 system-ui}textarea{min-height:160px;margin:12px 0}small,.muted{color:#aabbda}code{overflow-wrap:anywhere}nav{display:flex;gap:20px;flex-wrap:wrap}.steps{display:flex;flex-wrap:wrap;gap:10px}.steps span{border:1px solid #506080;border-radius:20px;padding:4px 12px}
+:root{color-scheme:dark}body{margin:0;background:#0b1120;color:#e8edf8;font:16px/1.7 system-ui,sans-serif}main{max-width:860px;margin:4vh auto;padding:24px}h1{font-size:clamp(42px,7vw,68px);line-height:1.15;letter-spacing:-.04em}h2{font-size:22px}details{margin:18px 0;padding:12px 0;border-top:1px solid #30405e}summary{cursor:pointer}section{background:#151f33;border:1px solid #30405e;border-radius:18px;padding:24px;margin:24px 0}a{color:#9ec5ff}button,.button{display:inline-block;border:0;border-radius:8px;padding:12px 18px;background:#8ab8ff;color:#10192b;cursor:pointer;font:600 16px system-ui;text-decoration:none;margin:4px}textarea,input{box-sizing:border-box;width:100%;background:#0b1120;color:#e8edf8;border:1px solid #506080;border-radius:8px;padding:14px;font:15px/1.6 system-ui}textarea{min-height:96px;margin:12px 0;resize:vertical;overflow-wrap:anywhere}#copy-url{display:block;width:100%;margin:12px 0;padding:20px;font-size:22px}#connection{border:2px solid #8ab8ff}#connection h2{font-size:28px}small,.muted{color:#aabbda}code{overflow-wrap:anywhere}nav{display:flex;gap:20px;flex-wrap:wrap}.steps{display:flex;flex-wrap:wrap;gap:10px}.steps span{border:1px solid #506080;border-radius:20px;padding:4px 12px}
 </style><main>
 <nav><a href="/">72hours 웹 서비스</a><a href="/mcp/connect">웹에서 검사한 결과 가져오기</a></nav>
-<p class="muted">72HOURS × YOUR AI</p><h1>내 AI와 대화하며<br>검사부터 수정 확인까지.</h1>
+<p class="muted">72HOURS × YOUR AI</p><h1>72hours<br>MCP 연결</h1>
 <p>웹에서 먼저 검사할 필요 없이, AI 에이전트가 72hours의 보안 검사와 GPU 분석을 직접 이용합니다.</p>
 <div class="steps"><span>저장소 검사</span><span>GPU 분석</span><span>코드 수정</span><span>재검사</span><span>리포트</span></div>
-<section><h2>1. AI 앱에 서버 주소 등록</h2>
+<section id="connection"><h2>서버 URL 복사 → AI 앱에 등록</h2>
 <p>사용할 AI 앱에서 아래 서버를 한 번 추가하세요. 프로그램이나 검사 결과 파일을 다운로드할 필요가 없습니다.</p>
 <p><strong>이름</strong> 72hours · <strong>인증</strong> No authentication / No sign in (현재 공개 데모)</p>
 <label for="endpoint">MCP 서버 URL</label>
-<input id="endpoint" value="{{ORIGIN}}/mcp/service/rpc" readonly aria-label="원격 MCP 주소">
+<textarea id="endpoint" rows="3" readonly aria-label="원격 MCP 주소" spellcheck="false">{{ORIGIN}}/mcp/service/rpc</textarea>
 <button id="copy-url">서버 URL 복사</button><p id="notice" role="status" aria-live="polite"></p>
+<p>복사한 주소를 사용하는 AI 앱의 <strong>MCP 서버 추가</strong>에 붙여 넣으세요. 복사만으로 연결되지는 않습니다.</p>
+<p class="muted">다른 PC에서도 같은 주소를 사용합니다. 연결은 각 앱·계정의 MCP 지원과 권한에 따라 진행됩니다.</p>
 <details open><summary><strong>Claude · 웹 / Desktop</strong></summary>
 <ol><li>Customize 또는 Settings에서 <strong>Connectors</strong>를 엽니다.</li>
 <li><strong>Add custom connector</strong>를 선택하고 이름과 위 서버 URL을 입력합니다.</li>
@@ -31,14 +33,11 @@
 <p><a href="/mcp/service/config.json" download="72hours-mcp.json">설정 JSON 받기</a> · <a href="/mcp/service/agent.txt">Claude Code·Codex 설정 안내</a></p>
 <small>JSON은 mcpServers 형식입니다. 앱별 형식을 확인하고 기존 설정을 보존하세요. stdio 전용 앱에는 별도 브리지가 필요합니다.</small></details>
 </section>
-<section><h2>2. 연결 확인 후 대화로 사용</h2>
-<p>앱에서 72hours를 활성화한 다음 아래 문장으로 연결을 확인하세요.</p>
-<textarea id="request" readonly aria-label="연결 확인 요청">72hours의 service_info 도구를 호출해서 사용 가능한 서비스와 연결 상태를 알려줘.</textarea>
-<button id="copy-request">연결 확인 문장 복사</button>
-<p>연결이 확인되면 검사할 공개 GitHub 저장소 주소와 함께 “이 저장소를 검사하고 GPU 분석으로 수정 방법과 리포트를 정리해줘”라고 요청하세요.</p>
-<p><strong>웹 채팅:</strong> 저장소 주소로 검사·분석·수정 제안·리포트를 이용합니다.<br>
-<strong>코딩 에이전트:</strong> 같은 기능을 사용하면서, 허용된 프로젝트 파일을 직접 수정하고 테스트할 수 있습니다.</p>
-<small>이 페이지는 AI 앱의 등록 완료 여부를 알 수 없습니다. 앱에서 실제 도구 호출이 성공하는지 확인하세요.</small></section>
+<section><h2>등록 후 사용</h2>
+<p>AI 앱의 도구 목록에 72hours가 나타나는지 확인하고 대화에서 활성화하세요. 이후 검사할 GitHub 저장소를 지정하면 됩니다.</p>
+<p><strong>웹 채팅:</strong> 검사·GPU 분석·수정 제안·리포트<br>
+<strong>코딩 에이전트:</strong> 위 기능과 함께 허용된 프로젝트의 코드 수정·테스트</p>
+<small>코딩 에이전트가 URL을 받아 등록을 대신할 수는 있지만, 앱의 설정 권한·연결 승인·재시작이 필요할 수 있습니다. 모든 AI의 자동 등록을 보장하지 않습니다.</small></section>
 <section><h2>어디에서 무엇이 실행되나요?</h2><p>검사·GPU 분석·리포트는 72hours 서버에서 실행되고, 코드의 직접 수정은 파일 접근 권한이 있는 AI 에이전트의 프로젝트에서 수행합니다. 검사 결과를 내려받아 다시 올릴 필요가 없습니다.</p>
 <p>공개 GitHub 저장소의 기본 브랜치를 검사합니다. 원격 재검사는 GitHub에 게시된 커밋을 확인하므로, 아직 내 PC에만 있는 수정은 로컬 테스트로 검증합니다.</p>
 <small>GPU 분석에는 몇 분이 걸릴 수 있습니다. 작업 공간은 24시간 유지되며 최대 16건의 검사·분석을 접수할 수 있습니다. 시연 주소는 터널 재시작 시 변경될 수 있습니다.</small></section>

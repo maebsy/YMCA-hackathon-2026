@@ -43,6 +43,7 @@ Node 22.5+ 필요 (`node:sqlite` 내장). 외부 의존성은 `express`, `jsonwe
 
 ## 화면과 API로 실행
 
+- 현재 지원 범위·사용자 저장소 적용 조건·격리 실행 근거: [실검증 문서](../docs/verify.md).
 - 화면: 웹의 `/verify`에서 "실검증 실행"을 누르면 판정, 공격별 수정 전/후, 기능 테스트, 격리 4항목, 수정 내용을 보여 줍니다.
 - API: 검사 API와 같은 "접수 → 작업 번호 → 조회" 방식입니다 (`backend/app/routers/verify.py`).
   - `POST /api/verify` (본문 `{"target": "demo"}` 또는 비움) → 202 `{job_id, status: "queued"}`

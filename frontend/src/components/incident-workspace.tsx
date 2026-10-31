@@ -17,7 +17,7 @@ const official = {
   privacy: "https://www.privacy.go.kr/front/wcp/spl/splRptInfo.do",
   law: "https://law.go.kr/lsLinkCommonInfo.do?lspttninfSeq=67073",
 };
-const reviewNotice = "검토용 초안 · 기관에 접수되지 않았습니다. 통지 의무는 별도 확인이 필요하며, 생성 문서의 과태료·통지 안내에는 최신 개정 내용이 반영되지 않은 부분이 있습니다. 제출 전 최신 법령과 공식 서식을 대조하고 사실관계를 검토하세요.";
+const reviewNotice = "검토용 초안 · 기관에 접수되지 않았습니다. 정보주체 통지(유출 가능성 통지 포함) 의무는 자동 판정하지 않으니 별도로 확인하세요. 제출 전 최신 법령과 공식 서식을 대조하고 사실관계를 검토하세요.";
 
 type TextKey = { [K in keyof IncidentForm]: IncidentForm[K] extends string ? K : never }[keyof IncidentForm];
 type ChoiceKey = "incidentStatus" | "filingType" | "leakState" | "includesSensitive" | "includesUniqueId" | "externalAccess" | "recoveredLowRisk" | "subjectsNotified";

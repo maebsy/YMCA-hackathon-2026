@@ -10,9 +10,9 @@ const user = { id: "user-id", user_metadata: { preferred_username: "octocat", us
 function harness({ env = enabledEnv, browser = true, initialSession = { access_token: "supabase-session-a", user } } = {}) {
   let session = initialSession, callback, authOptions, redirect, logout, unsubscribed = false, created = 0, reads = 0;
   const requests = [], stored = new Map();
-  let reply = () => new Response("{}"), authError = null;
+  let reply = () => new Response("{}"), authError = null, sessionFailure = null;
   const sdk = { auth: {
-    getSession: async () => { reads++; return { data: { session }, error: authError }; },
+    getSession: async () => { reads++; if (sessionFailure) throw sessionFailure; return { data: { session }, error: authError }; },
     signInWithOAuth: async options => { redirect = options; return { error: authError }; },
     signOut: async options => { logout = options; session = null; callback?.("SIGNED_OUT", null); return { error: authError }; },
     onAuthStateChange: listener => { callback = listener; return { data: { subscription: { unsubscribe: () => { unsubscribed = true; } } } }; },
@@ -43,6 +43,7 @@ function harness({ env = enabledEnv, browser = true, initialSession = { access_t
     get options() { return authOptions; }, get created() { return created; }, get reads() { return reads; },
     get redirect() { return redirect; }, get logout() { return logout; }, get unsubscribed() { return unsubscribed; },
     set session(value) { session = value; }, set error(value) { authError = value; }, set reply(value) { reply = value; },
+    set sessionFailure(value) { sessionFailure = value; },
     emit: value => callback?.("SIGNED_IN", value),
     api: () => load("../src/lib/api.ts", { "./auth": auth }),
     verify: () => load("../src/lib/verify.ts", { "./auth": auth }),
@@ -84,6 +85,27 @@ test("internal requests retain signal, cache, body and every existing header", a
     assert.equal(new Headers(headers).has("Authorization"), false);
   }
   assert.equal(h.created, 1);
+});
+
+test("session lookup failures still send API requests without automatic auth and leave 401 to the server", async () => {
+  for (const failure of ["returned", "thrown"]) {
+    const h = harness();
+    if (failure === "returned") h.error = { message: "Supabase refresh unavailable" };
+    else h.sessionFailure = new Error("Supabase refresh unavailable");
+    const options = { method: "POST", headers: { "content-type": "application/json" },
+      signal: new AbortController().signal, cache: "no-store", body: "{}" };
+    for (const path of ["/api/scans", "/api/verify", "/api/reports/plain"]) {
+      const response = await h.auth.apiFetch(path, options);
+      assert.equal(response.status, 200);
+      assert.equal(h.requests.at(-1).path, path);
+      assert.equal(h.requests.at(-1).options, options);
+      assert.equal(new Headers(h.requests.at(-1).options.headers).has("Authorization"), false);
+    }
+    h.reply = () => new Response(JSON.stringify({ detail: "BEARER_REQUIRED" }), { status: 401 });
+    await assert.rejects(h.api().startScan("https://github.com/demo/site"), error => error.message === h.auth.LOGIN_REQUIRED_MESSAGE);
+    assert.equal(h.requests.length, 4);
+    assert.equal(new Headers(h.requests.at(-1).options.headers).has("Authorization"), false);
+  }
 });
 
 test("external and non-API destinations never receive or even read the session", async () => {

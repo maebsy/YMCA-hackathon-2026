@@ -24,7 +24,7 @@
 ## Supabase 설정과 돌아올 주소
 
 1. Authentication → Sign In / Providers → GitHub를 켜고 GitHub App의 Client ID·Secret을 입력합니다. URL과 **publishable key**를 프런트 설정에 사용하며 service_role 키는 사용하지 않습니다.
-2. URL Configuration의 Site URL을 실제 웹 origin으로 정합니다. Redirect URLs에는 돌아갈 페이지를 허용합니다. 로컬 예: `http://localhost:3017/**`; 공개 주소는 현재 소유한 정확한 origin과 필요한 경로만 등록합니다.
+2. URL Configuration의 Site URL을 실제 웹 origin으로 정합니다. Redirect URLs에는 돌아갈 페이지를 허용합니다. 로컬 예: `http://localhost:3000/**`; 공개 주소는 현재 소유한 정확한 origin과 필요한 경로만 등록합니다.
 3. 로그인은 현재 페이지의 주소로 돌아오며 [PKCE](https://supabase.com/docs/guides/auth/sessions/pkce-flow)의 `flowType=pkce`, `detectSessionInUrl=true`로 code를 자동 교환합니다. 로그인을 시작한 같은 브라우저·origin에서 돌아와야 verifier를 읽을 수 있습니다.
 4. [Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls#use-wildcards-in-redirect-urls)는 wildcard를 지원합니다. `*`는 `.`·`/`를 넘지 않고 `**`는 넘습니다. 운영 경로는 필요한 범위만 허용합니다.
 5. Cloudflare Quick Tunnel 주소가 바뀌면 Site URL·Redirect URLs를 새 정확한 origin으로 갱신하고 옛 주소는 제거한 뒤 새 주소에서 로그인을 다시 시작합니다. `*.trycloudflare.com`처럼 타인의 터널까지 포괄하는 허용 목록은 사용하지 않습니다([Quick Tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)). GitHub Callback URL은 Supabase 주소이므로 그대로입니다.

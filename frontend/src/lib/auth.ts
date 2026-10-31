@@ -99,7 +99,10 @@ export async function apiFetch(path: string, options?: RequestInit): Promise<Res
   const relativeApi = /^\/api(?:\/|\?|$)/.test(path) && !path.includes("\\");
   const pathname = relativeApi ? new URL(path, "https://local.invalid").pathname : "";
   if (!relativeApi || !(pathname === "/api" || pathname.startsWith("/api/"))) return fetch(path, options);
-  const token = await getAccessToken();
+  let token: string | null = null;
+  try {
+    token = await getAccessToken();
+  } catch { /* 토큰 조회가 실패해도 요청을 보내고, 인증 필요 여부는 서버의 401로 판단합니다. */ }
   if (!token) return fetch(path, options);
   const headers = new Headers(options?.headers);
   headers.set("Authorization", `Bearer ${token}`);

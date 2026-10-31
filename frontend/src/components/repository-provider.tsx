@@ -18,9 +18,10 @@ const initialState: RepositoryState = {
 };
 function record(value: unknown): value is JsonRecord { return !!value && typeof value === "object" && !Array.isArray(value); }
 
-/** Accept only an HTTPS GitHub repository root for actual engine scans. */
+/** Accept only an HTTPS GitHub repository root for actual engine scans (auto-prepending https:// when omitted). */
 export function normalizeRepositoryUrl(value: string): string | null {
-  const raw = value.trim();
+  const trimmed = value.trim();
+  const raw = /^github\.com\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
   if (!/^https:\/\/github\.com\//i.test(raw) || /[%?#\\]/.test(raw)) return null;
   try {
     const url = new URL(raw);

@@ -10,7 +10,7 @@ import { ArchitectureTab } from "@/components/tabs/ArchitectureTab";
 import { IncidentTab } from "@/components/tabs/IncidentTab";
 import { ReportTab } from "@/components/tabs/ReportTab";
 import { TabType, OS, Hosting, Finding, LogItem } from "@/types/security";
-import { startScan, llmHealthy, explain, itemToFinding, mergeExplanation, now, saveLast, loadLast } from "@/lib/api";
+import { startScan, llmHealthy, explain, itemToFinding, mergeExplanation, now, saveLast, loadLast, runLimited, LLM_PARALLEL } from "@/lib/api";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export default function Home() {
@@ -175,15 +175,20 @@ export default function Home() {
         persist();
         return;
       }
-      // #55의 한 건씩 처리·즉시 반영 흐름을 유지합니다.
+      // 한 건씩 요청하되 백엔드가 동시에 돌리는 수(LLM_PARALLEL)만큼 함께 보내고, 끝난 건부터 바로 반영합니다 (#59).
       const open = (data.findings as any[]).filter((f) => f.status !== "code_resolved").slice(0, 5);
-      for (const [i, finding] of open.entries()) {
-        log2("gpu-llm ", `Red–Blue 해석 중 (${i + 1}/${open.length}). 나머지 항목은 엔진 결과입니다.`, "…");
-        try {
-          explainResults = [...explainResults, ...(await explain([finding], os, hosting))];
-        } catch (error) {
-          explainResults.push({ fingerprint: finding.fingerprint, covers: finding.covers,
-            status: "failed", error_code: "LLM_ERROR" });
+      log2("gpu-llm ", `Red–Blue 해석 ${open.length}건 시작 (동시 ${Math.min(LLM_PARALLEL, open.length)}건). 끝나기 전 항목은 엔진 결과입니다.`, "…");
+      let finished = 0;
+      await runLimited(open, (finding) => explain([finding], os, hosting), (i, outcome) => {
+        const finding = open[i];
+        finished += 1;
+        if (outcome.ok) {
+          explainResults = [...explainResults, ...outcome.value];
+          log2("gpu-llm ", `해석 ${finished}/${open.length} 끝남 (${i + 1}번째 항목)`, "✓");
+        } else {
+          explainResults = [...explainResults, { fingerprint: finding.fingerprint, covers: finding.covers,
+            status: "failed", error_code: "LLM_ERROR" }];
+          const error = outcome.error;
           log2("gpu-llm ", `${i + 1}번째 해석 실패: ${error instanceof Error ? error.message : "연결 오류"}`, "! 엔진 결과 유지", "warn");
         }
         const byFp = new Map<string, any>();
@@ -192,7 +197,7 @@ export default function Home() {
         setFindings(mapped);
         setReportInput({ ...rInput, explain_results: explainResults });
         persist();
-      }
+      });
       const done = explainResults.filter((r) => r.status === "done").length;
       const failed = explainResults.filter((r) => r.status === "failed").length;
       const skipped = explainResults.filter((r) => r.status === "skipped").length;

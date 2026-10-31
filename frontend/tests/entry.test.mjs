@@ -86,10 +86,12 @@ test("home sends a Pages site's repository URL and shows both supported input fo
   assert.deepEqual(ui.calls, ["https://github.com/alice/project"]);
   assert.deepEqual(ui.navigation, ["/repository"]);
   const input = ui.tree.find(node => node.type === "input");
-  assert.match(input.props.placeholder, /github\.com/);
-  assert.match(input.props.placeholder, /github\.io/);
+  assert.equal(input.props.placeholder, "github.com/owner/repository");
+  assert.equal(input.props["aria-describedby"], "repository-hint");
   const hint = ui.tree.find(node => node.props.id === "repository-hint");
-  assert.match(hint.props.children, /GitHub Pages/);
+  assert.equal(hint.props.children[0], "github.com/owner/repository 또는 owner.github.io를 입력하세요.");
+  assert.equal(hint.props.children[1].type, "br");
+  assert.equal(hint.props.children[2], "GitHub Pages는 해당 저장소로 변환해 검사합니다.");
   assert.equal(ui.tree.some(node => node.type === "span" && node.props.children === "실제 엔진 검사"), false);
 });
 test("website and malformed repository inputs stay on the form without engine requests", () => {

@@ -34,11 +34,11 @@ export default function Home() {
       <div className="entry-panel-top"><label htmlFor="repository">공개 GitHub 저장소</label></div>
       <form onSubmit={submit} noValidate>
         <div className="url-form-row">
-          <div className="url-field"><Code2 size={20}/><input ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="github.com/owner/repository 또는 owner.github.io" value={repository.repoInput} onChange={event => { repository.setRepoInput(event.target.value); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={error ? "repository-error repository-hint" : "repository-hint"}/></div>
+          <div className="url-field"><Code2 size={20}/><input ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="github.com/owner/repository" value={repository.repoInput} onChange={event => { repository.setRepoInput(event.target.value); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={error ? "repository-error repository-hint" : "repository-hint"}/></div>
           <button className="button primary" type="submit" disabled={!repository.restored || repository.isScanning}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : null}{repository.isScanning ? "검사 진행 중" : "실제 검사 시작"}<ArrowRight size={16}/></button>
         </div>
         {error && <p id="repository-error" className="form-error" role="alert">{error}</p>}
-        <p id="repository-hint" className="field-hint">github.com/owner/repository 또는 owner.github.io를 입력하세요. GitHub Pages는 해당 저장소로 변환해 검사합니다. 다른 도메인은 지원하지 않습니다.</p>
+        <p id="repository-hint" className="field-hint">github.com/owner/repository 또는 owner.github.io를 입력하세요.<br/>GitHub Pages는 해당 저장소로 변환해 검사합니다.</p>
       </form>
       <div className="entry-disclosure"><ShieldCheck size={17}/><p><strong>주소를 검사 서버로 보내 실제 코드를 점검합니다.</strong><br/>서버의 로그인·저장소 접근 정책이 적용되며, 검사와 추가 AI 해석은 수 분 걸릴 수 있습니다.</p></div>
     </section>

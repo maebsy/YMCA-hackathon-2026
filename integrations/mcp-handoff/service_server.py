@@ -64,10 +64,13 @@ The HTTPS demonstration address is temporary and may change when its tunnel rest
 
 
 def create_service_server(api, origin, port):
+    # origin 은 주소 하나 또는 허용 주소 목록. 첫 주소(대표, 고정 주소)로 안내하고 나머지에서 온 요청도 받습니다 (#136)
+    origins = list(origin) if isinstance(origin, (list, tuple)) else [origin]
+    origin = origins[0]
     server = FastMCP('72hours-service', stateless_http=True, json_response=True,
         streamable_http_path='/mcp/service/rpc', max_request_body_size=65536,
         instructions=guide(origin), transport_security=TransportSecuritySettings(
-            allowed_hosts=[urlsplit(origin).netloc, f'127.0.0.1:{port}'], allowed_origins=[origin]))
+            allowed_hosts=[*(urlsplit(o).netloc for o in origins), f'127.0.0.1:{port}'], allowed_origins=origins))
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
 

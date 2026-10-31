@@ -43,10 +43,10 @@ function result(repoUrl, items = []) {
  */
 function mountProvider({ saved = null, browser = {}, scan = async url => result(url), health = async () => false,
   explain = async () => [], report = async (_input, format) => format === "html" ? "<html>Report</html>" : "# Report",
-  timer = resolve => { queueMicrotask(resolve); } } = {}) {
+  timer = resolve => { queueMicrotask(resolve); }, consumer = false } = {}) {
   const slots = [];
   let cursor = 0, dirty = true, mounted = true, view;
-  let pendingEffects = [];
+  let pendingEffects = [], pendingLayout = [], renderConsumer;
   const calls = { scans: [], health: 0, explanations: [], saved: [], reports: [] };
   const api = { ...realAPI, now: () => "12:00:00", loadLast: () => saved,
     saveLast: data => calls.saved.push(structuredClone(data)),
@@ -80,17 +80,65 @@ function mountProvider({ saved = null, browser = {}, scan = async url => result(
         pendingEffects.push(() => { slot.cleanup?.(); slot.cleanup = effect(); });
       }
     },
+    useLayoutEffect(effect, dependencies) {
+      const slot = nextSlot("layout", () => ({ dependencies: undefined, cleanup: undefined }));
+      if (!dependencies || !slot.dependencies || dependencies.some((value, index) => !Object.is(value, slot.dependencies[index]))) {
+        slot.dependencies = dependencies;
+        pendingLayout.push(() => { slot.cleanup?.(); slot.cleanup = effect(); });
+      }
+    },
   };
   const jsx = (type, props) => ({ type, props });
   const { RepositoryProvider } = loadSource("src/components/repository-provider.tsx", {
     react, "react/jsx-runtime": { jsx, jsxs: jsx }, "@/lib/api": api,
   }, { navigator: browser, setTimeout: timer });
+  if (consumer) {
+    // Mount the real /report consumer as the provider's child with its own hook slots.
+    const consumerSlots = [];
+    let consumerCursor = 0, consumerEffects = [];
+    const slot = (kind, initialize) => {
+      const index = consumerCursor++;
+      if (!consumerSlots[index]) consumerSlots[index] = { kind, ...initialize() };
+      assert.equal(consumerSlots[index].kind, kind, "Consumer hook ordering changed");
+      return consumerSlots[index];
+    };
+    const consumerReact = {
+      useState(initial) {
+        const state = slot("state", () => ({ value: typeof initial === "function" ? initial() : initial }));
+        return [state.value, update => { const next = typeof update === "function" ? update(state.value) : update; if (!Object.is(next, state.value)) { state.value = next; dirty = true; } }];
+      },
+      useRef(initial) { return slot("ref", () => ({ ref: { current: initial } })).ref; },
+      useEffect(effect, dependencies) {
+        const state = slot("effect", () => ({ dependencies: undefined, cleanup: undefined }));
+        if (!dependencies || !state.dependencies || dependencies.some((value, index) => !Object.is(value, state.dependencies[index]))) {
+          state.dependencies = dependencies;
+          consumerEffects.push(() => { state.cleanup?.(); state.cleanup = effect(); });
+        }
+      },
+    };
+    const icon = new Proxy({}, { get: (_target, name) => String(name) });
+    const { RepositoryReport } = loadSource("src/components/repository-result.tsx", {
+      react: consumerReact, "react/jsx-runtime": { jsx, jsxs: jsx }, "next/link": { default: "a" },
+      "next/navigation": { useRouter: () => ({ push() {} }) }, "lucide-react": icon,
+      "@/components/tabs/WorkspaceTab": { WorkspaceTab: "workspace" }, "@/components/repository-provider": { useRepository: () => view },
+      "@/lib/report-document": { mountReportDocument: () => () => {}, reportDocumentHtml: html => html },
+      "@/components/report-scorecard": { default: "scorecard" }, "@/components/finding-detail": { default: "finding-detail" },
+      "@/lib/report-scorecard": { scoreRows: () => [] }, "@/lib/repository-routes": { REPOSITORY_PROGRESS_PATH: "/repository" },
+      "./repository-result.css": {},
+    });
+    renderConsumer = () => { consumerCursor = 0; RepositoryReport(); return consumerEffects.splice(0); };
+  }
   function flush() {
     let commits = 0;
     while (dirty) {
       assert.ok(commits++ < 30, "Provider did not settle after effect flushing");
       dirty = false; cursor = 0;
       view = RepositoryProvider({ children: null }).props.value;
+      // React order: render parent then child, all layout effects, then passive effects child-first.
+      const childEffects = renderConsumer ? renderConsumer() : [];
+      const layouts = pendingLayout; pendingLayout = [];
+      for (const effect of layouts) effect();
+      for (const effect of childEffects) effect();
       const effects = pendingEffects; pendingEffects = [];
       for (const effect of effects) effect();
     }
@@ -411,6 +459,18 @@ await check("Restored results generate documents without automatic navigation or
   await provider.value.prepareReport(); provider.flush(); assert.equal(provider.calls.reports.length, 2);
   html.resolve("<html>restored</html>"); await pending; provider.flush();
   assert.equal(provider.value.phase, "done"); assert.equal(provider.value.resultReady, false); assert.equal(provider.value.reportHtml, "<html>restored</html>");
+  provider.unmount();
+});
+
+await check("Restored /report consumer starts both documents on mount before the provider's passive effects (PR #142 review)", async () => {
+  const saved = { verificationSource: "engine-status-v1", repoUrl: repoA, findings: [], result: result(repoA).result,
+    reportInput: { scan: { id: "saved" }, findings: [], explain_results: [] }, logs: [], pendingIds: [] };
+  const provider = mountProvider({ saved, consumer: true, report: async (_input, format) => format === "html" ? "<html>restored</html>" : "# restored" });
+  for (let turn = 0; turn < 20 && provider.value.reportHtml === ""; turn++) { await Promise.resolve(); provider.flush(); }
+  assert.equal(provider.value.restored, true); assert.equal(provider.value.phase, "done");
+  assert.deepEqual(provider.calls.reports.map(call => call.format).sort(), ["html", "markdown"]);
+  assert.equal(provider.value.reportHtml, "<html>restored</html>"); assert.equal(provider.value.reportMarkdown, "# restored");
+  assert.equal(provider.value.resultReady, false, "restored results never auto-navigate");
   provider.unmount();
 });
 

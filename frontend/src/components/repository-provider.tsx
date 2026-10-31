@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { explain, itemToFinding, LLM_PARALLEL, llmHealthy, loadLast, mergeExplanation, now, plainReport, runLimited, saveLast, startScan } from "@/lib/api";
 import type { Finding, LogItem, OS } from "@/types/security";
 
@@ -102,7 +102,9 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
   const operation = useRef(0);
   const reportBusy = useRef(false);
   const stateRef = useRef(state);
-  useEffect(() => { stateRef.current = state; }, [state]);
+  // Layout effects run before every passive effect, so a child consumer (e.g. /report)
+  // that calls prepareReport from its own effect already sees the committed state.
+  useLayoutEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => {
     const lifecycle = operation;
     const saved = parseSavedRepository(loadLast<unknown>());

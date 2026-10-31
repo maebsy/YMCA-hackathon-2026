@@ -72,7 +72,7 @@
 | OSV GHSA-35jh-r3h4-6jhm / CVE-2021-23337 | 합성 lodash 4.17.15→4.17.21 정답 사례의 탐지·수정 경계 검증 근거 | GitHub Advisory Database CC-BY-4.0, OSV 이용약관 | https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm |
 | Semgrep Registry (semgrep.dev) | 내부 비교용 `p/default` 룰셋 다운로드 (기본 꺼짐) | Semgrep Rules License v1.0 | https://docs.semgrep.dev/licensing |
 | GitHub (공개 저장소 clone) | 검사 대상 사이트 소스 코드 받기 (공개 저장소만, 소스 분석만) | GitHub 이용약관 | https://github.com |
-| GitHub REST API (Search / Contents / Releases) | 공개 웹 소스 후보 검색·파일 표식 및 검사기의 공식 최신 릴리스 메타데이터 확인 | GitHub 이용약관·API 사용 제한 | https://docs.github.com/rest |
+| GitHub REST API (Search / Contents / Releases / Actions) | 공개 웹 소스 후보 검색·파일 표식 및 검사기의 공식 최신 릴리스 메타데이터 확인, 일반 서버 자동배포 시 정확한 main SHA의 push CI 성공 확인 | GitHub 이용약관·API 사용 제한 | https://docs.github.com/rest |
 | Semantic Versioning 2.0.0 | 사전 출시 버전과 정식 버전의 비교 정답 근거(본문 미복제) | CC BY 3.0 | https://semver.org/ |
 | CISA KEV 카탈로그 | 실제 공격에 쓰인 취약점 목록 조회 (위험도 해석) | 미국 정부 공개 자료 | https://www.cisa.gov/known-exploited-vulnerabilities-catalog |
 | FIRST EPSS API | CVE별 30일 내 악용 확률 조회 (위험도 해석) | 무료 공개, 등록 불필요 | https://www.first.org/epss/api |

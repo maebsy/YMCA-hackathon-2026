@@ -7,6 +7,17 @@ import subprocess
 import uuid
 
 
+def summary(data):
+    """Keep each failed expectation available to the archive, not just the failure count."""
+    failed = [{k: c[k] for k in ('name', 'expected', 'actual', 'basis', 'group') if k in c}
+              for c in data['checks'] if c['status'] == 'fail']
+    return {'status': data['status'], 'source_revision': data['source_revision'],
+            'passed': sum(c['status'] == 'pass' for c in data['checks']),
+            'failed': len(failed), 'failed_checks': failed,
+            'historical_scan_id': data.get('snapshots', {}).get('historical_secret', {}).get('scan_id'),
+            'labeled_metrics': data['labeled_metrics']}
+
+
 def collect(alias, public):
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,100}', alias):
         raise ValueError('SSH config 별칭이 필요합니다.')
@@ -29,6 +40,4 @@ def collect(alias, public):
     subprocess.run(['ssh','-o','BatchMode=yes',alias,
                     'cp '+remote+' apps/72hours/validation/engine-quality-latest.json.next && mv -f apps/72hours/validation/engine-quality-latest.json.next apps/72hours/validation/engine-quality-latest.json'],
                    capture_output=True, check=True, timeout=20)
-    return {'status': data['status'], 'source_revision': data['source_revision'],
-            'passed':sum(c['status']=='pass' for c in data['checks']),
-            'failed':sum(c['status']=='fail' for c in data['checks']), 'labeled_metrics':data['labeled_metrics']}
+    return summary(data)

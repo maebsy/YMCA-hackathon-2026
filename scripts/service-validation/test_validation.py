@@ -18,6 +18,7 @@ from server_diagnose import diagnose
 from diagnostics import failures
 from campaign import lock
 from engine_quality import evaluate_labels
+from quality_probe import summary
 import subprocess
 import sys
 
@@ -164,6 +165,35 @@ class ValidationTests(unittest.TestCase):
         detected = [{'rule_id':'vibe-coding/sql','location':{'file':'other.js','start_line':2,'end_line':2}},
                     {'rule_id':'vibe-coding/eval','location':{'file':'app.js','start_line':2,'end_line':2}}]
         self.assertEqual(evaluate_labels(labels, detected)[0]['outcome'], 'FN')
+
+    def test_engine_failure_archive_keeps_expectations_revision_and_issue(self):
+        quality = summary({'status': 'failed', 'source_revision': 'a'*40, 'labeled_metrics': {'TP': 28},
+            'snapshots': {'historical_secret': {'scan_id': 'history-scan'}},
+            'checks': [{'name': '설계의 과거 커밋 비밀키 탐지', 'status': 'fail',
+                        'expected': 'detect old key', 'actual': {'findings': 0, 'coverage': 'ok'},
+                        'basis': 'design', 'group': 'design_gap'}]})
+        self.e.data['engine_quality'] = quality
+        self.e.check(self.e.data, '엔진 설계 적합성 정답 검증', 'fail', quality)
+        rows = json.loads((self.e.public/'failures.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['revision'], 'a'*40)
+        self.assertEqual(rows[0]['scan_id'], 'history-scan')
+        self.assertTrue(rows[0]['issue'].endswith('/87'))
+        self.assertEqual(rows[0]['cause_status'], 'unconfirmed')
+        self.assertEqual(rows[0]['observed']['actual']['findings'], 0)
+        self.assertIn('engine_quality.py', (self.e.public/'handoff.md').read_text(encoding='utf-8'))
+
+    def test_engine_other_failure_never_assigned_to_known_history_issue(self):
+        row = failures({'engine_quality': {'source_revision': 'unknown', 'failed_checks': [
+            {'name': 'OSV 알려진 취약 버전', 'expected': 'CVE found', 'actual': 'timeout'}]}})[0]
+        self.assertIsNone(row['issue'])
+        self.assertIsNone(row['revision'])
+        self.assertEqual(row['cause_status'], 'unconfirmed')
+
+    def test_engine_collection_failure_keeps_generic_failure_without_old_evidence(self):
+        rows = failures({'checks': [{'name': '엔진 설계 적합성 정답 검증', 'status': 'fail', 'detail': 'SSH unavailable'}]})
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]['issue'])
 
 
 if __name__ == '__main__':

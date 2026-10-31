@@ -1,10 +1,38 @@
 """단계별 실패를 재현·인계할 수 있는 공개 진단 자료로 만듭니다. 추정과 확인을 구분합니다."""
 import hashlib
 import json
+import re
+
+
+def quality_failures(quality):
+    rows = []
+    revision = quality.get('source_revision', '')
+    revision = revision if re.fullmatch(r'[0-9a-f]{40}', revision) else None
+    for check in quality.get('failed_checks', []):
+        historical = check['name'] == '설계의 과거 커밋 비밀키 탐지'
+        code = 'HISTORICAL_SECRET_NOT_DETECTED' if historical else 'ENGINE_EXPECTATION_FAILED'
+        rows.append({'signature': hashlib.sha256(('engine_quality|'+code+'|'+check['name']).encode()).hexdigest()[:16],
+            'case': 'engine_quality', 'stage': 'engine_quality', 'check': check['name'],
+            'repository': None, 'revision': revision, 'job_id': None,
+            'scan_id': quality.get('historical_scan_id') if historical else None,
+            'code': code, 'observed': check,
+            'cause_status': 'unconfirmed',
+            'cause': ('이전 커밋에만 남긴 합성 키의 탐지 기대값과 실제 결과가 다릅니다. '
+                      '이 결과만으로 검사 명령의 내부 원인을 확정하지 않습니다.' if historical else
+                      '배포 엔진의 정답 사례가 기대값과 다릅니다. 검사기 실행 상태와 변환 추적을 대조해야 합니다.'),
+            'evidence': {'artifact': 'engine-quality.json', 'source_revision': revision},
+            'issue': 'https://github.com/maebsy/YMCA-hackathon-2026/issues/87' if historical else None,
+            'next_action': ('#87에서 현재 파일 검사와 Git 이력 검사의 지원 범위를 확인하고, 이력 검사를 구현하거나 설계 범위를 정정하세요.'
+                            if historical else 'engine-quality.json의 기대값·실측값·coverage·flow를 대조해 엔진 담당자에게 전달하세요.'),
+            'reproduce': {'command': 'python scripts/service-validation/engine_quality.py --source <동일 배포 커밋 경로> --output <새 결과 JSON>',
+                          'source_revision': revision, 'check': check['name']},
+            'revision_note': '배포 엔진 커밋이며 공개 저장소 커밋이 아닙니다. 독립 합성 사례에는 API job ID가 없습니다.'})
+    return rows
 
 
 def failures(data):
-    result = []
+    result = quality_failures(data.get('engine_quality', {}))
+    has_quality_failures = bool(result)
     targets = [('service', data)] + [(c['key'], c) for c in data.get('cases', [])]
     if data.get('browser'):
         targets.append(('browser', data['browser']))
@@ -12,6 +40,8 @@ def failures(data):
         for check in target.get('checks', []):
             if check['status'] != 'fail':
                 continue
+            if key == 'service' and has_quality_failures and check['name'] == '엔진 설계 적합성 정답 검증':
+                continue  # Expanded above into individual expectations, not a duplicate generic failure.
             stage = check.get('stage') or target.get('stage') or ('scan' if target.get('scan_job', {}).get('status') == 'failed' else key)
             job = target.get('scan_job', {})
             error = str(check['detail'])
@@ -46,7 +76,8 @@ def handoff(data, issues):
     for item in issues:
         lines += ['## '+item['case']+' / '+item['stage']+' / '+item['code'], '',
                   '- 저장소: '+str(item['repository']), '- 커밋: '+str(item['revision'] or '미확인'),
-                  '- 작업 ID: '+str(item['job_id']), '- 검사: '+item['check'],
+                  '- 작업 ID: '+str(item['job_id']), '- 엔진 검사 ID: '+str(item.get('scan_id') or '해당 없음'),
+                  '- 커밋 해석: '+item['revision_note'], '- 검사: '+item['check'],
                   '- 원인 상태: '+item['cause_status'], '- 원인: '+item['cause'],
                   '- 다음 작업: '+item['next_action'], '- 이슈: '+str(item['issue'] or '미등록'), '',
                   '```json', json.dumps({'observed': item['observed'], 'evidence': item['evidence'],

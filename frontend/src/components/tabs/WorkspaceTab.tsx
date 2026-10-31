@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Finding, LogItem, OS, Hosting } from "@/types/security";
+import { McpHandoff } from "@/components/McpHandoff";
 
 interface WorkspaceTabProps {
   findings: Finding[];
@@ -20,6 +21,7 @@ interface WorkspaceTabProps {
   logs: LogItem[];
   onRunScan: (repoUrl: string) => void;
   isScanning: boolean;
+  hasRealScan: boolean;
   os: OS;
   onChangeOS: (os: OS) => void;
   hosting: Hosting;
@@ -38,6 +40,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   logs,
   onRunScan,
   isScanning,
+  hasRealScan,
   os,
   onChangeOS,
   hosting,
@@ -97,7 +100,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               바이브코더와 비개발자도 즉시 다음 행동이 보이는 웹사이트 보안 서비스.
               Opengrep·OSV·Gitleaks 및 자체 특화 룰셋으로 진단하고, 로컬 GPU LLM의{" "}
               <strong className="text-white font-medium">Red–Blue 검증 루프</strong>를
-              통과한 안전한 수정 지시만 코딩툴(MCP)로 전달합니다.
+              결과와 수정 지시를 확인하고 AI 코딩툴에 전달할 수 있습니다.
             </p>
           </div>
 
@@ -105,7 +108,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
           <div className="bg-[#111113] border border-[#27272a] rounded-xl p-4 font-mono text-xs shrink-0">
             <div className="text-[#a1a1aa] mb-2.5 flex items-center justify-between">
               <span>MVP 5-STEP PIPELINE</span>
-              <span className="text-[#d4ff3a]">④ MCP Active</span>
+              <span className="text-[#d4ff3a]">④ AI 수정 지시</span>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="step-pill done">① 권한</span>
@@ -299,13 +302,13 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               ) : (
                 <>
                   <span className="w-2 h-2 rounded-full bg-[#d4ff3a]" />
-                  <span>SCAN COMPLETE ({findings.length} Findings)</span>
+                  <span>{hasRealScan ? `SCAN COMPLETE (${findings.length} Findings)` : "저장소를 입력하고 검사를 시작하세요"}</span>
                 </>
               )}
             </span>
             <button
               onClick={() => onRunScan(repoInput)}
-              disabled={isScanning}
+              disabled={isScanning || !hasRealScan}
               className="px-2.5 py-1 rounded bg-[#18181b] hover:bg-[#27272a] text-[#fafafa] border border-[#27272a] transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
             >
               <RotateCw className={`w-3 h-3 ${isScanning ? "animate-spin" : ""}`} />
@@ -423,6 +426,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               </div>
               <button
                 onClick={() => onToggleFindingFixed(selectedFinding.id)}
+                disabled={isScanning}
                 className={`px-2.5 py-1 rounded font-mono text-xs transition cursor-pointer flex items-center gap-1 ${
                   selectedFinding.fixed
                     ? "bg-[#27272a] text-[#a1a1aa] hover:text-white"
@@ -431,7 +435,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>
-                  {selectedFinding.fixed
+                  {hasRealScan ? "조치 후 실제 재검사" : selectedFinding.fixed
                     ? "↺ 미해결 상태로 되돌리기"
                     : "✓ 조치 완료 및 재검사 검증"}
                 </span>
@@ -596,7 +600,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                 </pre>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-mono text-[11px] text-[#a1a1aa]">
-                    MCP 도구: <code>list_findings</code>, <code>get_fix_task</code>
+                    MCP 도구: <code>list_findings</code>, <code>get_fix_prompt</code> · 프롬프트: <code>fix_finding</code>
                   </span>
                   <button
                     onClick={() =>
@@ -610,6 +614,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                     <Sparkles className="w-3.5 h-3.5" /> AI 코딩툴에 지시문 복사
                   </button>
                 </div>
+                <McpHandoff os={os} onShowToast={onShowToast} />
               </div>
             </div>
           </div>

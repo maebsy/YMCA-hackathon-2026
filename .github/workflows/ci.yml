@@ -14,6 +14,23 @@ concurrency:
 
 # job 이름(name)은 main 보호 규칙의 필수 검사 이름과 같아야 합니다.
 jobs:
+  frontend-unit:
+    name: frontend-unit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+
   lint:
     name: lint
     runs-on: ubuntu-latest

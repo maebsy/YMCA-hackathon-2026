@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Header } from "@/components/Header";
 import { Toast } from "@/components/Toast";
 import { LoginModal } from "@/components/LoginModal";
@@ -9,7 +9,6 @@ import { WorkspaceTab } from "@/components/tabs/WorkspaceTab";
 import { ArchitectureTab } from "@/components/tabs/ArchitectureTab";
 import { IncidentTab } from "@/components/tabs/IncidentTab";
 import { ReportTab } from "@/components/tabs/ReportTab";
-import { initialFindings, defaultLogs } from "@/data/mockData";
 import { TabType, OS, Hosting, Finding, LogItem } from "@/types/security";
 import { startScan, llmHealthy, explain, itemToFinding, mergeExplanation, now, saveLast, loadLast } from "@/lib/api";
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -17,10 +16,12 @@ import { startScan, llmHealthy, explain, itemToFinding, mergeExplanation, now, s
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>("workspace");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [findings, setFindings] = useState<Finding[]>(initialFindings);
-  const [selectedFindingId, setSelectedFindingId] = useState<string>("s1");
-  const [logs, setLogs] = useState<LogItem[]>(defaultLogs);
+  const [findings, setFindings] = useState<Finding[]>([]);
+  const [selectedFindingId, setSelectedFindingId] = useState<string>("");
+  const [logs, setLogs] = useState<LogItem[]>([]);
   const [isScanning, setIsScanning] = useState(false);
+  const scanBusy = useRef(false);
+  const [gpuStatus, setGpuStatus] = useState<"checking" | "online" | "offline">("checking");
   // 실제 검사 상태: 직전 엔진 결과(재검사 비교용), 리포트 입력(scan·findings·explain_results)
   const [lastResult, setLastResult] = useState<any>(null);
   const [reportInput, setReportInput] = useState<any>(null);
@@ -28,9 +29,9 @@ export default function Home() {
   const [os, setOs] = useState<OS>("windows");
   const [hosting, setHosting] = useState<Hosting>("vercel");
   const [repoInput, setRepoInput] = useState(
-    "https://github.com/minji-cafe/order-site"
+    ""
   );
-  const [authUser, setAuthUser] = useState("minji-cafe 연결됨");
+  const [authUser, setAuthUser] = useState("로그인 예제");
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isCmdPaletteOpen, setIsCmdPaletteOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -39,19 +40,34 @@ export default function Home() {
   // 새로고침해도 마지막 실제 검사 결과를 되살립니다 (브라우저 보관)
   useEffect(() => {
     const saved = loadLast<any>();
-    if (!saved?.findings?.length) return;
+    if (!Array.isArray(saved?.findings)) return;
+    const explanations = new Map<string, any>();
+    for (const result of saved.reportInput?.explain_results || [])
+      for (const fp of [result.fingerprint, ...(result.covers || [])]) explanations.set(fp, result);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFindings(saved.findings);
-    setSelectedFindingId(saved.findings[0].id);
+    setFindings(saved.findings.map((finding: Finding) => explanations.has(finding.id)
+      ? mergeExplanation(finding, explanations.get(finding.id)) : finding));
+    setSelectedFindingId(saved.findings[0]?.id ?? "");
     setLastResult(saved.result ?? null);
     setReportInput(saved.reportInput ?? null);
     if (saved.repoUrl) setRepoInput(saved.repoUrl);
     if (saved.logs) setLogs(saved.logs);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      const healthy = await llmHealthy();
+      if (active) setGpuStatus(healthy ? "online" : "offline");
+    };
+    void refresh();
+    const timer = setInterval(refresh, 30_000);
+    return () => { active = false; clearInterval(timer); };
+  }, []);
+
   // 72시간 실시간 카운트다운 타이머
   const [remainingSeconds, setRemainingSeconds] = useState(
-    61 * 3600 + 12 * 60 + 40
+    0
   );
 
   // 실제 검사 결과가 있으면 72시간 타이머를 첫 발견 시각(detected_at) 기준으로 맞춥니다
@@ -114,6 +130,8 @@ export default function Home() {
 
   // 실제 검사: /api/scans(보안엔진) → /api/llm/explain(GPU Red–Blue)
   const handleRunScan = async (url: string) => {
+    if (scanBusy.current) return;
+    scanBusy.current = true;
     setIsScanning(true);
     const log = (step: string, msg: string, status: string, type: "ok" | "warn" = "ok") =>
       setLogs((prev) => [...prev, { time: now(), step, msg, status, type }]);
@@ -150,30 +168,50 @@ export default function Home() {
       showToast(`${prev ? "재검사" : "검사"} 완료: ${mapped.length}건 (${data.duration_sec}초)`);
 
       if (!data.findings?.length) return;
-      if (!(await llmHealthy())) {
+      const healthy = await llmHealthy();
+      setGpuStatus(healthy ? "online" : "offline");
+      if (!healthy) {
         log2("gpu-llm ", "GPU LLM 서버에 연결할 수 없어 엔진 결과만 표시합니다", "! 연결 안 됨", "warn");
         persist();
         return;
       }
-      log("gpu-llm ", "Red–Blue 해석 중 (상위 5건)...", "…");
       const open = (data.findings as any[]).filter((f) => f.status !== "code_resolved");
-      explainResults = await explain(open.slice(0, 5), os);
+      const selected = open.slice(0, 5);
+      if (!selected.length) return;
+      log2("gpu-llm ", `Red–Blue 해석 중 (${selected.length}개 묶음, 수 분 소요). 나머지는 엔진 결과로 표시합니다.`, "…");
+      try {
+        explainResults = await explain(selected, os, hosting);
+      } catch (error) {
+        explainResults = selected.map((f) => ({ fingerprint: f.fingerprint, covers: f.covers,
+          status: "failed", error_code: "LLM_ERROR" }));
+        log2("gpu-llm ", `해석 요청 실패: ${error instanceof Error ? error.message : "연결 오류"}`, "! 엔진 결과 유지", "warn");
+      }
       const byFp = new Map<string, any>();
       for (const r of explainResults) for (const fp of [r.fingerprint, ...(r.covers || [])]) byFp.set(fp, r);
       mapped = mapped.map((f) => (byFp.has(f.id) ? mergeExplanation(f, byFp.get(f.id)) : f));
       setFindings(mapped);
       setReportInput({ ...rInput, explain_results: explainResults });
-      log2("gpu-llm ", "Red–Blue 해석 완료", `✓ ${explainResults.filter((r) => r.status === "done").length}건`);
+      const done = explainResults.filter((r) => r.status === "done").length;
+      const failed = explainResults.filter((r) => r.status === "failed").length;
+      const skipped = explainResults.filter((r) => r.status === "skipped").length;
+      const manual = explainResults.filter((r) => r.explanation?.needs_manual_review).length;
+      log2("gpu-llm ", `해석 완료 ${done} · 실패 ${failed} · 생략 ${skipped} · 수동 확인 ${manual}`,
+        failed || manual ? "! 확인 필요" : "✓ 완료", failed || manual ? "warn" : "ok");
       persist();
     } catch (e: any) {
       log("error   ", String(e?.message || e), "✗ 실패", "warn");
       showToast(`검사 실패: ${e?.message || e}`);
     } finally {
+      scanBusy.current = false;
       setIsScanning(false);
     }
   };
 
   const handleToggleFindingFixed = (id: string) => {
+    if (lastResult) {
+      void handleRunScan(lastResult.target.repo_url);
+      return;
+    }
     setFindings((prev) =>
       prev.map((f) => {
         if (f.id === id) {
@@ -192,9 +230,9 @@ export default function Home() {
 
   const handleSelectProvider = (provider: string) => {
     setIsLoginModalOpen(false);
-    setAuthUser(`${provider} 인증됨`);
+    setAuthUser(`${provider} 로그인 예제`);
     showToast(
-      `Supabase Auth (${provider}) 완료! Bearer 토큰이 API 헤더에 연결되었습니다.`
+      `${provider} 로그인 화면 예제입니다. 실제 인증과 토큰 발급은 아직 연결되지 않았습니다.`
     );
   };
 
@@ -211,6 +249,7 @@ export default function Home() {
         onOpenCmdPalette={() => setIsCmdPaletteOpen(true)}
         onOpenLoginModal={() => setIsLoginModalOpen(true)}
         authUser={authUser}
+        gpuStatus={gpuStatus}
         theme={theme}
         onToggleTheme={handleToggleTheme}
       />
@@ -230,6 +269,7 @@ export default function Home() {
             logs={logs}
             onRunScan={handleRunScan}
             isScanning={isScanning}
+            hasRealScan={Boolean(lastResult)}
             os={os}
             onChangeOS={setOs}
             hosting={hosting}

@@ -195,22 +195,50 @@ def first_sentence(text: str, limit: int = 120) -> str:
     return s if len(s) <= limit else s[: limit - 1] + "…"
 
 
+# 정식 출시 뒤에 붙는 표시 (PyPI '.post1', Maven '-sp1' 등). 이것만 정식 버전보다 높게 본다
+_POST_RELEASE = re.compile(r"(?i)^(post|rev|r|p|sp|patch)\d*$")
+_VERSION_CORE = re.compile(r"(\d+(?:\.\d+)*)(.*)")
+# 사전 출시 꼬리표의 순서 (PEP 440: dev < a < b < rc). 그 밖의 글자는 이들 뒤에서 글자 순으로 비교한다
+_PRE_RANK = {"dev": 0, "a": 1, "alpha": 1, "b": 2, "beta": 2, "c": 3, "rc": 3, "pre": 3, "preview": 3}
+
+
 def version_key(v: str) -> tuple:
-    """'4.17.21' -> (4, 17, 21). 숫자가 아닌 부분은 뒤로 미룬다. (정확한 semver 비교는 아님)"""
-    parts = re.split(r"[.\-+_]", str(v))
-    key = []
-    for p in parts:
-        key.append((0, int(p), "") if p.isdigit() else (1, 0, p))
-    return tuple(key)
+    """버전 비교용 키. SemVer 규칙을 따르고 PyPI·Maven의 흔한 꼬리표도 다룬다 (#92).
+
+    - 숫자 부분은 숫자로 비교하고 끝의 .0은 무시한다: 1.2 == 1.2.0 < 1.2.1
+    - 사전 출시(-beta.1, -rc.2, rc1, .dev0)는 같은 숫자의 정식 출시보다 낮다: 1.2.3-beta.1 < 1.2.3
+    - 사전 출시끼리는 SemVer처럼 점으로 나눈 조각을 비교한다(숫자 < 글자, 짧은 쪽이 낮음)
+    - 정식 출시 뒤 표시(.post1, -sp1)는 정식 출시보다 높다
+    - 맨 앞 v와 빌드 정보(+...)는 무시한다
+    """
+    s = str(v).strip().lstrip("vV").split("+", 1)[0]
+    m = _VERSION_CORE.match(s)
+    if not m:
+        return ((), 0, ((1, 0, s.lower()),))
+    core = [int(x) for x in m[1].split(".")]
+    while len(core) > 1 and core[-1] == 0:
+        core.pop()
+    rest = m[2].lstrip(".-_")
+    if not rest:
+        return (tuple(core), 1, ())
+    # 'rc1'·'beta.2'·'dev0' 모두 글자와 숫자를 나눠 비교한다
+    pieces = [p for chunk in re.split(r"[.\-_]", rest) for p in re.findall(r"\d+|[A-Za-z]+", chunk)]
+    ids = tuple((0, int(p), "") if p.isdigit() else (1, _PRE_RANK.get(p.lower(), 9), p.lower()) for p in pieces)
+    phase = 2 if _POST_RELEASE.match(re.sub(r"[.\-_]", "", rest)) else 0
+    return (tuple(core), phase, ids)
 
 
 def pick_fix_version(current: str | None, fixed: list[str]) -> str | None:
-    """현재 버전보다 높은 '고친 버전' 중 가장 낮은 것 (가장 작게 올리는 버전)."""
+    """현재 버전보다 높은 '고친 버전' 중 가장 낮은 것 (가장 작게 올리는 버전).
+
+    현재 버전보다 높은 후보가 없으면 None이다. 낮은 버전을 '업그레이드'로 안내하지 않는다 (#92).
+    현재 버전을 모르면 가장 높은 후보를 돌려준다.
+    """
     if not fixed:
         return None
     cands = sorted(set(fixed), key=version_key)
     if current:
-        higher = [f for f in cands if version_key(f) > version_key(current)]
-        if higher:
-            return higher[0]
+        now = version_key(current)
+        higher = [f for f in cands if version_key(f) > now]
+        return higher[0] if higher else None
     return cands[-1]

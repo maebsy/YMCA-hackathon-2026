@@ -72,7 +72,11 @@ systemctl --user restart 72hours-backend   # 새 release 적용 시
 systemctl --user stop 72hours-web 72hours-backend 72hours-gpu-tunnel
 ```
 
-백엔드의 GPU 동시 요청 제한이 프로세스별이므로 기본은 worker 1개입니다. 웹 프록시의 응답 헤더 대기시간은 900초이며, 재시도를 많이 하는 LLM 작업이 이를 넘으면 요청이 실패할 수 있습니다. 장시간 작업을 공개 서비스에 제공할 때는 작업 큐·상태 조회가 별도로 필요합니다.
+백엔드의 GPU 동시 요청 제한이 프로세스별이므로 기본은 worker 1개입니다. 웹 프록시의 응답 헤더 대기시간은 900초이며, 외부 프록시에는 더 짧은 제한이 적용될 수 있습니다.
+
+현재 시연 프론트는 `POST /api/llm/explain/tasks`로 작업을 접수(202)하고 `GET /api/llm/explain/tasks/{job_id}`로 결과를 조회합니다. 긴 GPU 생성 동안 HTTP 연결을 유지하지 않아 외부 프록시의 524 오류를 피합니다. 기존 동기 `/api/llm/explain`은 호환성을 위해 유지합니다.
+
+이 임시 큐는 `LLM_JOBS_ENABLED=false`인 기존 시연 모드에서만 활성화되며 **프록시 인증과 worker 1개를 유지해야 합니다.** 진행·대기 합계 10건, 동시 실행 2건, 대기 포함 작업 제한 15분이며 완료 결과는 최대 50건·30분 보관합니다. 가득 차면 429, 만료·재시작으로 결과가 없으면 404입니다. 메모리 큐이므로 재시작 후 이어서 처리하거나 사용자별로 격리하지 않습니다. `LLM_JOBS_ENABLED=true`의 인증·DB 기반 작업 API와 별개이며, 실제 사용자 서비스로 전환할 때 프론트를 해당 API에 연결해야 합니다.
 
 ## 4. 프론트 담당자가 연결할 부분
 
@@ -130,6 +134,24 @@ journalctl --user -u 72hours-quick-tunnel -n 80 --no-pager
 [Quick Tunnel 공식 제한](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/): 가용성 보장 없음, 동시 진행 요청 200개, SSE 미지원. 이 터널은 웹 시연용이며 기존 stdio MCP를 HTTP MCP로 바꾸지 않습니다. Cloudflare의 요청 시간 제한도 별도로 적용되므로 Caddy의 900초 설정만으로 긴 동기 LLM 호출 성공을 보장하지 않습니다. 실제 배포에는 고정 호스트·앱 인증·작업 큐를 별도로 구성해야 합니다.
 
 ## 검증과 변경 범위
+
+### 공용 로그인 창 없이 공개 체험 제공
+
+운영자가 비회원의 웹·검사·LLM 사용을 승인한 시연에서는 서버에서
+`python3 deploy/general-server/open-quick-web.py`를 실행합니다. 공유 아이디/비밀번호를
+묻는 프록시 `basic_auth`만 제거하며, Supabase 가입이나 앱의 인증 설정을 변경하지 않습니다.
+현재 legacy 모드의 검사·LLM API도 익명으로 사용할 수 있으므로 기존 작업 상한은 유지합니다.
+
+스크립트는 설정을 백업하고 Caddy 검증 후 `SIGUSR1`으로 재적용합니다.
+웹 프록시·Cloudflare 터널 PID가 유지되어 임시 URL이 바뀌지 않았는지 확인하고,
+익명 루트·API·health 응답이 실패하면 설정을 복구합니다. Caddy 2.11 이상이 필요합니다.
+준비 스크립트를 다시 실행해도 기존 프록시 설정은 덮어쓰지 않습니다.
+외부의 새 브라우저에서 로그인 창 없이 화면이 열리고 검사 접수·조회가 되는지 별도로 확인하세요.
+복구는 출력된 백업을 `~/apps/72hours/runtime/Caddyfile.quick`로 되돌린 뒤
+`systemctl --user kill --kill-whom=main --signal=USR1 72hours-quick-web`으로 적용합니다.
+
+[Caddy의 신호 기반 재적용](https://caddyserver.com/docs/command-line#signals)은
+`caddy run --config`로 시작하고 관리 API로 설정을 바꾸지 않은 경우에만 지원됩니다.
 
 ```bash
 python3 -m unittest discover -s deploy/general-server/tests -v

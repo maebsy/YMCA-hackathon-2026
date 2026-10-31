@@ -223,6 +223,24 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(all(r['status'] == 'unavailable' for r in rows))
         self.assertNotIn('private transport data', json.dumps(rows))
 
+    def test_freshness_requires_source_dates_even_when_http_succeeds(self):
+        for name, body in [('OSV 표본', {}), ('CISA KEV', []), ('FIRST EPSS 표본', {'data': []}),
+                           ('FIRST EPSS 표본', {'data': ['wrong type']}), ('google/osv-scanner', {'tag_name': 'v1'})]:
+            with self.subTest(name=name, body=body), self.assertRaises(ValueError):
+                source_metadata(name, body)
+        response = Mock(status=200, read=Mock(return_value=b'{}'))
+        context = Mock(__enter__=Mock(return_value=response), __exit__=Mock(return_value=False))
+        with patch('data_quality.urllib.request.urlopen', return_value=context):
+            rows = collect_freshness()
+        self.assertTrue(all(r['status'] == 'unavailable' and r['http_status'] == 200 for r in rows))
+
+    def test_freshness_http_error_keeps_status_but_not_response_body(self):
+        error = urllib.error.HTTPError('https://example.invalid', 429, 'private response text', {}, None)
+        with patch('data_quality.urllib.request.urlopen', side_effect=error):
+            rows = collect_freshness()
+        self.assertTrue(all(r['http_status'] == 429 and r['status'] == 'unavailable' for r in rows))
+        self.assertNotIn('private response text', json.dumps(rows))
+
 
 if __name__ == '__main__':
     unittest.main()

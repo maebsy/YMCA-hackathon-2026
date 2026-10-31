@@ -2,6 +2,7 @@
 import asyncio
 from datetime import datetime, timezone
 import json
+import urllib.error
 import urllib.request
 
 
@@ -31,13 +32,26 @@ def check_data_contracts(check, pick_version, intel_factory, transport_factory, 
 
 
 def source_metadata(name, data):
+    if not isinstance(data, dict):
+        raise ValueError('source metadata must be an object')
     if name == 'OSV 표본':
-        return {'id': data.get('id'), 'modified': data.get('modified'), 'published': data.get('published')}
-    if name == 'CISA KEV':
-        return {'version': data.get('catalogVersion'), 'released': data.get('dateReleased'), 'count': data.get('count')}
-    if name == 'FIRST EPSS 표본':
-        return {'dates': sorted({row['date'] for row in data.get('data', []) if row.get('date')})}
-    return {'version': data.get('tag_name'), 'released': data.get('published_at')}
+        result = {'id': data.get('id'), 'modified': data.get('modified'), 'published': data.get('published')}
+        required = ('id', 'modified')
+    elif name == 'CISA KEV':
+        result = {'version': data.get('catalogVersion'), 'released': data.get('dateReleased'), 'count': data.get('count')}
+        required = ('version', 'released')
+    elif name == 'FIRST EPSS 표본':
+        rows = data.get('data')
+        if (not isinstance(rows, list) or not rows
+                or not all(isinstance(row, dict) and isinstance(row.get('date'), str) and row['date'] for row in rows)):
+            raise ValueError('source date is unavailable')
+        return {'dates': sorted({row['date'] for row in rows})}
+    else:
+        result = {'version': data.get('tag_name'), 'released': data.get('published_at')}
+        required = ('version', 'released')
+    if not all(isinstance(result[k], str) and result[k] for k in required):
+        raise ValueError('required source metadata is missing')
+    return result
 
 
 def collect_freshness():
@@ -52,10 +66,13 @@ def collect_freshness():
         try:
             request = urllib.request.Request(url, headers={'User-Agent': '72hours-validation/1'})
             with urllib.request.urlopen(request, timeout=6) as response:
+                row['http_status'] = response.status
                 body = response.read(8*1024*1024+1)
                 if len(body) > 8*1024*1024:
                     raise ValueError('response limit')
                 row.update(status='received', metadata=source_metadata(name, json.loads(body)))
+        except urllib.error.HTTPError as exc:
+            row.update(status='unavailable', http_status=exc.code, error_type='HTTPError')
         except (OSError, ValueError, KeyError, TypeError) as exc:
             row.update(status='unavailable', error_type=type(exc).__name__)
         rows.append(row)

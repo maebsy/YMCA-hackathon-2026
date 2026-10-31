@@ -16,6 +16,8 @@ load();
 </script>
 <script>
 fetch('engine-quality.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json();}).then(d=>{
-const rows=d.source_freshness||[];document.getElementById('freshness').replaceChildren(rows.length?table(['출처','조회 상태','조회 시각(KST)','공급자가 제공한 버전·날짜'],rows.map(s=>[s.name,s.status==='received'?'응답 확인':'미확인 ('+s.error_type+')',new Date(s.queried_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}),s.metadata||{}])):el('p','이 실행에는 최신성 조회 근거가 없습니다.'));
+const rows=d.source_freshness||[];
+function state(s){const http=s.http_status?' · HTTP '+s.http_status:'';return s.status==='received'?'메타데이터 확인'+http:'미확인 ('+s.error_type+')'+http;}
+document.getElementById('freshness').replaceChildren(rows.length?table(['출처','조회 상태','조회 시각(KST)','공급자가 제공한 버전·날짜'],rows.map(s=>[s.name,state(s),new Date(s.queried_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}),s.metadata||{}])):el('p','이 실행에는 최신성 조회 근거가 없습니다.'));
 }).catch(()=>{document.getElementById('freshness').textContent='조회 실패: 최신 여부 미확인';});
 </script></html>

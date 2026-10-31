@@ -12,6 +12,7 @@
 | Caddy | 2.11.7 | 일반 서버의 웹·API 프록시, 공개 시연 HTTPS 및 접근 인증 | Apache-2.0 | https://github.com/caddyserver/caddy |
 | cloudflared | 2026.10.7 | 승인된 시연용 HTTPS 터널 클라이언트, 공식 SHA-256 고정 검증 | Apache-2.0 | https://github.com/cloudflare/cloudflared |
 | ngrok 에이전트 | 3.39.13 (sha256 233e0647849913e6404150c1e9c5e4f31c1368aefee330958d038d7afecb8f2e, 공식 배포 파일 ngrok-v3-stable-linux-amd64.tgz) | 공인 IP 없는 일반 서버를 고정 HTTPS 주소(무료 고정 도메인)로 공개, 웹·API·원격 MCP 진입점. 사용자 영역 설치 | ngrok 이용약관 (상용 소프트웨어, 무료 요금제) | https://ngrok.com/download |
+| mcp-publisher (MCP Registry CLI) | 1.8.7 (sha256 cdb42bfe6a5e1cba7526e007ac13f13261ed35224386fee8a34ed2c2e8e778d4, 공식 배포 파일 mcp-publisher_windows_amd64.tar.gz) | 운영자 PC에서 `registry/server.json` 검증·공식 MCP Registry 등록 (서비스 실행에는 쓰지 않음) | Apache-2.0 (일부 MIT, 전환 중) | https://github.com/modelcontextprotocol/registry |
 | Node.js | 24.19.0 | 별도 담당자가 구현할 프론트엔드의 서버 실행 환경 | MIT 및 포함 구성요소별 라이선스 | https://nodejs.org/ |
 | Node.js 공식 Docker 이미지 | 24.19.0-bookworm-slim | Next.js 개발·standalone 배포 컨테이너 | MIT (포함 Debian 패키지는 각 라이선스) | https://hub.docker.com/_/node |
 | Next.js | 16.4.3 | 프론트엔드 웹 대시보드 및 SSR/App Router 프레임워크 | MIT | https://github.com/vercel/next.js |
@@ -68,6 +69,7 @@
 | Supabase | 팀 공용 PostgreSQL DB 호스팅, 로그인·Auth 서버의 access token 검증 (#7/#26) | Supabase Terms of Service | https://supabase.com |
 | Cloudflare Quick Tunnels | 공인 IP 없이 일반 서버의 시연 웹/API를 임시 HTTPS 주소로 공개 | Cloudflare 이용약관 | https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/ |
 | ngrok 무료 고정 도메인 | 재시작해도 바뀌지 않는 시연 공개 주소(oboe-handiness-enroll.ngrok-free.dev). 무료 요금제는 브라우저 첫 방문에 경고 안내 페이지가 한 번 표시됨 | ngrok 이용약관 | https://ngrok.com/docs/universal-gateway/free-plan-limits/ |
+| 공식 MCP Registry (registry.modelcontextprotocol.io) | 원격 MCP 서버 `io.github.maebsy/72hours`의 주소·설명 공개 등록(배포 채널). GitHub 계정 인증으로 네임스페이스 확인 | MCP Registry 이용약관, 코드 Apache-2.0 | https://registry.modelcontextprotocol.io |
 | Hugging Face Hub | 모델 내려받기 (가중치는 GPU 서버에서만 실행) | Hugging Face Terms of Service | https://huggingface.co |
 | Google OAuth (Google Identity) | Google 계정으로 가입·로그인 | Google APIs Terms of Service | https://developers.google.com/identity |
 | GitHub OAuth Apps | GitHub 계정으로 가입·로그인 | GitHub Terms of Service | https://docs.github.com/apps/oauth-apps |

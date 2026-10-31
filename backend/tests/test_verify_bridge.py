@@ -276,3 +276,26 @@ async def test_blue_truncated_then_fixed_is_used(fake_vllm):
 
     assert not plan.skipped and "server.js" in plan.patch.files
     assert B.syntax_error("server.js", plan.patch.files["server.js"]) is None
+
+
+async def test_blue_dropping_response_line_is_sent_back_once(fake_vllm):
+    # 서버 재점검(#111): Blue가 입력값 줄과 res.send 줄을 함께 범위에 넣고 입력값 줄만 돌려줘 응답이 사라졌습니다
+    dropped = {"start_line": XSS_LINE, "end_line": XSS_LINE + 1, "replace": "    const q = req.query.q || '';"}
+    fake_vllm.queue("RedAttackPlan", red(), RED_XSS).queue("BluePatch", blue(edits=[SQL_EDIT, dropped]), blue())
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI, XSS], DEMO)
+
+    retry = fake_vllm.calls("BluePatch")[1]["messages"][-1]["content"]
+    assert "2줄)을 1줄로" in retry and "res.type" in retry  # 사라지는 줄을 알려 줌
+    assert "res.type" in plan.patch.files["server.js"].splitlines()[XSS_LINE]  # 다시 받은 정상 수정본 사용
+
+
+async def test_intentional_line_removal_is_accepted_on_second_answer(fake_vllm):
+    """줄을 지우는 수정도 있을 수 있어 한 번만 되묻고, 두 번째 답은 그대로 씁니다."""
+    dropped = {"start_line": XSS_LINE, "end_line": XSS_LINE + 1, "replace": "    const q = req.query.q || '';"}
+    fake_vllm.queue("RedAttackPlan", red(), RED_XSS).queue("BluePatch", blue(edits=[SQL_EDIT, dropped]),
+                                                          blue(edits=[SQL_EDIT, dropped]))
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI, XSS], DEMO)
+
+    assert len(fake_vllm.calls("BluePatch")) == 2 and "server.js" in plan.patch.files

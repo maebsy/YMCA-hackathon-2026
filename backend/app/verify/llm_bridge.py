@@ -118,6 +118,8 @@ BLUE_PATCH_SYSTEM = """\
 - 입력 파일의 각 줄 앞에는 `번호| `가 붙어 있다. 각 편집은 바꿀 줄 범위(start_line~end_line)와
   그 줄들을 대신할 새 코드(replace)다. replace에는 줄 번호를 넣지 않는다. 파일 전체를 다시 쓰지 않는다.
 - 편집끼리 줄 범위가 겹치지 않게 한다.
+- replace는 범위 안의 **모든 줄**을 대신한다. 범위에 넣은 줄은 바꾸지 않더라도 replace에 다시 써야 한다
+  (예: 입력값 줄과 응답을 보내는 줄을 함께 범위에 넣었다면 두 줄 모두 replace에 있어야 한다).
 - 취약점과 관련된 줄만 최소한으로 고친다. 라우트·응답 형식·정상 동작·내보내기(export)는 바꾸지 않는다.
 - 사용자 입력을 지우거나 고정 문자열로 바꾸는 것은 수정이 아니다. 화면에 보이던 값은 이스케이프해서 계속 보이게 하고,
   쿼리에 쓰이던 값은 매개변수로 넘겨 계속 쓰이게 한다.
@@ -258,8 +260,24 @@ def blue_check(path: str, original: str):
         if content is None:
             return [why]
         broken = syntax_error(path, content)
-        return [broken] if broken else []
+        return [broken] if broken else _dropped_lines(patch, original)
     return check
+
+
+def _dropped_lines(patch: BluePatch, original: str) -> list[str]:
+    """범위보다 적은 줄로 바꾼 편집을 알려 줍니다. 서버 실행에서 Blue가 입력값 줄과 응답 줄(res.send)을 함께 범위에
+    넣고 입력값 줄만 돌려줘, 문법은 맞지만 응답이 사라진 수정본이 반복해서 나왔습니다(#111). 줄을 지우는 수정도 있을 수
+    있으므로 한 번만 되묻고, 다시 받은 답은 그대로 씁니다(chat_json 은 두 번째 답의 check 문제를 기록만 함)."""
+    lines = original.splitlines()
+    problems = []
+    for edit in patch.edits:
+        kept = [x for x in lines[edit.start_line - 1:edit.end_line] if x.strip()]
+        new = [x for x in edit.replace.splitlines() if x.strip()]
+        if len(new) < len(kept):
+            gone = [x.strip() for x in kept if x.strip() not in edit.replace][:3]
+            problems.append(f"{edit.start_line}~{edit.end_line}줄({len(kept)}줄)을 {len(new)}줄로 바꿔 코드가 사라집니다: "
+                            f"{gone}. 범위 안의 줄은 바꾸지 않더라도 replace에 모두 다시 쓰세요. 정말 지워야 하는 줄이면 그대로 두세요.")
+    return problems
 
 
 # ── 연결 ──

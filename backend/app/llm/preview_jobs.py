@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 
 class PreviewJobs:
-    def __init__(self, *, capacity=10, running=2, kept=50, timeout=900, ttl=1800):
+    def __init__(self, *, capacity=15, running=6, kept=50, timeout=900, ttl=1800):
         self.capacity, self.kept, self.timeout, self.ttl = capacity, kept, timeout, ttl
         self.jobs = OrderedDict()
         self.tasks = set()

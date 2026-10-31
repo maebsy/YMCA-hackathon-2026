@@ -90,3 +90,21 @@ def test_task_without_user_settings_returns_all_os_commands(api, fake_vllm):
     guide = result["result"]["results"][0]["explanation"]["guide"]
     assert set(guide) == {"package_manager", "actions"}
     assert {b["os"] for a in guide["actions"] for b in a["commands"]} == {"windows", "macos", "linux"}
+
+
+def test_app_uses_configured_job_concurrency_within_llm_limit(monkeypatch):
+    # #145: 동시 실행 수·대기열 크기는 설정을 따르고, LLM 동시 요청 한도를 넘지 않습니다
+    from fastapi.testclient import TestClient
+
+    from app.config import settings
+    from app.main import app
+
+    monkeypatch.setattr(settings, "llm_parallel_jobs", 12)
+    monkeypatch.setattr(settings, "llm_max_concurrency", 8)
+    monkeypatch.setattr(settings, "llm_queued_jobs", 20)
+    with TestClient(app):
+        queue = app.state.preview_jobs
+        assert queue.slots._value == 8
+        assert queue.capacity == 20
+    assert PreviewJobs().slots._value == type(settings).model_fields["llm_parallel_jobs"].default
+    assert PreviewJobs().capacity == type(settings).model_fields["llm_queued_jobs"].default

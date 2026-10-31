@@ -3,6 +3,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from fastapi import APIRouter, FastAPI
 from sqlalchemy import text
 
+from app.config import settings
 from app.db import engine, init_db
 from app.explain_jobs.config import job_settings
 from app.llm import create_explainer
@@ -32,7 +33,9 @@ async def lifespan(app: FastAPI):
         stack.push_async_callback(app.state.explainer.aclose)
         if not job_settings.llm_jobs_enabled:
             from app.llm.preview_jobs import PreviewJobs
-            app.state.preview_jobs = PreviewJobs()
+            app.state.preview_jobs = PreviewJobs(
+                running=max(1, min(settings.llm_parallel_jobs, settings.llm_max_concurrency)),
+                capacity=max(1, settings.llm_queued_jobs))
             stack.push_async_callback(app.state.preview_jobs.aclose)
         stack.push_async_callback(scans.drain_tasks)
         app.state.verify_jobs = VerifyJobs()

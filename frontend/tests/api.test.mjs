@@ -59,3 +59,33 @@ test('environment includes the selected hosting and malformed responses fail cle
     global.fetch = original;
   }
 });
+
+test('LLM result is retrieved from the accepted job without holding the POST open', async () => {
+  const original = global.fetch, calls = [];
+  const results = [{status:'done', fingerprint:'test'}];
+  global.fetch = async (url, options) => {
+    calls.push({url, options});
+    return {ok:true, json:async()=>calls.length === 1
+      ? {job_id:'test-job', status:'queued'} : {status:'done', result:{results}}};
+  };
+  try {
+    assert.deepEqual(await explain([{}], 'linux'), results);
+    assert.equal(calls[0].url, '/api/llm/explain/tasks');
+    assert.equal(calls[0].options.method, 'POST');
+    assert.equal(calls[1].url, '/api/llm/explain/tasks/test-job');
+    assert.equal(calls[1].options.cache, 'no-store');
+  } finally { global.fetch = original; }
+});
+
+test('failed and expired LLM jobs surface the server message', async () => {
+  const original = global.fetch;
+  try {
+    for (const expired of [false, true]) {
+      let calls = 0;
+      global.fetch = async () => ({ok:++calls === 1 || !expired, status:expired ? 404 : 200,
+        json:async()=>calls === 1 ? {job_id:'test-job'} : expired
+          ? {detail:{message:'작업이 만료됐습니다'}} : {status:'failed', error:{message:'GPU 오류'}}});
+      await assert.rejects(explain([{}], 'linux'), expired ? /만료/ : /GPU 오류/);
+    }
+  } finally { global.fetch = original; }
+});

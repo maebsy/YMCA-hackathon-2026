@@ -40,15 +40,29 @@ export async function llmHealthy(): Promise<boolean> {
 }
 
 export async function explain(findings: unknown[], os: string, hosting = "unknown") {
-  const res = await fetch("/api/llm/explain", {
+  const res = await fetch("/api/llm/explain/tasks", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ findings, mode: "red_blue", environment: { os, hosting } }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.detail?.message || `LLM 해석 실패 (${res.status})`);
-  if (!Array.isArray(data.results)) throw new Error("LLM 결과 형식이 올바르지 않습니다.");
-  return data.results as ExplainResult[];
+  if (typeof data.job_id !== "string") throw new Error("LLM 작업 응답이 올바르지 않습니다.");
+  const started = Date.now();
+  while (Date.now() - started < 16 * 60 * 1000) {
+    const response = await fetch(`/api/llm/explain/tasks/${encodeURIComponent(data.job_id)}`,
+      { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    const job = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(job?.detail?.message || `LLM 상태 조회 실패 (${response.status})`);
+    if (job.status === "failed") throw new Error(job.error?.message || "LLM 해석에 실패했습니다.");
+    if (job.status === "done") {
+      if (!Array.isArray(job.result?.results)) throw new Error("LLM 결과 형식이 올바르지 않습니다.");
+      return job.result.results as ExplainResult[];
+    }
+    if (!["queued", "running"].includes(job.status)) throw new Error("LLM 작업 상태가 올바르지 않습니다.");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  throw new Error("LLM 해석이 제한 시간 안에 끝나지 않았습니다.");
 }
 
 // 비전공자용 점검 리포트 (실제 검사 결과로). format=html 이면 인쇄용 HTML, markdown 이면 붙여 넣기용

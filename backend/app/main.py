@@ -24,6 +24,10 @@ async def lifespan(app: FastAPI):
         app.state.explainer = create_explainer()
         # LLM 연결과 위협 정보(KEV·EPSS) 연결을 함께 닫습니다
         stack.push_async_callback(app.state.explainer.aclose)
+        if not job_settings.llm_jobs_enabled:
+            from app.llm.preview_jobs import PreviewJobs
+            app.state.preview_jobs = PreviewJobs()
+            stack.push_async_callback(app.state.preview_jobs.aclose)
         yield
 
 

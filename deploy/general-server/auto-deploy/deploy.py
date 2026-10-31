@@ -440,6 +440,12 @@ class Deployer:
             return []  # 저장소에서 직접 실행(테스트·수동)할 때는 건드리지 않음
         source = release/"deploy/general-server/auto-deploy"
         changed = [name for name in RUNTIME_FILES if (source/name).read_bytes() != (self.runtime/name).read_bytes()]
+        pinned = self.control/"runtime-pinned"
+        if pinned.exists():
+            # 운영자가 install.sh로 직접 설치한 사본은 main이 같은 내용을 가질 때까지 되돌리지 않습니다
+            if not changed:
+                pinned.unlink()
+            return []
         try:
             for name in changed:
                 compile((source/name).read_text(encoding="utf-8"), name, "exec")

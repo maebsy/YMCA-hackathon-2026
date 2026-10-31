@@ -10,6 +10,8 @@ flock -n 9
 for file in deploy.py deployment_entry.py snapshot.py; do
   if [[ "$source_dir" != "$control/runtime" ]]; then cp "$source_dir/$file" "$control/runtime/$file"; fi
 done
+# 직접 설치한 사본은 main이 같은 내용이 될 때까지 자기 갱신으로 되돌리지 않습니다 (#151)
+if [[ "$source_dir" != "$control/runtime" ]]; then touch "$control/runtime-pinned"; fi
 if [[ ! -f "$control/control-token" ]]; then
   python3 -c 'import secrets; print(secrets.token_hex(32))' > "$control/control-token"
 fi

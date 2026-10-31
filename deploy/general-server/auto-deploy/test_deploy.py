@@ -383,6 +383,17 @@ class RuntimeSelfUpdateTests(unittest.TestCase):
         self.assertEqual(self.d.update_runtime(self.root/"release"), ["invalid"])
         self.assertEqual((self.d.runtime/"deploy.py").read_text(), "OLD = 1\n")
 
+    def test_operator_install_is_kept_until_main_catches_up(self):
+        (self.d.runtime/"deploy.py").write_text("OPERATOR = 3\n")
+        (self.d.control/"runtime-pinned").touch()
+        self.assertEqual(self.d.update_runtime(self.root/"release"), [])
+        self.assertEqual((self.d.runtime/"deploy.py").read_text(), "OPERATOR = 3\n")  # 옛 main으로 되돌리지 않음
+        (self.source/"deploy.py").write_text("OPERATOR = 3\n")  # 머지돼 main이 같아짐
+        self.assertEqual(self.d.update_runtime(self.root/"release"), [])
+        self.assertFalse((self.d.control/"runtime-pinned").exists())
+        (self.source/"deploy.py").write_text("LATER = 4\n")  # 그 뒤로는 자동 갱신
+        self.assertEqual(self.d.update_runtime(self.root/"release"), ["deploy.py"])
+
     def test_running_from_repository_never_self_updates(self):
         self.d.runtime = self.root/"elsewhere"
         self.assertEqual(self.d.update_runtime(self.root/"release"), [])

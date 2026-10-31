@@ -11,7 +11,7 @@
 5. 기존 SQLite를 백업하고 이전 링크를 기록한 뒤 프론트·백엔드를 같은 SHA로 교체한다. 해당 두 서비스만 재시작한다.
 6. 로컬 및 설정된 공개 URL에서 버전을 확인한다. 실패하면 이전 링크와 서비스를 복구한다. DB는 새 데이터를 덮어쓰지 않도록 자동 복원하지 않는다.
 7. **MCP**(`72hours-mcp`: 검사별 연결 `/mcp/h/*`, 서비스 MCP `/mcp/service/rpc`): 마지막으로 올린 MCP 커밋 이후 `integrations/mcp-handoff/`가 바뀌었을 때만 `~/apps/72hours/mcp/releases/<SHA>`에 복사한다. 후보 포트 18765에서 `/mcp/health`와 서비스 MCP 도구 목록을 실제 공개 주소의 Host로 확인한 뒤 `live-current`를 바꾸고 `72hours-mcp`만 재시작한다. 다시 확인해 실패하면 이전 버전으로 되돌린다. 작업 공간·연결 DB(`mcp/private`)는 그대로다. `requirements.txt`가 바뀌면 공용 가상환경을 운영자가 먼저 갱신해야 하므로 보류한다. 실패한 SHA는 `--retry` 전까지 다시 시도하지 않고, MCP 실패는 끝난 앱 교체를 되돌리지 않는다.
-8. **배포 스크립트 자기 갱신**: 같은 커밋의 `deploy.py`·`deployment_entry.py`·`snapshot.py`가 서버 사본과 다르면 문법 확인 후 교체한다. 하나라도 문법이 틀리면 아무것도 바꾸지 않는다. `deployment_entry.py`는 다음 백엔드 재시작부터 적용된다. systemd 유닛 변경은 `install.sh`를 다시 실행해야 한다.
+8. **배포 스크립트 자기 갱신**: 같은 커밋의 `deploy.py`·`deployment_entry.py`·`snapshot.py`가 서버 사본과 다르면 문법 확인 후 교체한다. 하나라도 문법이 틀리면 아무것도 바꾸지 않는다. `install.sh`로 직접 설치한 사본(`runtime-pinned`)은 main이 같은 내용이 될 때까지 되돌리지 않는다. `deployment_entry.py`는 다음 백엔드 재시작부터 적용된다. systemd 유닛 변경은 `install.sh`를 다시 실행해야 한다.
 
 앱이 이미 최신이어도 MCP·배포 스크립트가 남아 있으면 다음 타이머에 그것만 이어서 맞춘다.
 

@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Literal
 from urllib.parse import parse_qsl
@@ -115,6 +118,8 @@ BLUE_PATCH_SYSTEM = """\
 - 입력 파일의 각 줄 앞에는 `번호| `가 붙어 있다. 각 편집은 바꿀 줄 범위(start_line~end_line)와
   그 줄들을 대신할 새 코드(replace)다. replace에는 줄 번호를 넣지 않는다. 파일 전체를 다시 쓰지 않는다.
 - 편집끼리 줄 범위가 겹치지 않게 한다.
+- replace는 범위 안의 **모든 줄**을 대신한다. 범위에 넣은 줄은 바꾸지 않더라도 replace에 다시 써야 한다
+  (예: 입력값 줄과 응답을 보내는 줄을 함께 범위에 넣었다면 두 줄 모두 replace에 있어야 한다).
 - 취약점과 관련된 줄만 최소한으로 고친다. 라우트·응답 형식·정상 동작·내보내기(export)는 바꾸지 않는다.
 - 사용자 입력을 지우거나 고정 문자열로 바꾸는 것은 수정이 아니다. 화면에 보이던 값은 이스케이프해서 계속 보이게 하고,
   쿼리에 쓰이던 값은 매개변수로 넘겨 계속 쓰이게 한다.
@@ -223,12 +228,56 @@ def _replacement(text: str, first: str, last: str) -> list[str]:
     return [line + "\n" for line in body[:-1]] + ([body[-1] + newline] if body else [])
 
 
+_JS_SUFFIXES = (".js", ".cjs", ".mjs")
+
+
+def syntax_error(path: str, content: str) -> str | None:
+    """수정본 JS 파일의 문법 오류. `node --check`는 파싱만 하고 코드를 실행하지 않습니다.
+    JS가 아니거나 이 서버에 node가 없으면 None (샌드박스 실행에서 '수정 후 앱이 안 뜸'으로 걸러집니다)."""
+    suffix = PurePosixPath(path).suffix
+    node = shutil.which("node")
+    if suffix not in _JS_SUFFIXES or not node:
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / f"patched{suffix}"
+        target.write_text(content, encoding="utf-8")
+        try:
+            r = subprocess.run([node, "--check", str(target)], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=15)
+        except subprocess.TimeoutExpired:
+            return None
+    if r.returncode == 0:
+        return None
+    # 임시 경로 대신 원래 파일 이름으로, 모델이 고칠 수 있게 첫 몇 줄만 돌려줍니다
+    detail = "\n".join(r.stderr.replace(str(target), path).strip().splitlines()[:6])
+    return f"수정본에 문법 오류가 있습니다(코드가 중간에 잘렸거나 괄호가 맞지 않음): {detail[:500]}"
+
+
 def blue_check(path: str, original: str):
-    """chat_json 의 check: 편집을 적용할 수 없으면 그 이유를 모델에게 돌려줘 한 번 더 받게 합니다."""
+    """chat_json 의 check: 편집을 적용할 수 없거나 수정본이 문법에 맞지 않으면 그 이유를 모델에게 돌려줘 한 번 더 받게 합니다."""
     def check(patch: BluePatch) -> list[str]:
         content, why = to_patch_content(patch, path, original)
-        return [] if content is not None else [why]
+        if content is None:
+            return [why]
+        broken = syntax_error(path, content)
+        return [broken] if broken else _dropped_lines(patch, original)
     return check
+
+
+def _dropped_lines(patch: BluePatch, original: str) -> list[str]:
+    """범위보다 적은 줄로 바꾼 편집을 알려 줍니다. 서버 실행에서 Blue가 입력값 줄과 응답 줄(res.send)을 함께 범위에
+    넣고 입력값 줄만 돌려줘, 문법은 맞지만 응답이 사라진 수정본이 반복해서 나왔습니다(#111). 줄을 지우는 수정도 있을 수
+    있으므로 한 번만 되묻고, 다시 받은 답은 그대로 씁니다(chat_json 은 두 번째 답의 check 문제를 기록만 함)."""
+    lines = original.splitlines()
+    problems = []
+    for edit in patch.edits:
+        kept = [x for x in lines[edit.start_line - 1:edit.end_line] if x.strip()]
+        new = [x for x in edit.replace.splitlines() if x.strip()]
+        if len(new) < len(kept):
+            gone = [x.strip() for x in kept if x.strip() not in edit.replace][:3]
+            problems.append(f"{edit.start_line}~{edit.end_line}줄({len(kept)}줄)을 {len(new)}줄로 바꿔 코드가 사라집니다: "
+                            f"{gone}. 범위 안의 줄은 바꾸지 않더라도 replace에 모두 다시 쓰세요. 정말 지워야 하는 줄이면 그대로 두세요.")
+    return problems
 
 
 # ── 연결 ──
@@ -286,6 +335,11 @@ async def plan_verification(client: LLMClient, findings: list[FindingInput], rep
         blue = await client.chat_json(blue_patch_messages(group, rel, source), BluePatch, sampling=BLUE_PATCH_SAMPLING,
                                       check=blue_check(rel, source))
         content, why = to_patch_content(blue.data, rel, source)
+        if content is not None:
+            # 다시 받은 답도 문법이 깨져 있으면 실행하지 않고 건너뜁니다 (앱이 안 떠 '수정 실패'만 나오므로)
+            broken = syntax_error(rel, content)
+            if broken:
+                content, why = None, broken
         if content is None:
             for f in group:
                 plan.skipped.append(Skipped(fingerprint=f.fingerprint, stage="blue", reason=why))

@@ -336,6 +336,12 @@ class McpDeployTests(unittest.TestCase):
         self.assertIn("dependencies", self.d.read_control("mcp-failed.json")["reason"])
         self.assertEqual(self.live(), self.old)
 
+    def test_line_endings_and_comments_are_not_dependency_changes(self):
+        # 운영에서 실제로 막혔던 경우: 예전 수동 배포본이 CRLF
+        (self.old/"requirements.txt").write_bytes(b"# pinned\r\nmcp==1\r\n\r\n")
+        with self.popen():
+            self.assertEqual(self.d.update_mcp(self.release), "deployed")
+
     def test_unchanged_mcp_is_marked_without_restart(self):
         deploy.atomic(self.d.control/"mcp-applied.json", {"revision": "b" * 40})
         self.d.capture = Mock(return_value="")

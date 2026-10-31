@@ -48,6 +48,12 @@ def drain_record(path):
         return None
 
 
+def requirements(path):
+    """의존성 목록만 비교합니다. 줄바꿈(CRLF)·주석·빈 줄 차이는 의존성 변경이 아닙니다."""
+    lines = (line.split("#", 1)[0].strip() for line in path.read_text(encoding="utf-8").splitlines())
+    return sorted(line for line in lines if line)
+
+
 def atomic(path, data):
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
@@ -383,7 +389,7 @@ class Deployer:
         base = self.root/"mcp"
         source = release/MCP_SOURCE
         previous = (base/"live-current").resolve(strict=True)
-        if (previous/"requirements.txt").read_bytes() != (source/"requirements.txt").read_bytes():
+        if requirements(previous/"requirements.txt") != requirements(source/"requirements.txt"):
             # 공용 가상환경을 바꾸면 지금 도는 MCP에도 영향이 가므로 운영자가 직접 갱신합니다
             raise Deferred("MCP dependencies changed; update the MCP venv first")
         settings = self.mcp_env()

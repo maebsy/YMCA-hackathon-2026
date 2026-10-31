@@ -5,6 +5,7 @@
 """
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -200,3 +201,15 @@ def test_integration_demo_before_after():
     assert r.status == "verified", r.message
     assert {o.id: o.verdict for o in r.attacks} == {"sqli-orders": "verified", "xss-search": "verified"}
     assert r.after_tests.ok is True
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node 필요")
+def test_probe_timeout_still_reports_isolation(tmp_path):
+    # 수정 후 앱이 응답 없이 멈추면 워치독이 끊는데, 그때도 격리 확인을 내야 '격리 실패'로 잘못 보이지 않습니다
+    cfg = {"attacks": [], "port": 3197, "startCmd": ["node", "-e", "setInterval(() => {}, 1000)"],
+           "runTests": False, "startTimeoutMs": 10000, "hardTimeoutMs": 800}
+    out = subprocess.run(["node", str(Path(V.__file__).with_name("probe.mjs"))], input=json.dumps(cfg),
+                         capture_output=True, text=True, timeout=30, cwd=tmp_path)
+    data = json.loads(out.stdout)
+    assert data["reachable"] is False and "probe timeout" in data["appError"]
+    assert {"network_isolated", "non_root", "caps_dropped", "no_new_privs"} <= set(data["isolation"])

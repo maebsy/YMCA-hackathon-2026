@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Literal
 from urllib.parse import parse_qsl
@@ -223,11 +226,39 @@ def _replacement(text: str, first: str, last: str) -> list[str]:
     return [line + "\n" for line in body[:-1]] + ([body[-1] + newline] if body else [])
 
 
+_JS_SUFFIXES = (".js", ".cjs", ".mjs")
+
+
+def syntax_error(path: str, content: str) -> str | None:
+    """수정본 JS 파일의 문법 오류. `node --check`는 파싱만 하고 코드를 실행하지 않습니다.
+    JS가 아니거나 이 서버에 node가 없으면 None (샌드박스 실행에서 '수정 후 앱이 안 뜸'으로 걸러집니다)."""
+    suffix = PurePosixPath(path).suffix
+    node = shutil.which("node")
+    if suffix not in _JS_SUFFIXES or not node:
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / f"patched{suffix}"
+        target.write_text(content, encoding="utf-8")
+        try:
+            r = subprocess.run([node, "--check", str(target)], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=15)
+        except subprocess.TimeoutExpired:
+            return None
+    if r.returncode == 0:
+        return None
+    # 임시 경로 대신 원래 파일 이름으로, 모델이 고칠 수 있게 첫 몇 줄만 돌려줍니다
+    detail = "\n".join(r.stderr.replace(str(target), path).strip().splitlines()[:6])
+    return f"수정본에 문법 오류가 있습니다(코드가 중간에 잘렸거나 괄호가 맞지 않음): {detail[:500]}"
+
+
 def blue_check(path: str, original: str):
-    """chat_json 의 check: 편집을 적용할 수 없으면 그 이유를 모델에게 돌려줘 한 번 더 받게 합니다."""
+    """chat_json 의 check: 편집을 적용할 수 없거나 수정본이 문법에 맞지 않으면 그 이유를 모델에게 돌려줘 한 번 더 받게 합니다."""
     def check(patch: BluePatch) -> list[str]:
         content, why = to_patch_content(patch, path, original)
-        return [] if content is not None else [why]
+        if content is None:
+            return [why]
+        broken = syntax_error(path, content)
+        return [broken] if broken else []
     return check
 
 
@@ -286,6 +317,11 @@ async def plan_verification(client: LLMClient, findings: list[FindingInput], rep
         blue = await client.chat_json(blue_patch_messages(group, rel, source), BluePatch, sampling=BLUE_PATCH_SAMPLING,
                                       check=blue_check(rel, source))
         content, why = to_patch_content(blue.data, rel, source)
+        if content is not None:
+            # 다시 받은 답도 문법이 깨져 있으면 실행하지 않고 건너뜁니다 (앱이 안 떠 '수정 실패'만 나오므로)
+            broken = syntax_error(rel, content)
+            if broken:
+                content, why = None, broken
         if content is None:
             for f in group:
                 plan.skipped.append(Skipped(fingerprint=f.fingerprint, stage="blue", reason=why))

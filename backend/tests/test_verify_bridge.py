@@ -251,3 +251,28 @@ async def test_bad_range_is_retried_with_reason(fake_vllm):
     assert "server.js" in plan.patch.files  # 두 번째 응답으로 적용됨
     retry = fake_vllm.calls("BluePatch")[1]["messages"][-1]["content"]
     assert "밖입니다" in retry
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node 필요")
+async def test_blue_truncated_patch_is_sent_back_then_skipped(fake_vllm):
+    # 실서버 1회차: Blue가 XSS 수정 코드를 중간에 잘라 앱이 안 떴습니다. 문법 검사로 실행 전에 걸러 다시 요청합니다
+    cut = {"start_line": XSS_LINE, "end_line": XSS_LINE, "replace": '    const q = String(req.query.q || "").replace(/[&<>]/g, (c) => ({'}
+    fake_vllm.queue("RedAttackPlan", red(), RED_XSS).queue("BluePatch", blue(edits=[SQL_EDIT, cut]), blue(edits=[SQL_EDIT, cut]))
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI, XSS], DEMO)
+
+    assert len(fake_vllm.calls("BluePatch")) == 2
+    assert "문법 오류" in fake_vllm.calls("BluePatch")[1]["messages"][-1]["content"]
+    assert plan.patch.files == {}
+    assert {s.stage for s in plan.skipped} == {"blue"} and "문법 오류" in plan.skipped[0].reason
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node 필요")
+async def test_blue_truncated_then_fixed_is_used(fake_vllm):
+    cut = {"start_line": XSS_LINE, "end_line": XSS_LINE, "replace": "    const q = (("}
+    fake_vllm.queue("RedAttackPlan", red(), RED_XSS).queue("BluePatch", blue(edits=[SQL_EDIT, cut]), blue())
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI, XSS], DEMO)
+
+    assert not plan.skipped and "server.js" in plan.patch.files
+    assert B.syntax_error("server.js", plan.patch.files["server.js"]) is None

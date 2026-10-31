@@ -101,6 +101,16 @@ def _mask_context(ctx: dict | None, start: int | None, end: int | None) -> dict 
     return {"start_line": ctx["start_line"], "lines": lines}
 
 
+def _fingerprint_secret(secret: str) -> str:
+    """지문용 비밀값: 줄바꿈만 \\n으로 통일한다 (#58).
+
+    같은 커밋이라도 Windows(\\r\\n)와 Linux(\\n)에서 받은 여러 줄 개인키가 다른 지문이 되면
+    재검사에서 '새로 1 / 해결 1'로 잘못 나뉜다. 줄바꿈 말고는 아무것도 바꾸지 않으므로
+    실제 값이 바뀐 비밀은 여전히 다른 지문이 되고, Linux(\\n) 결과의 기존 지문도 그대로다.
+    """
+    return secret.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def parse(items: list[dict], target: Path, opts: ScanOptions | None = None,
           reader: SourceReader | None = None) -> tuple[list[dict], list[str]]:
     """(finding 목록, 가려야 할 비밀값 목록). finding에는 원래 비밀값이 들어가지 않는다."""
@@ -126,7 +136,8 @@ def parse(items: list[dict], target: Path, opts: ScanOptions | None = None,
             flags.append(FLAG_SUPPRESSED_COMMENT)
         description = it.get("Description") or rule_id
         finding = {
-            "fingerprint": fp.make(TOOL, rule_id, file, fp.secret_hash(secret or it.get("Match", ""))),
+            "fingerprint": fp.make(TOOL, rule_id, file,
+                                   fp.secret_hash(_fingerprint_secret(secret or it.get("Match", "")))),
             "tool": TOOL,
             "category": "secret",
             "rule_id": rule_id,

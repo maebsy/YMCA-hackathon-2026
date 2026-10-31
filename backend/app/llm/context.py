@@ -26,8 +26,10 @@ _USE_CLIENT = re.compile(r"""['"]use client['"]""")
 # 빌드 때 브라우저 코드에 그대로 박히는 환경 변수 접두어
 _PUBLIC_ENV = re.compile(r"\b(NEXT_PUBLIC_|VITE_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_)[A-Z0-9_]+")
 # 서버가 HTML로 그려 브라우저에 그대로 보내는 템플릿 (Jekyll·Liquid·EJS 등). 여기 박힌 값은 페이지 소스에서 보입니다 (#100)
+# 폴더 이름만으로 판단하는 것은 Jekyll 전용 폴더(_layouts·_includes)뿐입니다. views/·templates/ 폴더에는 Django views/*.py
+# 같은 서버 코드도 있어서, 그 밖에서는 템플릿 확장자로만 판단합니다.
 _TEMPLATE = re.compile(
-    r"(^|/)(_layouts|_includes|layouts|partials|templates|views)/|\.(html?|liquid|ejs|hbs|handlebars|njk|erb|astro|mustache)$",
+    r"(^|/)_(layouts|includes)/|\.(html?|liquid|ejs|hbs|handlebars|njk|erb|astro|mustache)$",
     re.IGNORECASE,
 )
 # 값이 페이지 스크립트로 나가는 흔적: <script>, 템플릿 값을 JSON으로 박는 필터, 브라우저 검색 위젯 초기화
@@ -67,7 +69,8 @@ def collect_signals(finding: FindingInput) -> ContextSignals:
     flags = {f.flag for f in finding.flags}
     browser = bool(_USE_CLIENT.search(code) or _PUBLIC_ENV.search(code) or _PUBLIC_DIR.search(path)) or (
         bool(_CLIENT_PATH.search(path)) and not _USE_SERVER.search(code) and not _SERVER_ROUTE.search(path)
-    ) or (bool(_TEMPLATE.search(path)) and not _SERVER_ROUTE.search(path)) or bool(_BROWSER_SINK.search(code))
+    ) or bool(_TEMPLATE.search(path)) or bool(_BROWSER_SINK.search(code))
+    # 템플릿은 server/ 아래에 있어도 그린 결과가 브라우저로 갑니다 (예: server/views/index.ejs)
     likely_public = "likely_public_key" in flags
     return ContextSignals(
         test_or_example=bool(_TEST.search(path) or _EXAMPLE.search(path)),

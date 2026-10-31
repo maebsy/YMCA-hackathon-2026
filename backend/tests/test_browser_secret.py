@@ -103,3 +103,28 @@ def test_report_explains_permission_check_not_red_failure():
         text = report.model_dump_json()
         assert "쓰기·관리 권한" in text
         assert "끝까지 통과시키지 못했습니다" not in text
+
+
+# ── 리뷰 후속: 폴더 이름만으로 서버 코드를 브라우저 코드로 보지 않기 ──
+import pytest  # noqa: E402
+
+from app.llm.context import collect_signals as _signals  # noqa: E402
+from app.llm.schemas import FindingInput as _Finding  # noqa: E402
+
+
+def _sig(path, category="secret", code='API_KEY = "x"'):
+    return _signals(_Finding(fingerprint="f", tool="gitleaks", category=category, rule_id="r", title="t",
+                             severity="high", file_path=path, snippet=code))
+
+
+@pytest.mark.parametrize("path", ["myapp/views/payments.py", "shop/templates/render.py", "app/views/helpers.rb"])
+def test_server_code_in_views_or_templates_dir_is_not_browser_code(path):
+    s = _sig(path)
+    assert not s.browser_code and not s.browser_secret
+    assert not _sig(path, category="code", code="cursor.execute('SELECT ' + q)").browser_code
+
+
+@pytest.mark.parametrize("path", ["_layouts/base.html", "_includes/head.liquid", "server/views/index.ejs",
+                                  "app/views/users/show.html.erb", "templates/page.njk"])
+def test_rendered_templates_are_browser_code_even_under_server_paths(path):
+    assert _sig(path).browser_secret

@@ -17,6 +17,9 @@
 | React & React-DOM | 19.3.0 | 사용자 인터페이스 렌더링 및 상태 관리 라이브러리 | MIT | https://github.com/facebook/react |
 | Tailwind CSS | 4.x | 대시보드 반응형 유틸리티 디자인 스타일링 | MIT | https://github.com/tailwindlabs/tailwindcss |
 | Lucide React | 1.65.0 | 보안 대시보드 아이콘 컴포넌트 라이브러리 | ISC | https://github.com/lucide-icons/lucide |
+| TypeScript | 5.9.3 | 프론트엔드 타입 검사·빌드 (개발용) | Apache-2.0 | https://github.com/microsoft/TypeScript |
+| ESLint · eslint-config-next | 9.39.5 · 16.4.3 | 프론트엔드 코드 검사 `npm run lint` (개발용) | MIT | https://github.com/eslint/eslint |
+| DefinitelyTyped 타입 정의 (`@types/node`·`@types/react`·`@types/react-dom`) | 20.19.43 · 19.3.0 · 19.3.0 | 프론트엔드 타입 정의 (개발용) | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | Google Fonts (IBM Plex Sans KR, JetBrains Mono) | 최신 | 웹 대시보드 본문 한글 폰트 및 개발자 터미널 고정폭 폰트 | OFL-1.1 / Apache-2.0 | https://fonts.google.com |
 | Uvicorn | 0.54.0 | 백엔드 실행 서버 | BSD-3-Clause | https://github.com/encode/uvicorn |
 | SQLModel | 0.0.48 | DB 테이블 정의·조회 | MIT | https://github.com/fastapi/sqlmodel |
@@ -29,6 +32,7 @@
 | Zonky PostgreSQL Windows 바이너리 | 17.11.0 | #52 엔진 결과 저장의 독립 임시 DB 통합 테스트, Maven Central SHA-256 검증 (개발용) | PostgreSQL License (패키징 Apache-2.0) | https://github.com/zonkyio/embedded-postgres-binaries |
 | HTTPX | 0.28.1 | LLM 서버(vLLM) 호출 | BSD-3-Clause | https://github.com/encode/httpx |
 | pytest | 9.2.0 | 백엔드·보안엔진 테스트 (개발용) | MIT | https://github.com/pytest-dev/pytest |
+| Ruff | CI 실행 시점 최신 (`pipx run ruff`) | CI `lint`: 파이썬 문법 오류·정의되지 않은 이름 검사 (개발용) | MIT | https://github.com/astral-sh/ruff |
 | vLLM | 0.32.0 | GPU 서버 LLM 서빙 (OpenAI 호환 API) | Apache-2.0 | https://github.com/vllm-project/vllm |
 | Qwen3.8-27B (모델) | 2026-08 공개본 | Blue·Red 해석 LLM의 원본 모델 | Apache-2.0 | https://huggingface.co/Qwen/Qwen3.8-27B |
 | Qwen3.8-27B AWQ INT4 (양자화 체크포인트) | 커밋 5a2ee524cbc9 | L4 24GB에 올리기 위한 4비트 모델 | Apache-2.0 | https://huggingface.co/avyukth/Qwen3.8-27B-AWQ-INT4 |
@@ -69,7 +73,9 @@
 
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
-| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
+| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조, AI 협업 규칙(AGENTS.md)·제출 계획 문서 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
 | Codex (OpenAI) | 일반 서버·독립 MCP·비동기 LLM 큐·인증 경계·DB 스키마·프론트 Compose 통합과 테스트·연결 문서 작성 및 PR 병합 오류 수정 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
 | Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |
+| GitHub Actions 공식 액션 (`actions/checkout@v4`·`actions/setup-python@v5`·`actions/github-script@v7`) | CI 실행, 이슈 양식 자동 라벨 | MIT | https://github.com/actions |
+| gitleaks-action (`gitleaks/gitleaks-action@v2`) | CI `secret-scan`: PR의 비밀값 유출 검사 | Gitleaks-Action EULA (개인 계정 저장소는 라이선스 키 불필요) | https://github.com/gitleaks/gitleaks-action |
 | Claude (Anthropic) | 보안엔진(`security_engine/`) 설계·코드·Semgrep 규칙 작성 보조 | Anthropic 이용약관 | https://claude.ai |

@@ -201,3 +201,42 @@ def test_schema_accepts_target_check():
     jsonschema.validate(check, only)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({**check, "status": "safe"}, only)
+
+
+def test_real_scan_flow_fills_target_check(monkeypatch, tmp_path):
+    """회귀: status 는 compare() 가 정하므로, 그 전에 재조회하면 모든 finding 이 건너뛰어져 target_check 가 비었습니다.
+    엔진의 실제 scan() 흐름에서 finding 과 패키지 묶음 목표 모두 target_check 가 채워져야 합니다."""
+    from security_engine import engine
+    from security_engine.runners.base import ToolRun
+
+    finding = {
+        "fingerprint": "osv:lodash", "tool": "osv", "category": "dependency", "rule_id": "CVE-2019-10744",
+        "title": "lodash", "severity": "critical", "location": {"file": "package-lock.json"},
+        "package": {"ecosystem": "npm", "name": "lodash", "version": "4.17.11", "fixed_versions": ["4.17.12"]},
+        "remediation": {"kind": "upgrade", "target_version": "4.17.12"}, "flags": [],
+    }
+
+    def fake_run(tool, root, opts):
+        run = ToolRun(tool, engine.TOOL_OK if tool == "osv" else engine.TOOL_SKIPPED, "")
+        if tool == "osv":
+            run.findings = [dict(finding)]
+        return run
+
+    asked = []
+
+    def fake_query(keys):
+        asked.extend(keys)
+        return [["GHSA-left-over-0001"] for _ in keys]
+
+    monkeypatch.setattr(engine, "_run_tool", fake_run)
+    monkeypatch.setattr(osv_recheck, "_http_query", fake_query)
+    osv_recheck.clear_cache()
+
+    result = engine.scan(tmp_path)
+
+    assert asked == [("npm", "lodash", "4.17.12")]
+    [f] = [f for f in result["findings"] if f["tool"] == "osv"]
+    assert f["status"] == "code_issue"
+    assert f["remediation"]["target_check"]["status"] == "vulnerable"
+    [plan] = result["dependency_upgrades"]
+    assert plan["target_check"]["status"] == "vulnerable"

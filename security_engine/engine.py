@@ -165,8 +165,6 @@ def scan(target: str | Path, previous: dict | None = None, *, options: ScanOptio
     secrets = []
 
     fp.make_unique(findings)
-    if runs["osv"].status == TOOL_OK:
-        osv_recheck.recheck(findings, opts)  # 추천 버전에 다른 취약점이 남았는지 (#109)
     for f in findings:
         # 외부 라이브러리 파일의 코드 문제: 숨기지 않고 위험도를 낮추고 '업데이트' 안내로 바꾼다
         if f["tool"] == "semgrep" and _THIRD_PARTY.search((f.get("location") or {}).get("file") or ""):
@@ -203,6 +201,9 @@ def scan(target: str | Path, previous: dict | None = None, *, options: ScanOptio
         "findings": findings,
     }
     compare(result, previous, root)
+    # 추천 버전에 다른 취약점이 남았는지 (#109). status(code_issue)는 compare()가 정하므로 그 뒤에 조회합니다
+    if runs["osv"].status == TOOL_OK:
+        osv_recheck.recheck(result["findings"], opts)
     _finalize(result)
     result["duration_sec"] = round(time.monotonic() - started, 2)
     return result

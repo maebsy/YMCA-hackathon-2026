@@ -6,8 +6,8 @@ import os
 from pathlib import Path
 import time
 
-# deploy.py 의 DRAIN_MAX_SECONDS(20분)보다 길게. 타이머가 대기 도중 죽어도 이용자를 영원히 막지 않습니다
-STALE_DRAIN_SECONDS = 25 * 60
+# 교체 직전 잠깐(확인 20초 + 재시작·상태 확인)만 막습니다(#151). 배포가 그 사이 죽어도 10분 뒤에는 이용자를 다시 받습니다
+STALE_DRAIN_SECONDS = 10 * 60
 
 
 class DeploymentGuard:

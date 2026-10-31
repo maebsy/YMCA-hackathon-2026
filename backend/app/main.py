@@ -6,8 +6,9 @@ from sqlalchemy import text
 from app.db import engine, init_db
 from app.explain_jobs.config import job_settings
 from app.llm import create_explainer
-from app.routers import items, llm, reports, scans
+from app.routers import items, llm, reports, scans, verify
 from app.scan_store import ScanStore
+from app.verify.jobs import VerifyJobs
 
 
 @asynccontextmanager
@@ -34,6 +35,8 @@ async def lifespan(app: FastAPI):
             app.state.preview_jobs = PreviewJobs()
             stack.push_async_callback(app.state.preview_jobs.aclose)
         stack.push_async_callback(scans.drain_tasks)
+        app.state.verify_jobs = VerifyJobs()
+        stack.push_async_callback(app.state.verify_jobs.aclose)
         yield
 
 
@@ -60,4 +63,5 @@ else:
     api.include_router(llm.router)
 api.include_router(reports.router)
 api.include_router(scans.router)
+api.include_router(verify.router)
 app.include_router(api)

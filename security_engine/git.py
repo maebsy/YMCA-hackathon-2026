@@ -47,7 +47,8 @@ def clone_repo(url: str, dest: str | Path | None = None, ref: str | None = None,
         raise CloneError(f"이미 내용이 있는 폴더입니다: {dest}")
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    args = ["-c", "core.symlinks=false", "-c", "protocol.file.allow=never",
+    # core.autocrlf=false: 검사 서버 OS 설정에 따라 줄바꿈이 바뀌지 않게, 저장소에 들어 있는 그대로 받는다 (#58)
+    args = ["-c", "core.symlinks=false", "-c", "protocol.file.allow=never", "-c", "core.autocrlf=false",
             "clone", "--depth", "1", "--single-branch", "--no-tags"]
     if ref:
         args += ["--branch", ref]

@@ -150,7 +150,7 @@ test("repository has no environment selectors and detail OS tabs drive commands 
   assert.equal(tree.some(node => node.type === "fieldset"), false);
   const { WorkspaceTab } = load("../src/components/tabs/WorkspaceTab.tsx", {
     react: { useState: () => [false, () => {}] }, "react/jsx-runtime": { jsx: element, jsxs: element },
-    "@/components/McpHandoff": { McpHandoff: "mcp-handoff" },
+    "@/components/McpHandoff": { McpHandoff: "mcp-handoff" }, "next/link": { default: "a" },
   });
   const { clientConfig } = load("../src/lib/mcp.ts");
   for (const [os, path] of [["windows", "C:/Users/"], ["macos", "/Users/"], ["linux", "/home/"]]) {
@@ -167,6 +167,21 @@ test("repository has no environment selectors and detail OS tabs drive commands 
     const config = JSON.parse(clientConfig({ fileName: "scan.json", repository: "acme/app" }, os));
     assert.ok(config.mcpServers["72hours-handoff"].args[2].startsWith(path));
   }
+});
+
+test("the verify shortcut is an in-app link so a running interpretation is not cut off", () => {
+  // 페이지를 통째로 다시 열면 결과 화면에서 이어 돌던 언어모델 해석이 끊깁니다 (#144 후속)
+  const LinkStub = "next-link";
+  const { WorkspaceTab } = load("../src/components/tabs/WorkspaceTab.tsx", {
+    react: { useState: () => [false, () => {}] }, "react/jsx-runtime": { jsx: element, jsxs: element },
+    "@/components/McpHandoff": { McpHandoff: "mcp-handoff" }, "next/link": { default: LinkStub },
+  });
+  const finding = cwe => ({ id: "one", commands: { windows: "", macos: "", linux: "" }, why: [], cwe, fixed: false });
+  const sqli = nodes(WorkspaceTab({ compact: true, findings: [finding("CWE-89")], logs: [], os: "windows", onChangeOS() {} }));
+  const link = sqli.find(node => node.props.href === "/verify?run=reference");
+  assert.equal(link?.type, LinkStub);
+  const secret = nodes(WorkspaceTab({ compact: true, findings: [finding("CWE-798")], logs: [], os: "windows", onChangeOS() {} }));
+  assert.equal(secret.some(node => node.props.href === "/verify?run=reference"), false);
 });
 
 test("home submit starts the actual scan once with the normalized explicit URL", () => {
@@ -332,7 +347,7 @@ test("H receives current progress, records and retry identity while compact lega
   assert.equal(enriching.some(node => node.props.className === "feedback"), false);
   const { WorkspaceTab } = load("../src/components/tabs/WorkspaceTab.tsx", {
     react: { useState: () => [false, () => {}] }, "react/jsx-runtime": { jsx: element, jsxs: element },
-    "@/components/McpHandoff": { McpHandoff: "mcp-handoff" },
+    "@/components/McpHandoff": { McpHandoff: "mcp-handoff" }, "next/link": { default: "a" },
   });
   const compact = nodes(WorkspaceTab({ compact: true, findings: [], logs: [], pendingIds: [] }));
   assert.equal(compact.some(node => node.props.children === "⑤ 재검사 실행"), false);

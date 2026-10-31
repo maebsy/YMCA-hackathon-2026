@@ -10,6 +10,7 @@ import {
   Check,
   AlertTriangle,
 } from "lucide-react";
+import Link from "next/link";
 import { Finding, LogItem, OS } from "@/types/security";
 
 // 실검증(/verify)이 실제 공격으로 재현해 보여 주는 종류 (lib/api.ts의 RUNTIME_VERIFIABLE_CWE와 같게 유지)
@@ -588,9 +589,9 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                     <span className="text-xs text-[#fafafa]/90">
                       고친 코드가 이 공격({selectedFinding.cwe})을 실제로 막는지 격리 환경에서 수정 전·후를 실행해 확인합니다. 지금은 데모 과녁으로 같은 종류의 공격을 재현합니다.
                     </span>
-                    <a href="/verify?run=reference" className="px-3 py-1.5 rounded border border-[#d4ff3a] text-[#d4ff3a] font-mono text-xs font-bold hover:bg-[#d4ff3a]/10 transition">
+                    <Link href="/verify?run=reference" className="px-3 py-1.5 rounded border border-[#d4ff3a] text-[#d4ff3a] font-mono text-xs font-bold hover:bg-[#d4ff3a]/10 transition">
                       실검증으로 확인하기 →
-                    </a>
+                    </Link>
                   </div>
                 )}
                 <McpHandoff os={os} onShowToast={onShowToast} />

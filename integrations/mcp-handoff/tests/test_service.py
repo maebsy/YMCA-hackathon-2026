@@ -183,7 +183,10 @@ class ServiceTests(unittest.TestCase):
         tool_list = self.rpc('tools/list', {}).json()['result']['tools']
         analysis_schema = next(t['inputSchema'] for t in tool_list if t['name'] == 'start_analysis')
         self.assertEqual(set(analysis_schema['properties']), {'workspace_token', 'scan_id', 'fingerprint'})
-        self.assertEqual(len(tool_list), 11)
+        self.assertEqual(len(tool_list), 15)  # 기존 11개 + 한 번에 점검·고치기 증명 4개 (#140)
+        self.assertTrue({'audit_repository', 'audit_status', 'check_fix', 'verify_demo'} <= {t['name'] for t in tool_list})
+        audit_schema = next(t['inputSchema'] for t in tool_list if t['name'] == 'audit_repository')
+        self.assertFalse({'os', 'hosting'} & set(audit_schema['properties']))  # #142: 환경 입력 없음
         tools = {t['name']: t for t in tool_list}
         self.assertFalse(tools['start_scan']['annotations']['readOnlyHint'])
         response = self.client.post('/mcp/service/rpc', headers={'Origin': 'https://evil.example'}, json={})

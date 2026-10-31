@@ -9,7 +9,7 @@ export type ProgressProps = {
   phase: "idle" | "queued" | "running" | "explaining" | "reporting" | "done" | "failed";
   startedAt?: number;
   logs: string[];
-  explained?: { done: number; total: number };
+  explained?: { done: number; total: number; running?: number; queued?: number };
   counts?: { total: number; open: number };
   error?: string;
   onRetry?: () => void;
@@ -23,6 +23,14 @@ const steps = [
   { title: "언어모델 해석", description: "발견 항목에 쉬운 설명을 더합니다." },
   { title: "결과 정리", description: "검사 근거와 수정 안내를 확인합니다." },
 ];
+/** "완료 1/5 · 해석 중 2 · 대기 2". 해석 중·대기 건수는 상태를 받기 전이면 생략합니다. */
+export function explainedText(explained: { done: number; total: number; running?: number; queued?: number }): string {
+  const parts = [`완료 ${explained.done}/${explained.total}건`];
+  if (explained.running) parts.push(`해석 중 ${explained.running}`);
+  if (explained.queued && explained.done < explained.total) parts.push(`대기 ${explained.queued}`);
+  return parts.join(" · ");
+}
+
 const mobileQuery = "(max-width: 720px)";
 function subscribeMobile(notify: () => void) {
   const query = window.matchMedia(mobileQuery);
@@ -81,7 +89,7 @@ export default function ProgressH({ repo, phase, startedAt, logs, explained, cou
           const failed = selected && phase === "failed";
           return <li key={step.title} className={`ph-step${complete ? " ph-step-done" : ""}${selected ? " ph-step-current" : ""}${failed ? " ph-step-failed" : ""}`} aria-current={selected ? "step" : undefined}>
             <div className="ph-step-track"><span className="ph-marker" aria-hidden="true">{failed ? <TriangleAlert size={16}/> : noExplanationCount ? "—" : complete ? <Check size={16}/> : selected ? <LoaderCircle className="ph-spinner" size={16}/> : `0${index + 1}`}</span></div>
-            <div className="ph-step-copy"><div className="ph-step-heading"><h3 className="ph-step-title">{step.title}</h3><span className="ph-step-state">{noExplanationCount ? skipped ? "건너뜀(연결 안 됨)" : "기록 확인" : complete ? "완료" : failed ? "중단" : selected ? "진행 중" : "대기"}</span></div><p className="ph-step-description">{noExplanationCount ? skipped ? "추가 해석 없이 엔진 결과를 표시합니다." : "추가 해석 여부는 검사 기록에서 확인하세요." : step.description}</p>{index === 2 && explained && <p className="ph-explained">{explained.done}/{explained.total}건 처리</p>}{failed && failure}</div>
+            <div className="ph-step-copy"><div className="ph-step-heading"><h3 className="ph-step-title">{step.title}</h3><span className="ph-step-state">{noExplanationCount ? skipped ? "건너뜀(연결 안 됨)" : "기록 확인" : complete ? "완료" : failed ? "중단" : selected ? "진행 중" : "대기"}</span></div><p className="ph-step-description">{noExplanationCount ? skipped ? "추가 해석 없이 엔진 결과를 표시합니다." : "추가 해석 여부는 검사 기록에서 확인하세요." : step.description}</p>{index === 2 && explained && <p className="ph-explained">{explainedText(explained)}</p>}{failed && failure}</div>
           </li>;
         })}</ol>
         <div className="ph-outcome">

@@ -73,7 +73,9 @@ export async function runLimited<T, R>(
   await Promise.all(Array.from({ length: workers }, worker));
 }
 
-export async function explain(findings: unknown[]) {
+export type ExplainStatus = "queued" | "running";
+/** onStatus: 작업이 대기 중인지 해석 중인지 조회할 때마다 알려 줍니다(화면의 실시간 진행 표시용). */
+export async function explain(findings: unknown[], onStatus?: (status: ExplainStatus) => void) {
   const res = await fetch("/api/llm/explain/tasks", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -82,6 +84,7 @@ export async function explain(findings: unknown[]) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.detail?.message || `LLM 해석 실패 (${res.status})`);
   if (typeof data.job_id !== "string") throw new Error("LLM 작업 응답이 올바르지 않습니다.");
+  onStatus?.("queued");
   const started = Date.now();
   while (Date.now() - started < 16 * 60 * 1000) {
     const response = await fetch(`/api/llm/explain/tasks/${encodeURIComponent(data.job_id)}`,
@@ -94,6 +97,7 @@ export async function explain(findings: unknown[]) {
       return job.result.results as ExplainResult[];
     }
     if (!["queued", "running"].includes(job.status)) throw new Error("LLM 작업 상태가 올바르지 않습니다.");
+    onStatus?.(job.status);
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
   throw new Error("LLM 해석이 제한 시간 안에 끝나지 않았습니다.");

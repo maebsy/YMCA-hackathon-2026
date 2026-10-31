@@ -13,7 +13,8 @@ type RepositoryState = {
   isScanning: boolean; restored: boolean; error: string; message: string; os: OS;
   phase: "idle" | "queued" | "running" | "explaining" | "reporting" | "done" | "failed";
   reportHtml: string; reportMarkdown: string; reportError: string; resultReady: boolean;
-  startedAt?: number; explained?: { done: number; total: number };
+  // done: 끝난 건수, running·queued: 지금 해석 중·대기 중인 건수 (해석 1건이 몇 분 걸려 done만 보면 멈춘 것처럼 보임)
+  startedAt?: number; explained?: { done: number; total: number; running?: number; queued?: number };
   // 결과 화면으로 넘어간 뒤에도 남은 언어모델 해석이 계속 도는 중인지
   llmPending: boolean;
 };
@@ -228,16 +229,29 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
         change(value => ({ ...value, phase: "explaining", explained: { done: 0, total: selected.length } }));
         // Request as many items as the backend runs at once (LLM_PARALLEL, #91) and publish each one as soon as it finishes.
         log("LLM", `Red–Blue 해석 ${selected.length}건 시작 (동시 ${Math.min(LLM_PARALLEL, selected.length)}건). 끝나기 전 항목은 엔진 결과입니다.`, "해석 중");
-        await runLimited(selected, async finding => {
+        // 작업마다 대기·해석 중 상태를 모아 실시간으로 보여 줍니다
+        const states = new Map<number, "waiting" | "queued" | "running">(selected.map((_, index) => [index, "waiting"]));
+        const showStates = () => {
+          if (!active()) return;
+          const values = [...states.values()];
+          change(value => ({ ...value, explained: { done: finished, total: selected.length,
+            running: values.filter(state => state === "running").length, queued: values.filter(state => state !== "running").length } }));
+        };
+        await runLimited(selected, async (finding, index) => {
           if (!active()) return [];
-          const received: unknown = await explain([finding]);
+          const received: unknown = await explain([finding], status => {
+            if (states.get(index) === status) return;
+            states.set(index, status);
+            showStates();
+          });
           if (!Array.isArray(received) || !received.every(record)) throw new Error("추가 해석의 응답 형식이 올바르지 않습니다.");
           return received as JsonRecord[];
         }, (index, outcome) => {
           if (!active()) return;
           const finding = selected[index];
           finished += 1;
-          change(value => ({ ...value, explained: { done: finished, total: selected.length } }));
+          states.delete(index);
+          showStates();
           if (outcome.ok) explanations = [...explanations, ...outcome.value];
           else {
             explanations = [...explanations, { fingerprint: finding.fingerprint ?? finding.id, covers: finding.covers,

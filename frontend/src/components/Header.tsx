@@ -120,6 +120,19 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
       </div>
+      <nav aria-label="모바일 탭" className="md:hidden px-4 pb-3">
+        <select
+          aria-label="화면 선택"
+          value={activeTab}
+          onChange={(e) => onTabChange(e.target.value as TabType)}
+          className="w-full rounded-lg border border-[#27272a] bg-[#111113] p-2 font-mono text-sm text-white"
+        >
+          <option value="workspace">워크스페이스</option>
+          <option value="architecture">시스템 & Red-Blue</option>
+          <option value="incident">24h·72h 신고 서포트</option>
+          <option value="report">완료 리포트 & API</option>
+        </select>
+      </nav>
     </header>
   );
 };

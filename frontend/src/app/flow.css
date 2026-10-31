@@ -2,6 +2,7 @@
 :root { --text:var(--fg); --border:var(--line); --subtle:var(--surface-2); --danger:var(--act); --high:var(--attend); --medium:var(--trackstar); --accent-ink:#0a0a0a; --accent-wash:color-mix(in srgb,var(--accent) 8%,var(--bg)); --page-width:748px; --page-gutter:32px; color-scheme:dark; }
 :root[data-theme="light"] { --accent-ink:#fff; color-scheme:light; }
 html { scrollbar-gutter:stable; }
+html[data-simple="on"] [data-simple-hide] { display:none !important; }
 @media(max-width:700px) { :root { --page-gutter:16px; } }
 :focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
 main:focus { outline:none; }
@@ -50,6 +51,8 @@ label { display:block; font-size:12px; font-weight:600; margin-bottom:8px; }
 .button.secondary:hover { background:var(--surface); border-color:var(--muted); }
 .icon-button { display:inline-flex; align-items:center; justify-content:center; padding:10px; background:transparent; border:0; border-radius:8px; width:44px; height:44px; }
 .icon-button:hover { background:var(--surface); }
+.simple-toggle { width:auto; font-size:12px; font-weight:600; }
+[data-simple="on"] .simple-toggle { background:var(--accent); color:var(--accent-ink); }
 .text-link { display:inline-flex; gap:8px; align-items:center; border:0; padding:0; background:transparent; color:var(--text); font-weight:600; font-size:12px; text-decoration:underline; text-underline-offset:4px; }
 .text-link:hover { color:var(--accent); }
 .card { border:1px solid var(--border); background:var(--subtle); border-radius:18px; }
@@ -157,9 +160,9 @@ summary { cursor:pointer; font-size:12px; }
   .incident-layout { gap:20px; }
 }
 @media(max-width:700px) {
-  .site-header { min-height:73px; }
+  .site-header { min-height:73px; flex-wrap:wrap; padding-block:12px; }
   .brand { font-size:22px; gap:7px; } .brand-hours { font-size:18px; }
-  .header-actions { gap:10px; }
+  .header-actions { gap:10px; flex-wrap:wrap; justify-content:flex-end; }
   .footer-inner { flex-direction:column; gap:9px; padding-block:23px; font-size:10px; }
   .entry { padding-block:43px 40px; }
   .entry-intro h1 { font-size:32px; letter-spacing:-1.3px; margin-block:16px; }

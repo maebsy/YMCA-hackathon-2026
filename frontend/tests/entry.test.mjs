@@ -6,13 +6,13 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
-function load(relative, imports = {}) {
+function load(relative, imports = {}, runtime = {}) {
   const source = readFileSync(new URL(relative, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022,
   } }).outputText;
   const loaded = { exports: {} };
-  vm.runInNewContext(compiled, { module: loaded, exports: loaded.exports, URL,
+  vm.runInNewContext(compiled, { module: loaded, exports: loaded.exports, URL, ...runtime,
     require: name => imports[name] ?? require(name) }, { filename: relative });
   return loaded.exports;
 }
@@ -23,6 +23,75 @@ function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
   return [tree, ...nodes(tree.props?.children)];
 }
+function simpleShell(stored = null, blocked = false) {
+  const storage = new Map(stored === null ? [] : [["72hours-simple", stored]]);
+  const document = { documentElement: { dataset: {} } };
+  const localStorage = {
+    getItem(key) { if (blocked) throw new Error("Storage blocked"); return storage.get(key) ?? null; },
+    setItem(key, value) { if (blocked) throw new Error("Storage blocked"); storage.set(key, value); },
+  };
+  const runtime = { document, localStorage, window: new EventTarget(), Event };
+  const jsx = { jsx: element, jsxs: element };
+  const { default: Layout } = load("../src/app/layout.tsx", {
+    "react/jsx-runtime": jsx, "@/components/incident-provider": {}, "@/components/repository-provider": {},
+    "@/components/shell": {}, "./globals.css": {}, "./flow.css": {}, "./incident.css": {},
+  });
+  const layout = nodes(Layout({ children: null }));
+  const head = layout.find(node => node.type === "head");
+  const script = nodes(head).find(node => node.type === "script");
+  // The head script runs before the body can display marked elements.
+  vm.runInNewContext(script.props.dangerouslySetInnerHTML.__html, runtime);
+  let subscriptions = 0;
+  const cleanups = [];
+  const { default: Shell } = load("../src/components/shell.tsx", {
+    react: { useEffect() {}, useSyncExternalStore(subscribe, read, serverRead) {
+      assert.equal(serverRead(), false);
+      cleanups.push(subscribe(() => subscriptions++));
+      return read();
+    } },
+    "react/jsx-runtime": jsx, "next/link": { default: "a" },
+    "next/navigation": { usePathname: () => "/" },
+  }, runtime);
+  return { document, storage, render: () => nodes(Shell({ children: null })),
+    notifications: () => subscriptions, cleanup: () => cleanups.forEach(fn => fn()) };
+}
+test("Simple toggles immediately after theme, persists and restores before body display", () => {
+  const ui = simpleShell();
+  assert.equal(ui.document.documentElement.dataset.simple, "off");
+  const tree = ui.render();
+  const buttons = tree.filter(node => node.type === "button");
+  assert.match(buttons.at(-2).props.className, /theme-toggle/);
+  const simple = buttons.at(-1);
+  assert.equal(simple.props.children, "Simple");
+  assert.equal(simple.props["aria-pressed"], false);
+  simple.props.onClick();
+  assert.equal(ui.document.documentElement.dataset.simple, "on");
+  assert.equal(ui.storage.get("72hours-simple"), "on");
+  assert.equal(ui.notifications(), 1);
+  assert.equal(ui.render().find(node => node.props.children === "Simple").props["aria-pressed"], true);
+  const restored = simpleShell(ui.storage.get("72hours-simple"));
+  assert.equal(restored.document.documentElement.dataset.simple, "on");
+  const restoredButton = restored.render().find(node => node.props.children === "Simple");
+  assert.equal(restoredButton.props["aria-pressed"], true);
+  restoredButton.props.onClick();
+  assert.equal(restored.document.documentElement.dataset.simple, "off");
+  assert.equal(restored.storage.get("72hours-simple"), "off");
+  ui.cleanup(); restored.cleanup();
+});
+test("Simple defaults off for invalid preferences and works when storage is blocked", () => {
+  for (const stored of [null, "off", "invalid"]) {
+    const ui = simpleShell(stored);
+    assert.equal(ui.document.documentElement.dataset.simple, "off");
+    ui.cleanup();
+  }
+  const ui = simpleShell("on", true);
+  const button = ui.render().find(node => node.props.children === "Simple");
+  assert.equal(button.props["aria-pressed"], false);
+  button.props.onClick();
+  assert.equal(ui.document.documentElement.dataset.simple, "on");
+  assert.equal(ui.notifications(), 1);
+  ui.cleanup();
+});
 function entry(overrides = {}) {
   const calls = [], navigation = [], errors = [];
   let focusCount = 0;

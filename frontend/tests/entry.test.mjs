@@ -170,6 +170,17 @@ test("website and malformed repository inputs stay on the form without engine re
     assert.ok(ui.errors.some(Boolean)); assert.equal(ui.focused(), 1);
   }
 });
+test("Simple hides the three home links and the whole benefits layout without hiding the form", () => {
+  const ui = entry();
+  const marked = ui.tree.filter(node => node.props["data-simple-hide"] === true);
+  assert.equal(marked.length, 4);
+  const links = marked.flatMap(nodes).filter(node => node.props.href).map(node => node.props.href);
+  assert.deepEqual(links, ["/repository", "/incident", "/verify"]);
+  const benefits = marked.find(node => node.props.className === "entry-benefits");
+  assert.deepEqual(nodes(benefits).filter(node => node.type === "h2").map(node => node.props.children),
+    ["엔진으로 발견", "GPU로 해석", "MCP로 전달"]);
+  assert.equal(marked.some(node => nodes(node).some(child => child.type === "form")), false);
+});
 test("restoration and in-flight scans block home submissions", () => {
   for (const state of [{ restored: false }, { isScanning: true }]) {
     const ui = entry(state); ui.submit();

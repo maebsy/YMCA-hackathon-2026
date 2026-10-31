@@ -88,7 +88,8 @@ export function buildHandoff(last: any): Handoff {
     return { ok: false, why: "검사한 커밋(40자리 SHA)을 알 수 없습니다. 다시 검사해 주세요." };
   const results: any[] = Array.isArray(last.reportInput?.explain_results) ? last.reportInput.explain_results : [];
   if (!results.length)
-    return { ok: false, why: "Red–Blue 해석 결과가 없습니다. GPU LLM이 연결된 상태에서 검사하면 만들어집니다." };
+    // 결과 화면은 해석이 끝나기 전에 열립니다(#144). 'GPU가 꺼져 있다'로 읽히지 않게 진행 중일 수 있음을 먼저 말합니다
+    return { ok: false, why: "아직 Red–Blue 해석이 끝난 항목이 없습니다. 해석이 진행 중이면 끝나는 대로 여기서 전달할 수 있습니다. 해석 서버가 꺼져 있으면 만들어지지 않습니다." };
   // 서버는 1~50건, fingerprint 중복을 거부합니다
   const seen = new Set<string>();
   const unique = results.filter((r) => typeof r?.fingerprint === "string" && !seen.has(r.fingerprint) && seen.add(r.fingerprint));

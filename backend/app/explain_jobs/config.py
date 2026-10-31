@@ -10,6 +10,8 @@ class JobSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT_DIR / ".env", extra="ignore")
 
     llm_jobs_enabled: bool = False
+    # /api/scans 를 Supabase 로그인 사용자에게만 열지 (프론트에 실제 로그인이 붙으면 켭니다, #53)
+    scan_require_auth: bool = False
     supabase_url: str = ""
     supabase_publishable_key: str = ""
     llm_job_lease_s: int = Field(default=180, ge=30, le=600)

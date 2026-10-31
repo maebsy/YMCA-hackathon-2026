@@ -17,6 +17,9 @@ async def lifespan(app: FastAPI):
             await prepare(app, engine, job_settings, stack)
         else:
             init_db()
+            if job_settings.scan_require_auth:  # 검사 API만 로그인 확인을 켠 경우
+                from app.explain_jobs.runtime import prepare_auth
+                await prepare_auth(app, job_settings, stack)
         # LLM 서버가 꺼져 있어도 API 서버는 뜹니다. 생성 작업은 별도 worker가 실행합니다.
         app.state.explainer = create_explainer()
         # LLM 연결과 위협 정보(KEV·EPSS) 연결을 함께 닫습니다

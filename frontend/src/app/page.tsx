@@ -175,22 +175,24 @@ export default function Home() {
         persist();
         return;
       }
-      const open = (data.findings as any[]).filter((f) => f.status !== "code_resolved");
-      const selected = open.slice(0, 5);
-      if (!selected.length) return;
-      log2("gpu-llm ", `Red–Blue 해석 중 (${selected.length}개 묶음, 수 분 소요). 나머지는 엔진 결과로 표시합니다.`, "…");
-      try {
-        explainResults = await explain(selected, os, hosting);
-      } catch (error) {
-        explainResults = selected.map((f) => ({ fingerprint: f.fingerprint, covers: f.covers,
-          status: "failed", error_code: "LLM_ERROR" }));
-        log2("gpu-llm ", `해석 요청 실패: ${error instanceof Error ? error.message : "연결 오류"}`, "! 엔진 결과 유지", "warn");
+      // #55의 한 건씩 처리·즉시 반영 흐름을 유지합니다.
+      const open = (data.findings as any[]).filter((f) => f.status !== "code_resolved").slice(0, 5);
+      for (const [i, finding] of open.entries()) {
+        log2("gpu-llm ", `Red–Blue 해석 중 (${i + 1}/${open.length}). 나머지 항목은 엔진 결과입니다.`, "…");
+        try {
+          explainResults = [...explainResults, ...(await explain([finding], os, hosting))];
+        } catch (error) {
+          explainResults.push({ fingerprint: finding.fingerprint, covers: finding.covers,
+            status: "failed", error_code: "LLM_ERROR" });
+          log2("gpu-llm ", `${i + 1}번째 해석 실패: ${error instanceof Error ? error.message : "연결 오류"}`, "! 엔진 결과 유지", "warn");
+        }
+        const byFp = new Map<string, any>();
+        for (const r of explainResults) for (const fp of [r.fingerprint, ...(r.covers || [])]) byFp.set(fp, r);
+        mapped = mapped.map((f) => (byFp.has(f.id) ? mergeExplanation(f, byFp.get(f.id)) : f));
+        setFindings(mapped);
+        setReportInput({ ...rInput, explain_results: explainResults });
+        persist();
       }
-      const byFp = new Map<string, any>();
-      for (const r of explainResults) for (const fp of [r.fingerprint, ...(r.covers || [])]) byFp.set(fp, r);
-      mapped = mapped.map((f) => (byFp.has(f.id) ? mergeExplanation(f, byFp.get(f.id)) : f));
-      setFindings(mapped);
-      setReportInput({ ...rInput, explain_results: explainResults });
       const done = explainResults.filter((r) => r.status === "done").length;
       const failed = explainResults.filter((r) => r.status === "failed").length;
       const skipped = explainResults.filter((r) => r.status === "skipped").length;

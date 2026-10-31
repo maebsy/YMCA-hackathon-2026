@@ -3,7 +3,6 @@ import argparse
 import base64
 import hashlib
 from html import escape
-import json
 from pathlib import Path
 import re
 from urllib.parse import urlsplit

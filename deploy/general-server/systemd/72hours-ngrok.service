@@ -1,0 +1,19 @@
+[Unit]
+Description=72hours fixed public address (ngrok static domain -> local Caddy :8088)
+# 계정 토큰(ngrok.yml)과 고정 도메인(ngrok.env)이 있어야 시작합니다
+ConditionPathExists=%h/.config/ngrok/ngrok.yml
+ConditionPathExists=%h/.config/72hours/ngrok.env
+After=72hours-quick-web.service network-online.target
+Wants=72hours-quick-web.service
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=%h/.config/72hours/ngrok.env
+ExecStart=%h/.local/share/72hours/bin/ngrok http --url=https://${NGROK_DOMAIN} --log=stdout --log-format=logfmt --log-level=warn 127.0.0.1:8088
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

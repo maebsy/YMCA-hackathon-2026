@@ -14,7 +14,7 @@ from starlette.routing import Route
 import uvicorn
 import httpx
 
-from handoff import HandoffError, _unique_keys
+from handoff import _unique_keys
 from http_server import public_origins
 from live_store import LinkStore, MAX_BODY, normalize
 from server import create_server
@@ -168,14 +168,15 @@ def create_live_app(store, origin, port=8765, service=None):
 
     class ScopedTransport:
         async def __call__(self, scope, receive, send):
+            async def protected_send(message):
+                if message["type"] == "http.response.start":
+                    message["headers"] = list(message.get("headers", [])) + [
+                        (key.lower().encode(), value.encode()) for key, value in HEADERS.items()]
+                await send(message)
+
             if scope['type'] == 'http' and service_transport and (
                     scope.get('path') == '/mcp/service' or scope.get('path', '').startswith('/mcp/service/')):
-                async def service_send(message):
-                    if message['type'] == 'http.response.start':
-                        message['headers'] = list(message.get('headers', [])) + [
-                            (key.lower().encode(), value.encode()) for key, value in HEADERS.items()]
-                    await send(message)
-                return await service_transport(scope, receive, service_send)
+                return await service_transport(scope, receive, protected_send)
             match = re.fullmatch(r"/mcp/h/([A-Za-z0-9_-]{43})/?", scope.get("path", ""))
             if scope["type"] != "http" or not match:
                 return await app(scope, receive, send)
@@ -184,13 +185,8 @@ def create_live_app(store, origin, port=8765, service=None):
             except LookupError:
                 return await Response(status_code=404, headers=HEADERS)(scope, receive, send)
             context = CURRENT.set(snapshot)
-            async def private_send(message):
-                if message["type"] == "http.response.start":
-                    message["headers"] = list(message.get("headers", [])) + [
-                        (key.lower().encode(), value.encode()) for key, value in HEADERS.items()]
-                await send(message)
             try:
-                await transport({**scope, "path": "/mcp", "raw_path": b"/mcp", "root_path": ""}, receive, private_send)
+                await transport({**scope, "path": "/mcp", "raw_path": b"/mcp", "root_path": ""}, receive, protected_send)
             finally:
                 CURRENT.reset(context)
 

@@ -1,0 +1,10 @@
+# 빌드 결과로 통합 시연할 때: docker compose -f compose.yaml -f compose.production.yaml up --build -d --wait
+# 기존 운영 서버로 자동 배포하지 않습니다. 공개 접근은 기존 인증 프록시를 통해 연결합니다.
+services:
+  frontend:
+    build:
+      target: production
+    develop: !reset null
+  backend:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    develop: !reset null

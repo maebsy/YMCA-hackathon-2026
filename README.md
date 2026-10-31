@@ -15,30 +15,44 @@ cp .env.example .env
 | 폴더 | 내용 |
 |---|---|
 | `backend/` | FastAPI API 서버. DB는 SQLModel, 모든 API는 `/api` 아래 |
-| `frontend/` | Next.js (예정) |
+| `frontend/` | Next.js 16 대시보드, `/api/*`를 FastAPI로 프록시 |
 
-DB는 `.env`의 `DATABASE_URL`로 정합니다. 비워 두면 로컬 SQLite 파일(`backend/app.db`)을, Supabase 연결 문자열을 넣으면 팀 공용 DB를 씁니다. 테이블은 `backend/app/models.py`에 정의하면 서버가 켜질 때 자동으로 만들어집니다.
+DB는 `.env`의 `DATABASE_URL`로 정합니다. Docker 없이 실행할 때 비워 두면 SQLite, Compose에서는 로컬 PostgreSQL을 씁니다. Supabase 연결 문자열을 넣으면 팀 공용 DB를 사용합니다. 기본 모드의 Item 예제만 자동 생성하며, 실제 서비스 스키마·인증·비동기 큐는 [DB 설계](docs/db-erd.md)와 [활성화 절차](docs/async-llm.md)를 따릅니다.
 
 ## Docker로 실행 (권장)
 
-[Docker Desktop](https://docs.docker.com/desktop/)만 있으면 Python·PostgreSQL을 따로 설치하지 않아도 됩니다.
+[Docker Desktop](https://docs.docker.com/desktop/) 또는 Docker Engine + Compose v2.24.4 이상이면 Node.js·Python·PostgreSQL을 호스트에 따로 설치하지 않아도 됩니다.
 
 ```bash
 cp .env.example .env              # 처음 한 번
 docker compose up --build --watch
 ```
 
-- API 서버와 로컬 PostgreSQL이 같이 뜹니다. http://localhost:8000/api/health 에서 `"db":"postgresql"`이 나오면 성공
-- `backend/app` 코드를 저장하면 컨테이너에 바로 반영되고, `requirements.txt`를 바꾸면 이미지를 다시 만듭니다
+- 프론트 http://localhost:3000, API http://localhost:8000, 로컬 PostgreSQL이 같이 뜹니다. 프론트 주소의 http://localhost:3000/api/health 에서 `"db":"postgresql"`이 나오면 프록시와 DB 연결까지 성공입니다.
+- 브라우저는 같은 주소의 `/api/*`로 요청하고 Next.js 서버가 `http://backend:8000`으로 전달합니다. 컨테이너 안의 `localhost`는 다른 서비스가 아닙니다.
+- `frontend/src`, `frontend/public`, `backend/app` 저장 내용은 `--watch`로 반영됩니다. 프론트 package/lock/Next/TypeScript 설정과 백엔드 requirements 변경은 해당 이미지를 다시 빌드합니다. OS별 node_modules를 공유하지 않습니다.
 - 끄기는 `Ctrl+C` 또는 `docker compose down`. DB 데이터는 남고, 지우려면 `docker compose down --volumes`
 - `.env`의 `DATABASE_URL`이 비어 있으면 로컬 DB를, Supabase 주소가 있으면 그 DB를 씁니다
 - DB만 Docker로 쓰고 서버는 직접 띄워도 됩니다: `docker compose up db` 후 `.env`에 `DATABASE_URL=postgresql://app:app@localhost:5432/app`. 이 값은 컨테이너 안에서 통하지 않으니 전체를 Docker로 띄울 때는 다시 비우세요
+- 프론트 컨테이너에는 루트 `.env`를 전달하지 않습니다. DB 비밀번호·GPU 키는 백엔드에만 전달하며, 모든 호스트 포트는 127.0.0.1에만 엽니다.
+
+### 빌드한 프론트로 통합 시연
+
+```bash
+docker compose -f compose.yaml -f compose.production.yaml up --build --detach --wait
+```
+
+이 모드는 Next.js standalone 빌드와 정적 파일만 담은 비root 컨테이너를 사용하며, 백엔드 reload와 양쪽 watch를 끕니다. 종료도 같은 `-f` 두 개를 사용합니다. 개발 모드로 돌아갈 때는 기본 `docker compose up --build --watch`를 실행합니다. [Next.js Docker 배포 방식](https://docs.docker.com/guides/nextjs/)
+
+프록시 주소는 배포 **빌드 시** 확정됩니다. Compose의 `frontend.build.args.BACKEND_ORIGIN`을 바꾸면 이미지를 다시 빌드해야 합니다. Docker 없이 실행하면 기존 `127.0.0.1:8000` 기본값과 `npm run build/start`가 유지되며, 필요하면 서버 환경 변수 `BACKEND_ORIGIN`을 설정합니다. 브라우저 공개 변수(`NEXT_PUBLIC_*`)는 사용하지 않습니다.
+
+이 구성은 기존 일반 서버의 systemd/Caddy/GPU 터널을 자동 전환하지 않습니다. 공개 시연은 기존 인증 프록시를 거쳐 연결해야 합니다. 현재 프론트의 예제 데이터·OAuth·스캔 접수 같은 기능 통합은 별도 작업이며 Compose 기동이 전체 서비스 연동 완료를 뜻하지는 않습니다. Supabase를 지정해도 기본 Compose의 개발 DB 컨테이너는 함께 뜨지만 API는 지정한 Supabase에 연결합니다. 비동기 모드는 스키마와 별도 worker 준비 후 활성화합니다.
 
 문제가 생기면:
 
 | 증상 | 해결 |
 |---|---|
-| `port is already allocated` | `.env`에서 `BACKEND_PORT`나 `POSTGRES_PORT`를 다른 번호로 |
+| `port is already allocated` | `.env`에서 `FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`를 다른 번호로 |
 | 컨테이너에서 LLM 서버에 연결 안 됨 | 내 PC에 8001 SSH 터널이 열려 있는지 확인하세요(아래 "LLM 서버 연결"). 다른 주소를 쓰려면 `.env`의 `DOCKER_LLM_BASE_URL` |
 | 나만 설정을 바꾸고 싶음 | `compose.override.yaml`을 만들면 자동으로 합쳐지고 커밋되지 않습니다 |
 

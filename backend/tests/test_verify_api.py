@@ -427,3 +427,25 @@ def test_retention_ttl_boundary_is_deterministic(monkeypatch, elapsed, kept):
     jobs._prune()
 
     assert ("src" in jobs.jobs) is kept
+
+
+def test_ai_mode_retries_once_with_sandbox_feedback(ai_ready):
+    # 1회차: 앱이 응답하지 않음 → 실행 결과를 Blue에게 돌려주고 다시 고침 → 2회차 검증됨
+    results = [VerifyResult(status="fix_failed", message="수정 후 앱이 뜨지 않았습니다: probe timeout", sandbox="docker"),
+               _verified()]
+    calls = []
+
+    def fake_verify(req, *, trusted):
+        calls.append(req.patch.files["server.js"])
+        return results[len(calls) - 1]
+
+    R.verify = fake_verify  # ai_ready가 monkeypatch로 원래 값을 되돌립니다
+    ai_ready.vllm.queue("RedAttackPlan", red(), RED_XSS).queue("BluePatch", blue(), blue())
+    with TestClient(app) as client:
+        _with_llm(client, ai_ready.vllm)
+        job = _wait(client, client.post("/api/verify", json={"mode": "ai"}).json()["job_id"])
+    assert job["status"] == "done" and job["result"]["status"] == "verified"
+    assert [a["status"] for a in job["ai"]["attempts"]] == ["fix_failed", "verified"]
+    assert len(calls) == 2
+    retry_prompt = ai_ready.vllm.calls("BluePatch")[-1]["messages"][-1]["content"]
+    assert "<sandbox_result>" in retry_prompt and "res.send" in retry_prompt

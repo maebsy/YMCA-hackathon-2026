@@ -37,6 +37,8 @@ from app.verify.sandbox import docker_available
 
 DEMO = Path(__file__).resolve().parents[3] / "demo-vulnerable-site"
 DEFAULT_REUSE_SECONDS = 300  # 공개 데모 부하를 줄이기 위한 임시값입니다.
+# AI 수정본 실검증: 실패하면 실행 결과를 Blue에게 돌려주고 한 번 더 고쳐 다시 실행합니다(최대 2회, 약 2~4분)
+AI_MAX_ATTEMPTS = 2
 
 router = APIRouter(prefix="/verify", tags=["verify"])
 
@@ -140,11 +142,32 @@ def _ai_work(client, findings: list[FindingInput]):
             result = VerifyResult(status="error", message="AI가 실행할 공격이나 수정본을 만들지 못했습니다."
                                   + (f" ({reasons})" if reasons else ""))
             return result, _ai_extra(plan)
-        req = VerifyRequest(repo_dir=str(DEMO), attacks=plan.attacks, patch=plan.patch,
-                            start_cmd=["node", "server.js"], test_cmd=["node", "--test", "--test-reporter=tap"])
-        # 모델이 만든 코드를 실행하므로 Docker 격리만 허용합니다
-        result = await run_in_threadpool(verify, req, trusted=False)
-        return result, _ai_extra(plan)
+        attempts: list[dict] = []
+        for attempt in range(1, AI_MAX_ATTEMPTS + 1):
+            req = VerifyRequest(repo_dir=str(DEMO), attacks=plan.attacks, patch=plan.patch,
+                                start_cmd=["node", "server.js"], test_cmd=["node", "--test", "--test-reporter=tap"])
+            # 모델이 만든 코드를 실행하므로 Docker 격리만 허용합니다
+            result = await run_in_threadpool(verify, req, trusted=False)
+            attempts.append({"attempt": attempt, "status": result.status, "message": result.message[:300]})
+            feedback = llm_bridge.run_feedback(result)
+            if feedback is None or attempt == AI_MAX_ATTEMPTS:
+                break
+            # 실행 결과(앱 응답 없음·공격 통과·테스트 깨짐)를 Blue에게 돌려주고 원본 기준으로 다시 고치게 합니다
+            revised: dict[str, str] = {}
+            for rel, previous in plan.patch.files.items():
+                group = [f for f in findings if f.file_path == rel]
+                content, note = await llm_bridge.revise_patch(client, group, DEMO, rel, previous, feedback)
+                if content is None:
+                    attempts[-1]["retry_skipped"] = note[:300]
+                    break
+                revised[rel] = content
+                plan.patch_summaries[rel] = note
+            if len(revised) != len(plan.patch.files):
+                break
+            plan.patch.files.update(revised)
+        extra = _ai_extra(plan)
+        extra["ai"]["attempts"] = attempts
+        return result, extra
     return work
 
 

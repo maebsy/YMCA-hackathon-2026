@@ -299,3 +299,39 @@ async def test_intentional_line_removal_is_accepted_on_second_answer(fake_vllm):
     plan = await B.plan_verification(fake_vllm.client(), [SQLI, XSS], DEMO)
 
     assert len(fake_vllm.calls("BluePatch")) == 2 and "server.js" in plan.patch.files
+
+
+# ── 실행 결과를 돌려주는 재시도 (#ai-verify-retry) ──
+
+from app.verify.schemas import AttackOutcome, VerifyResult  # noqa: E402
+from app.verify.schemas import TestOutcome as RunOutcome  # noqa: E402  (Test로 시작하면 pytest가 테스트로 모읍니다)
+
+
+def test_cosmetic_edit_is_sent_back():
+    # 운영에서 실제로 나온 답: XSS를 고쳤다면서 51~52줄을 따옴표만 바꾼 한 줄로 대체
+    quote_only = {"start_line": XSS_LINE, "end_line": XSS_LINE, "replace": "    const q = req.query.q || '';"}
+    problems = B.blue_check("server.js", ORIGINAL)(B.BluePatch(**blue(edits=[SQL_EDIT, quote_only])))
+    assert any("따옴표·공백만" in p for p in problems)
+    assert B.blue_check("server.js", ORIGINAL)(B.BluePatch(**blue())) == []
+
+
+def test_run_feedback_explains_what_went_wrong():
+    hang = VerifyResult(status="fix_failed", message="수정 후 앱이 뜨지 않았습니다: probe timeout: 앱이 제한 시간 안에 응답하지 않았습니다")
+    assert "res.send" in B.run_feedback(hang)
+    leak = VerifyResult(status="fix_failed", message="수정 후에도 공격이 통하거나 기능 테스트가 새로 깨졌습니다.",
+                        attacks=[AttackOutcome(id="xss-search", before_succeeded=True, after_succeeded=True, verdict="fix_failed",
+                                               after_evidence="<script>alert(1)</script>")],
+                        before_tests=RunOutcome(ok=True, passed=3, failed=0), after_tests=RunOutcome(ok=False, passed=2, failed=1))
+    note = B.run_feedback(leak)
+    assert "'xss-search' 공격이 통했습니다" in note and "기능 테스트가 깨졌습니다" in note
+    assert B.run_feedback(VerifyResult(status="verified")) is None
+    assert B.run_feedback(VerifyResult(status="error", message="x")) is None
+
+
+async def test_revise_patch_sends_previous_diff_and_result(fake_vllm):
+    fake_vllm.queue("BluePatch", blue())
+    broken = ORIGINAL.replace('const q = req.query.q || "";', "const q = req.query.q || '';")
+    content, summary = await B.revise_patch(fake_vllm.client(), [SQLI, XSS], DEMO, "server.js", broken, "앱이 응답하지 않았습니다")
+    assert content is not None and "?" in content and summary
+    prompt = fake_vllm.calls("BluePatch")[0]["messages"][-1]["content"]
+    assert "<previous_attempt>" in prompt and "<sandbox_result>" in prompt and "앱이 응답하지 않았습니다" in prompt

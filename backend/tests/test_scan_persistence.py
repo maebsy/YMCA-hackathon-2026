@@ -1,6 +1,7 @@
 """Scanner regression tests using file SQLite and a fresh, disposable local Postgres DB."""
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
@@ -8,6 +9,8 @@ import os
 from pathlib import Path
 import sys
 import time
+from threading import Event
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import httpx
@@ -15,9 +18,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import create_engine, func, select, text, update
+from sqlalchemy import create_engine, event, func, select, text, update
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError, TimeoutError as PoolTimeout
 
 from app.explain_jobs.auth import SupabaseAuth
 from app.explain_jobs.config import JobSettings
@@ -72,6 +75,406 @@ def start(store, owner=None):
     store.create(job_id, URL, owner)
     assert store.running(job_id)
     return job_id
+
+
+def test_sqlite_delayed_completion_cannot_overwrite_terminal_failure(tmp_path, engine_response, monkeypatch):
+    import security_engine
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'completion-race.sqlite'}")
+    store = ScanStore(engine)
+    job_id = start(store)
+    response = engine_response()
+    entered, resume = Event(), Event()
+    original = security_engine.build_llm_input
+
+    def paused(*args, **kwargs):
+        entered.set()
+        assert resume.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(security_engine, "build_llm_input", paused)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            completion = pool.submit(store.complete, job_id, response)
+            try:
+                assert entered.wait(5)
+                store.fail(job_id, {"code": "SCAN_INTERRUPTED"})
+            finally:
+                resume.set()
+            with pytest.raises(ValueError, match="lease expired or job already finished"):
+                completion.result(timeout=5)
+        job = store.get(job_id)
+        assert job["status"] == "failed" and job["result"] is None
+        assert job["error"] == {"code": "SCAN_INTERRUPTED"}
+    finally:
+        resume.set()
+        engine.dispose()
+
+
+@pytest.mark.parametrize("error_type", [OperationalError, InterfaceError, PoolTimeout])
+def test_worker_retries_transient_storage_without_rescanning(tmp_path, engine_response, monkeypatch, error_type):
+    from app.routers import scans
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'retry.sqlite'}")
+    store = ScanStore(engine)
+    job_id = uuid4().hex
+    store.create(job_id, URL)
+    response = engine_response()
+    scanner = AsyncMock(return_value=response)
+    complete = store.complete
+    attempts = []
+
+    def transient(*args):
+        attempts.append(1)
+        if len(attempts) < 3:
+            if error_type is PoolTimeout:
+                raise PoolTimeout("synthetic pool exhaustion")
+            raise error_type(None, None, ConnectionError("synthetic transient error"))
+        return complete(*args)
+
+    monkeypatch.setattr(store, "complete", transient)
+    monkeypatch.setattr(scans, "_run_scan", scanner)
+    monkeypatch.setattr(scans, "PERSIST_RETRY_DELAYS", (0, 0), raising=False)
+    monkeypatch.setattr(scans, "_slots", asyncio.Semaphore(2))
+    try:
+        asyncio.run(scans._worker(job_id, scans.ScanRequest(repo_url=URL), store))
+        assert len(attempts) == 3
+        scanner.assert_awaited_once()
+        assert store.get(job_id)["status"] == "done"
+        assert store.get(job_id)["result"] == response
+    finally:
+        engine.dispose()
+
+
+def test_scan_auth_runs_before_lazy_schema_initialization(monkeypatch):
+    from app.routers import scans
+
+    initialized = []
+
+    def missing_schema(engine):
+        initialized.append(engine)
+        raise RuntimeError("missing schema")
+
+    monkeypatch.setattr(scans, "ScanStore", missing_schema)
+    monkeypatch.setattr(scans.job_settings, "llm_jobs_enabled", True)
+    app = FastAPI()
+    app.state.scan_store = None
+    app.state.scan_engine = object()
+    app.include_router(scans.router, prefix="/api")
+    with TestClient(app) as client:
+        assert client.get("/api/scans/unknown").status_code == 401
+        assert client.post("/api/scans", json={"repo_url": URL}).status_code == 401
+    assert initialized == []
+
+
+@pytest.mark.parametrize("error_type,expected_attempts", [
+    (OperationalError, 3), (InterfaceError, 3), (PoolTimeout, 3),
+    (IntegrityError, 1), (ValueError, 1), (TimeoutError, 1),
+])
+def test_worker_bounds_retries_and_never_exposes_storage_errors(
+    tmp_path, engine_response, monkeypatch, caplog, error_type, expected_attempts,
+):
+    from app.routers import scans
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'failed-save.sqlite'}")
+    store = ScanStore(engine)
+    job_id = uuid4().hex
+    store.create(job_id, URL)
+    scanner = AsyncMock(return_value=engine_response())
+    attempts = []
+    canary = "synthetic_db_password_do_not_expose"
+
+    def fail_completion(*args):
+        attempts.append(1)
+        if error_type in (ValueError, TimeoutError, PoolTimeout):
+            raise error_type(canary)
+        raise error_type(None, None, ConnectionError(canary))
+
+    monkeypatch.setattr(store, "complete", fail_completion)
+    monkeypatch.setattr(scans, "_run_scan", scanner)
+    monkeypatch.setattr(scans, "PERSIST_RETRY_DELAYS", (0, 0), raising=False)
+    monkeypatch.setattr(scans, "_slots", asyncio.Semaphore(2))
+    try:
+        asyncio.run(scans._worker(job_id, scans.ScanRequest(repo_url=URL), store))
+        assert len(attempts) == expected_attempts
+        scanner.assert_awaited_once()
+        job = store.get(job_id)
+        assert job["status"] == "failed" and job["result"] is None
+        assert job["error"]["code"] == "SCAN_ERROR"
+        assert canary not in str(job) and canary not in caplog.text
+    finally:
+        engine.dispose()
+
+
+def test_worker_retries_lost_commit_ack_without_duplicate_relations(store, engine_response, monkeypatch):
+    from app.routers import scans
+
+    job_id = uuid4().hex
+    store.create(job_id, URL, OWNER)
+    response = engine_response()
+    scanner = AsyncMock(return_value=response)
+    complete = store.complete
+    attempts = []
+
+    def lose_first_ack(*args):
+        attempts.append(1)
+        complete(*args)
+        if len(attempts) == 1:
+            raise OperationalError(None, None, ConnectionError("lost commit acknowledgement"))
+
+    monkeypatch.setattr(store, "complete", lose_first_ack)
+    monkeypatch.setattr(scans, "_run_scan", scanner)
+    monkeypatch.setattr(scans, "PERSIST_RETRY_DELAYS", (0, 0), raising=False)
+    monkeypatch.setattr(scans, "_slots", asyncio.Semaphore(2))
+    asyncio.run(scans._worker(job_id, scans.ScanRequest(repo_url=URL), store))
+    assert len(attempts) == 2
+    scanner.assert_awaited_once()
+    assert store.get(job_id, OWNER)["result"]["result"] == response["result"]
+    with store.engine.connect() as conn:
+        assert conn.scalar(select(func.count()).select_from(store.tables["project"])) == 1
+        assert conn.scalar(select(func.count()).select_from(store.tables["scan"])) == 1
+        assert conn.scalar(select(func.count()).select_from(store.tables["finding"])) == len(response["result"]["findings"])
+
+
+def test_concurrent_postgres_completions_publish_only_one_snapshot(store, engine_response, monkeypatch):
+    import security_engine
+
+    job_id = start(store, OWNER)
+    first, second = engine_response(), engine_response(db_files=2)
+    entered, resume, second_lock_query = Event(), Event(), Event()
+    original = security_engine.build_llm_input
+
+    def paused(*args, **kwargs):
+        entered.set()
+        assert resume.wait(5)
+        return original(*args, **kwargs)
+
+    def observe_second_lock(conn, cursor, statement, parameters, context, executemany):
+        if entered.is_set() and "scan_job" in statement and "FOR UPDATE" in statement:
+            second_lock_query.set()
+
+    monkeypatch.setattr(security_engine, "build_llm_input", paused)
+    event.listen(store.engine, "before_cursor_execute", observe_second_lock)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first_save = pool.submit(store.complete, job_id, first)
+            try:
+                assert entered.wait(5)
+                second_save = pool.submit(store.complete, job_id, second)
+                assert second_lock_query.wait(5)
+                assert not second_save.done()
+            finally:
+                resume.set()
+            first_save.result(timeout=5)
+            second_save.result(timeout=5)
+        assert store.get(job_id, OWNER)["result"]["result"] == first["result"]
+        with store.engine.connect() as conn:
+            assert conn.scalar(select(func.count()).select_from(store.tables["project"])) == 1
+            assert conn.scalar(select(func.count()).select_from(store.tables["scan"])) == 1
+            assert conn.scalar(select(func.count()).select_from(store.tables["finding"])) == len(first["result"]["findings"])
+    finally:
+        resume.set()
+        event.remove(store.engine, "before_cursor_execute", observe_second_lock)
+
+
+def test_lazy_store_connection_failure_is_not_reported_as_missing_migration(monkeypatch):
+    from types import SimpleNamespace
+    from app.routers import scans
+
+    canary = "synthetic_connection_password_do_not_expose"
+
+    def disconnected(*args, **kwargs):
+        raise OperationalError(None, None, ConnectionError(canary))
+
+    monkeypatch.setattr("app.scan_store.MetaData.reflect", disconnected)
+    monkeypatch.setattr(scans.job_settings, "llm_jobs_enabled", False)
+    app = FastAPI()
+    app.state.scan_store = None
+    app.state.scan_engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    app.include_router(scans.router, prefix="/api")
+    with TestClient(app) as client:
+        response = client.get("/api/scans/unknown")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "SCAN_STORAGE_UNAVAILABLE"
+    assert canary not in response.text
+
+
+@pytest.mark.parametrize("missing_column", [False, True])
+def test_lazy_store_requires_tables_and_essential_columns(pg_engine, monkeypatch, missing_column):
+    from app.routers import scans
+
+    monkeypatch.setattr(scans.job_settings, "llm_jobs_enabled", False)
+    alter = "ALTER TABLE tool_run RENAME COLUMN coverage TO hidden_coverage" if missing_column else "ALTER TABLE scan_job RENAME TO hidden_scan_job"
+    restore = "ALTER TABLE tool_run RENAME COLUMN hidden_coverage TO coverage" if missing_column else "ALTER TABLE hidden_scan_job RENAME TO scan_job"
+    with pg_engine.begin() as conn:
+        conn.exec_driver_sql(alter)
+    try:
+        app = FastAPI()
+        app.state.scan_store = None
+        app.state.scan_engine = pg_engine
+        app.include_router(scans.router, prefix="/api")
+        with TestClient(app) as client:
+            response = client.get("/api/scans/unknown")
+        assert response.status_code == 503
+        assert response.json()["detail"].startswith("SCAN_SCHEMA_REQUIRED")
+        assert app.state.scan_store is None
+    finally:
+        with pg_engine.begin() as conn:
+            conn.exec_driver_sql(restore)
+
+
+def test_lease_expiring_during_completion_rolls_back_relations(store, engine_response, monkeypatch):
+    import security_engine
+
+    job_id = start(store, OWNER)
+    response = engine_response()
+    original = security_engine.build_llm_input
+    with store.engine.begin() as conn:
+        conn.execute(update(scan_job).where(scan_job.c.id == job_id).values(
+            lease_until=func.clock_timestamp() + text("interval '0.25 seconds'")))
+
+    def slow_conversion(*args, **kwargs):
+        with store.engine.connect() as conn:
+            conn.exec_driver_sql("SELECT pg_sleep(0.35)")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(security_engine, "build_llm_input", slow_conversion)
+    with pytest.raises(ValueError, match="lease expired"):
+        store.complete(job_id, response)
+    assert store.get(job_id, OWNER)["error"]["code"] == "SCAN_INTERRUPTED"
+    with store.engine.connect() as conn:
+        for name in ("project", "scan", "tool_run", "finding"):
+            assert conn.scalar(select(func.count()).select_from(store.tables[name])) == 0
+
+
+def test_postgres_lock_wait_does_not_freeze_lease_expiration(store, engine_response):
+    job_id = start(store, OWNER)
+    response = engine_response()
+    waiting = Event()
+
+    def observe_lock(conn, cursor, statement, parameters, context, executemany):
+        if "scan_job" in statement and "FOR UPDATE" in statement:
+            waiting.set()
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with store.engine.begin() as conn:
+                conn.execute(update(scan_job).where(scan_job.c.id == job_id).values(
+                    lease_until=func.clock_timestamp() + text("interval '0.25 seconds'")))
+                event.listen(store.engine, "before_cursor_execute", observe_lock)
+                pending = pool.submit(store.complete, job_id, response)
+                assert waiting.wait(5)
+                conn.exec_driver_sql("SELECT pg_sleep(0.35)")
+            with pytest.raises(ValueError, match="lease expired"):
+                pending.result(timeout=5)
+        job = store.get(job_id, OWNER)
+        assert job["status"] == "failed" and job["result"] is None
+        assert job["error"]["code"] == "SCAN_INTERRUPTED"
+    finally:
+        event.remove(store.engine, "before_cursor_execute", observe_lock)
+
+
+def test_rescan_base_lookup_is_scoped_to_owner_repository_and_saved_result(store, engine_response):
+    owned = engine_response()
+    job_id = start(store, OWNER)
+    store.complete(job_id, owned)
+    scan_id = owned["scan_id"]
+    assert store.previous_result(scan_id, URL, OWNER) == owned["result"]
+    assert store.previous_result(scan_id, URL, OTHER) is None
+    assert store.previous_result(scan_id, URL) is None
+    assert store.previous_result(scan_id, "https://github.com/example/other", OWNER) is None
+    assert store.previous_result(uuid4().hex, URL, OWNER) is None
+
+    anonymous = engine_response()
+    anonymous_job = start(store)
+    store.complete(anonymous_job, anonymous)
+    assert store.previous_result(anonymous["scan_id"], URL) == anonymous["result"]
+    assert store.previous_result(anonymous["scan_id"], URL, OWNER) is None
+
+
+def _scan_app(store, actor):
+    from app.routers import scans
+
+    app = FastAPI()
+    app.state.scan_store = store
+    app.dependency_overrides[scans.scan_user] = lambda: actor
+    app.include_router(scans.router, prefix="/api")
+    return app
+
+
+def _poll_saved_scan(client, job_id):
+    for _ in range(200):
+        job = client.get(f"/api/scans/{job_id}").json()
+        if job["status"] in ("done", "failed"):
+            return job
+        time.sleep(0.02)
+    raise AssertionError("scanner worker did not reach terminal state")
+
+
+def test_rescan_uses_server_copy_and_never_stores_browser_forged_findings(tmp_path, engine_response, monkeypatch):
+    import security_engine
+    from app.routers import scans
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'trusted-rescan.sqlite'}")
+    store = ScanStore(engine)
+    previous = engine_response()
+    previous_job = start(store, OWNER)
+    store.complete(previous_job, previous)
+    untrusted = deepcopy(previous["result"])
+    forged = deepcopy(untrusted["findings"][0])
+    canary = "sk-" + "proj-" + "x1y2z3" * 6
+    forged.update(fingerprint="semgrep:browser-forgery", tool="semgrep", category="code",
+                  title="Forged browser finding", evidence={"snippet": canary})
+    untrusted["findings"].append(forged)
+    untrusted["target"]["repo_url"] = "https://github.com/attacker/forged-target"
+    captured = []
+
+    def rescan(repo_url, base=None):
+        captured.append(deepcopy(base))
+        return scan(previous["result"]["target"]["path"], base, options=ScanOptions(tools=("config",)), repo_url=repo_url)
+
+    monkeypatch.setattr(security_engine, "scan_repo", rescan)
+    monkeypatch.setattr(scans, "_slots", asyncio.Semaphore(2))
+    try:
+        with TestClient(_scan_app(store, OWNER)) as client:
+            submitted = client.post("/api/scans", json={"repo_url": URL, "previous": untrusted})
+            assert submitted.status_code == 202
+            job = _poll_saved_scan(client, submitted.json()["job_id"])
+        assert job["status"] == "done", job
+        assert captured == [previous["result"]]
+        assert "semgrep:browser-forgery" not in str(job)
+        assert canary not in str(job)
+        assert store.get(previous_job, OWNER)["result"] == previous
+        assert job["result"]["comparison"]["base_scan_id"] == previous["scan_id"]
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("mismatch", ["unknown", "owner", "repository"])
+def test_rescan_rejects_unavailable_base_before_creating_job(tmp_path, engine_response, mismatch):
+    engine = create_engine(f"sqlite:///{tmp_path / 'missing-rescan.sqlite'}")
+    store = ScanStore(engine)
+    response = engine_response()
+    job_id = start(store, OWNER)
+    store.complete(job_id, response)
+    previous = deepcopy(response["result"])
+    actor, repo_url = OWNER, URL
+    if mismatch == "unknown":
+        previous["scan_id"] = uuid4().hex
+    elif mismatch == "owner":
+        actor = OTHER
+    else:
+        repo_url = "https://github.com/example/other"
+    try:
+        with TestClient(_scan_app(store, actor)) as client:
+            result = client.post("/api/scans", json={"repo_url": repo_url, "previous": previous})
+        assert result.status_code == 404
+        detail = result.json()["detail"]
+        assert (detail.get("code") if isinstance(detail, dict) else detail) == "PREVIOUS_SCAN_NOT_FOUND"
+        with engine.connect() as conn:
+            assert conn.scalar(select(func.count()).select_from(scan_job)) == 1
+    finally:
+        engine.dispose()
 
 
 def test_sqlite_response_survives_new_engine_and_store(tmp_path, engine_response):

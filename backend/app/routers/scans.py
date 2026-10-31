@@ -18,11 +18,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeout
 
 from app.llm.engine_adapter import from_engine_item, from_engine_payload
 from app.explain_jobs.auth import bearer, current_user
 from app.explain_jobs.config import job_settings
-from app.scan_store import ScanStore
+from app.scan_store import ScanSchemaRequired, ScanStore
 
 _ROOT = Path(__file__).resolve().parents[3]
 if (_ROOT / "security_engine").is_dir() and str(_ROOT) not in sys.path:
@@ -34,15 +36,7 @@ MAX_RUNNING = 2
 _slots = asyncio.Semaphore(MAX_RUNNING)
 _tasks: set[asyncio.Task] = set()
 logger = logging.getLogger(__name__)
-
-
-def get_scan_store(request: Request) -> ScanStore:
-    if request.app.state.scan_store is None:
-        try:
-            request.app.state.scan_store = ScanStore(request.app.state.scan_engine)
-        except RuntimeError:
-            raise HTTPException(503, "SCAN_SCHEMA_REQUIRED: apply db-schema.sql and migrations/052-scan-persistence.sql") from None
-    return request.app.state.scan_store
+PERSIST_RETRY_DELAYS = (1, 2)
 
 
 async def scan_user(request: Request, credential: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
@@ -51,13 +45,26 @@ async def scan_user(request: Request, credential: Annotated[HTTPAuthorizationCre
     return None
 
 
+def get_scan_store(request: Request, user: Annotated[object, Depends(scan_user)]) -> ScanStore:
+    # Authenticate before reflecting tables or revealing schema readiness.
+    if request.app.state.scan_store is None:
+        try:
+            request.app.state.scan_store = ScanStore(request.app.state.scan_engine)
+        except ScanSchemaRequired:
+            raise HTTPException(503, "SCAN_SCHEMA_REQUIRED: apply db-schema.sql and migrations/052-scan-persistence.sql") from None
+        except Exception:
+            raise HTTPException(503, "SCAN_STORAGE_UNAVAILABLE") from None
+    return request.app.state.scan_store
+
+
 StoreDep = Annotated[ScanStore, Depends(get_scan_store)]
 ActorDep = Annotated[object, Depends(scan_user)]
 
 
 class ScanRequest(BaseModel):
     repo_url: str = Field(min_length=1, max_length=300, description="https://github.com/<owner>/<repo>")
-    # 재검사: 같은 저장소의 직전 검사 결과(응답의 result)를 그대로 넣으면 새로/계속/해결을 비교합니다
+    # 기존 응답 result를 보낼 수 있지만 scan_id만 조회 키로 사용합니다.
+    # 비교 입력은 소유권/저장소를 확인한 서버 저장본에서 읽습니다.
     previous: dict | None = None
 
 
@@ -157,6 +164,35 @@ async def drain_tasks():
         await asyncio.gather(*pending, return_exceptions=True)
 
 
+def _retryable_storage_error(exc):
+    if isinstance(exc, PoolTimeout):
+        return True
+    if exc.connection_invalidated or isinstance(exc, InterfaceError):
+        return True
+    if not isinstance(exc, OperationalError):
+        return False
+    sqlstate = getattr(exc.orig, "sqlstate", None)
+    if sqlstate:
+        return sqlstate.startswith(("08", "40", "53")) or sqlstate in {"57P01", "57P02", "57P03"}
+    sqlite_code = getattr(exc.orig, "sqlite_errorcode", None)
+    # SQLITE_BUSY, LOCKED, IOERR and CANTOPEN (including extended codes).
+    return sqlite_code is None or sqlite_code & 255 in {5, 6, 10, 14}
+
+
+async def _persist_result(store, job_id, result):
+    for attempt in range(len(PERSIST_RETRY_DELAYS) + 1):
+        try:
+            await run_in_threadpool(store.complete, job_id, result)
+            return
+        except (DBAPIError, PoolTimeout) as exc:
+            if not _retryable_storage_error(exc) or attempt == len(PERSIST_RETRY_DELAYS):
+                raise
+            # Retain this result in memory and retry only storage, never the scan.
+            # A lost commit acknowledgement is safe because complete is idempotent.
+            logger.warning("Retrying scan result storage for job %s (attempt %s)", job_id, attempt + 2)
+            await asyncio.sleep(PERSIST_RETRY_DELAYS[attempt])
+
+
 async def _worker(job_id: str, body: "ScanRequest", store: ScanStore) -> None:
     heartbeat = asyncio.create_task(_heartbeat(store, job_id))
     try:
@@ -164,7 +200,7 @@ async def _worker(job_id: str, body: "ScanRequest", store: ScanStore) -> None:
             if not await run_in_threadpool(store.running, job_id):
                 return
             result = await _run_scan(body)
-            await run_in_threadpool(store.complete, job_id, result)
+            await _persist_result(store, job_id, result)
     except asyncio.CancelledError:
         await _fail_job(store, job_id, {"code": "SCAN_INTERRUPTED", "message": "검사 서버가 중단되었습니다. 다시 검사해 주세요."})
         raise
@@ -185,6 +221,17 @@ async def start_scan(body: ScanRequest, response: Response, store: StoreDep, use
     if not _ALLOWED_URL.match(body.repo_url.strip()):
         raise HTTPException(400, detail={"code": "CLONE_FAILED",
                                          "message": "https://github.com/<owner>/<repo> 형식의 공개 저장소 주소만 받을 수 있습니다."})
+    if body.previous is not None:
+        scan_id = body.previous.get("scan_id")
+        previous = None
+        if isinstance(scan_id, str) and len(scan_id) == 32:
+            try:
+                previous = await run_in_threadpool(store.previous_result, scan_id, body.repo_url.strip(), user)
+            except Exception:
+                raise HTTPException(503, "SCAN_STORAGE_UNAVAILABLE") from None
+        if previous is None:
+            raise HTTPException(404, "PREVIOUS_SCAN_NOT_FOUND")
+        body = body.model_copy(update={"previous": previous})
     job_id = uuid.uuid4().hex
     response.headers["Cache-Control"] = "no-store"
     try:

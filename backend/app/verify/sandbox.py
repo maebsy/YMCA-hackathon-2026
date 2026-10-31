@@ -67,7 +67,8 @@ class DockerSandbox:
         tag = f"verify-{uuid.uuid4().hex[:12]}"
         with tempfile.TemporaryDirectory() as ctx_s:
             ctx = Path(ctx_s)
-            shutil.copytree(workdir, ctx / "repo", ignore=shutil.ignore_patterns("node_modules", ".git"))
+            shutil.copytree(workdir, ctx / "repo", ignore=shutil.ignore_patterns("node_modules", ".git"),
+                            symlinks=True)  # 링크를 따라가 서버 파일을 빌드 컨텍스트에 넣지 않음
             shutil.copy(PROBE, ctx / "probe.mjs")
             (ctx / "Dockerfile").write_text(_DOCKERFILE, encoding="utf-8")
             try:

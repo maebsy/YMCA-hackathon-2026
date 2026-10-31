@@ -85,6 +85,58 @@ def test_user_repo_requires_docker(monkeypatch):
     assert r.status == "error" and "Docker" in r.message
 
 
+def test_after_app_not_up_is_fix_failed(monkeypatch):
+    """리뷰 재현(#86): 수정 전 공격 성공 / 수정 후 앱이 안 뜸(공격 결과 없음) / 테스트 통과 → verified가 아니라 fix_failed."""
+    dead_after = {"reachable": False, "appError": "listen 실패", "attacks": [],
+                  "tests": {"ok": True, "passed": 3, "failed": 0}}
+    monkeypatch.setattr(V, "pick_sandbox", lambda trusted: _FakeSandbox(_probe(True), dead_after))
+    monkeypatch.setattr(shutil, "copytree", lambda *a, **k: None)
+    r = verify(_req(), trusted=True)
+    assert r.status == "fix_failed"
+    assert "수정 후 앱이 뜨지 않았습니다" in r.message
+    assert not r.attacks  # '차단됨'으로 센 공격이 없어야 함
+
+
+def test_missing_attack_result_is_error(monkeypatch):
+    """수정 후 결과에 해당 공격이 빠져 있으면 '차단'으로 세지 않고 error."""
+    after = {"reachable": True, "attacks": [], "tests": {"ok": True, "passed": 3, "failed": 0}}
+    monkeypatch.setattr(V, "pick_sandbox", lambda trusted: _FakeSandbox(_probe(True), after))
+    monkeypatch.setattr(shutil, "copytree", lambda *a, **k: None)
+    r = verify(_req(), trusted=True)
+    assert r.status == "error" and "sqli" in r.message
+
+
+def test_pre_broken_tests_not_blamed_on_fix(monkeypatch):
+    """수정 전부터 실패하던 테스트는 수정본 탓이 아님 → 공격이 막혔으면 verified, 단 기능 보존 미확인을 알림."""
+    monkeypatch.setattr(V, "pick_sandbox",
+                        lambda trusted: _FakeSandbox(_probe(True, tests_ok=False), _probe(False, tests_ok=False)))
+    monkeypatch.setattr(shutil, "copytree", lambda *a, **k: None)
+    r = verify(_req(), trusted=True)
+    assert r.status == "verified"
+    assert "수정 전부터 실패" in r.message
+
+
+def test_symlink_copied_as_link_not_content(monkeypatch, tmp_path):
+    """저장소 안 심볼릭 링크가 가리키는 바깥 파일 내용이 사본으로 들어가지 않아야 함."""
+    secret = tmp_path / "server-secret.txt"
+    secret.write_text("SERVER-ONLY", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "leak").symlink_to(secret)
+    seen = {}
+
+    class _Spy(_FakeSandbox):
+        def run(self, workdir, cfg, **kw):
+            seen.setdefault("dirs", []).append(workdir)
+            seen["is_link"] = (Path(workdir) / "leak").is_symlink()
+            return super().run(workdir, cfg, **kw)
+
+    monkeypatch.setattr(V, "pick_sandbox", lambda trusted: _Spy(_probe(True), _probe(False)))
+    r = verify(VerifyRequest(repo_dir=str(repo), attacks=[SQLI], patch=Patch(files={})), trusted=True)
+    assert r.status == "verified"
+    assert seen["is_link"] is True  # 내용이 복사된 일반 파일이 아니라 링크 그대로
+
+
 # ── 통합: 실제 데모 과녁 + LocalSandbox (Node 22.5+ 필요: 데모가 내장 node:sqlite 사용) ──
 def _node_ok() -> bool:
     import subprocess

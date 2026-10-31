@@ -73,8 +73,10 @@ def verify(req: VerifyRequest, *, trusted: bool = False) -> VerifyResult:
         before_dir = Path(tmp) / "before"
         after_dir = Path(tmp) / "after"
         ignore = shutil.ignore_patterns(".git")
-        shutil.copytree(repo, before_dir, ignore=ignore)
-        shutil.copytree(repo, after_dir, ignore=ignore)
+        # symlinks=True: 저장소 안의 심볼릭 링크를 따라가지 않고 링크 자체만 복사합니다.
+        # (따라가면 링크가 가리키는 서버 파일 내용이 사본·Docker 빌드 컨텍스트로 들어갈 수 있음)
+        shutil.copytree(repo, before_dir, ignore=ignore, symlinks=True)
+        shutil.copytree(repo, after_dir, ignore=ignore, symlinks=True)
         try:
             _apply_patch(after_dir, req.patch)
             before = sandbox.run(before_dir, _probe_cfg(req, cfg_attacks))
@@ -83,17 +85,32 @@ def verify(req: VerifyRequest, *, trusted: bool = False) -> VerifyResult:
             return VerifyResult(status="error", sandbox=sandbox.name, message=str(exc),
                                 duration_sec=round(time.monotonic() - started, 2))
 
+    elapsed = lambda: round(time.monotonic() - started, 2)  # noqa: E731
+    before_tests = TestOutcome(**before.get("tests", {}))
+    after_tests = TestOutcome(**after.get("tests", {}))
+
     if not before.get("reachable"):
         return VerifyResult(status="error", sandbox=sandbox.name,
                             message=f"수정 전 앱이 뜨지 않았습니다: {before.get('appError', '')[:200]}",
-                            duration_sec=round(time.monotonic() - started, 2))
+                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed())
+    # 수정본이 앱 시작을 깨뜨리면 공격 결과가 비어 '차단'처럼 보입니다. 이건 차단이 아니라 수정 실패입니다.
+    if not after.get("reachable"):
+        return VerifyResult(status="fix_failed", sandbox=sandbox.name,
+                            message=f"수정 후 앱이 뜨지 않았습니다: {after.get('appError', '')[:200]}",
+                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed())
 
     b_map = {r["id"]: r for r in before.get("attacks", [])}
     a_map = {r["id"]: r for r in after.get("attacks", [])}
+    # 결과에 공격이 빠져 있으면 판정할 근거가 없습니다. 빠진 것을 '실패=차단'으로 세지 않습니다.
+    missing = [a.id for a in runtime_attacks if a.id not in b_map or a.id not in a_map]
+    if missing:
+        return VerifyResult(status="error", sandbox=sandbox.name,
+                            message=f"공격 결과가 비어 판정할 수 없습니다: {', '.join(missing)}",
+                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed())
+
     outcomes: list[AttackOutcome] = []
     for a in runtime_attacks:
-        b = b_map.get(a.id, {})
-        af = a_map.get(a.id, {})
+        b, af = b_map[a.id], a_map[a.id]
         b_ok, a_ok = bool(b.get("succeeded")), bool(af.get("succeeded"))
         verdict = "not_reproduced" if not b_ok else ("fix_failed" if a_ok else "verified")
         outcomes.append(AttackOutcome(
@@ -103,22 +120,20 @@ def verify(req: VerifyRequest, *, trusted: bool = False) -> VerifyResult:
             verdict=verdict,
         ))
 
-    before_tests = TestOutcome(**before.get("tests", {}))
-    after_tests = TestOutcome(**after.get("tests", {}))
-
     verdicts = {o.verdict for o in outcomes}
-    tests_broken = req.run_tests and after_tests.ok is False
+    # 수정 전부터 실패하던 테스트는 수정본 탓이 아닙니다. '수정 후 새로 깨진' 경우만 실패로 봅니다.
+    tests_broken = req.run_tests and after_tests.ok is False and before_tests.ok is not False
+    tests_pre_broken = req.run_tests and before_tests.ok is False
     if "fix_failed" in verdicts or tests_broken:
-        status, msg = "fix_failed", "수정 후에도 공격이 통하거나 기능 테스트가 깨졌습니다."
-    elif verdicts == {"verified"} and not tests_broken:
-        status, msg = "verified", "모든 공격이 수정 후 차단되고 기능 테스트를 통과했습니다."
+        status, msg = "fix_failed", "수정 후에도 공격이 통하거나 기능 테스트가 새로 깨졌습니다."
     elif "not_reproduced" in verdicts:
         status, msg = "not_reproduced", "수정 전 공격이 재현되지 않았습니다(오탐 후보)."
     else:
-        status, msg = "verified", "검증 완료."
+        status, msg = "verified", "모든 공격이 수정 후 차단되고 기능 테스트를 통과했습니다."
+        if tests_pre_broken:
+            msg = "모든 공격이 수정 후 차단됐습니다. 기능 테스트는 수정 전부터 실패하고 있어 기능 보존은 확인하지 못했습니다."
 
     return VerifyResult(
         status=status, message=msg, sandbox=sandbox.name, attacks=outcomes,
-        before_tests=before_tests, after_tests=after_tests,
-        duration_sec=round(time.monotonic() - started, 2),
+        before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed(),
     )

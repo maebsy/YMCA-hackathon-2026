@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CircleCheck, CircleQuestionMark, CircleX, FlaskConical, LoaderCircle, Play, RotateCcw, Sparkles } from "lucide-react";
-import { attackVerdictLabels, isolationLabels, requestLine, runVerify, testsLabel, verdictHelp, verdictLabels, type AttackDefinition, type AttackOutcome, type VerifyJob, type VerifyMode } from "@/lib/verify";
+import { attackVerdictLabels, isolationLabels, requestLine, runVerify, testsLabel, attemptsLine, verdictHelp, verdictLabels, type AttackDefinition, type AttackOutcome, type VerifyJob, type VerifyMode } from "@/lib/verify";
 
 type Phase = "idle" | "queued" | "running" | "done" | "error";
 const phaseText: Partial<Record<Phase, string>> = {
@@ -53,6 +53,7 @@ function Result({ job }: { job: VerifyJob }) {
       {verdictHelp(job).map(line => <p key={line} className="vp-help">{line}</p>)}
       <p className="vp-muted">실행 환경: {result.sandbox === "docker" ? "Docker 격리 컨테이너" : "이 서버에서 바로 실행 (데모 과녁 전용)"} · {result.duration_sec}초</p>
       <p className="vp-muted">수정본: {job.mode === "ai" ? "GPU Red·Blue가 만든 공격과 수정본 (사람이 최종 확인 필요)" : "사람이 쓴 기준 수정본"}</p>
+      {job.mode === "ai" && attemptsLine(job.ai) && <p className="vp-note"><span className="vp-muted">AI 수정 시도 · </span>{attemptsLine(job.ai)} (실패한 실행 결과를 Blue에게 돌려주고 다시 고쳤습니다)</p>}
       {job.mode === "ai" && job.ai && Object.values(job.ai.patch_summaries).map((s, i) => <p key={i} className="vp-note"><span className="vp-muted">Blue 수정 요약 · </span>{s}</p>)}
       {job.mode === "ai" && job.ai && job.ai.skipped.length > 0 && <ul className="vp-note">{job.ai.skipped.map((s, i) => <li key={i}>건너뜀({s.stage}) {s.fingerprint}: {s.reason}</li>)}</ul>}
       {job.reused && <p className="vp-reused">최근 실행 결과입니다{job.finished_at && <> (<time dateTime={job.finished_at}>{new Date(job.finished_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}</time> 실행)</>}. 데모 입력이 고정이라 잠시 동안은 다시 실행하지 않고 같은 결과를 보여 줍니다.</p>}

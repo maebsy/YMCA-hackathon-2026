@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import shutil
@@ -260,8 +261,27 @@ def blue_check(path: str, original: str):
         if content is None:
             return [why]
         broken = syntax_error(path, content)
-        return [broken] if broken else _dropped_lines(patch, original)
+        return [broken] if broken else _dropped_lines(patch, original) + _cosmetic_edits(patch, original)
     return check
+
+
+def _same_code(a: str, b: str) -> bool:
+    """공백·따옴표 종류만 다르면 같은 코드로 봅니다 ('a' 와 "a")."""
+    norm = lambda text: re.sub(r"\s+", "", text).replace("'", '"').replace("`", '"')  # noqa: E731
+    return norm(a) == norm(b)
+
+
+def _cosmetic_edits(patch: BluePatch, original: str) -> list[str]:
+    """따옴표·공백만 바꾼 편집을 알려 줍니다. 서버 실행에서 Blue가 XSS를 고쳤다면서 `""` 를 `''` 로만 바꾼 일이 있었습니다."""
+    lines = original.splitlines()
+    problems = []
+    for edit in patch.edits:
+        before = "\n".join(lines[edit.start_line - 1:edit.end_line])
+        replaced = "\n".join(lines[edit.start_line - 1:edit.start_line - 1 + max(1, len(edit.replace.splitlines()))])
+        if _same_code(before, edit.replace) or (edit.replace.strip() and _same_code(replaced, edit.replace)):
+            problems.append(f"{edit.start_line}~{edit.end_line}줄 편집은 따옴표·공백만 바뀌어 취약점이 그대로입니다. "
+                            "SQL은 자리표시자와 매개변수로, HTML 출력은 특수문자(& < > \" ')를 이스케이프해서 실제로 막으세요.")
+    return problems
 
 
 def _dropped_lines(patch: BluePatch, original: str) -> list[str]:
@@ -347,6 +367,40 @@ async def plan_verification(client: LLMClient, findings: list[FindingInput], rep
         plan.patch.files[rel] = content
         plan.patch_summaries[rel] = blue.data.summary
     return plan
+
+
+def run_feedback(result: VerifyResult) -> str | None:
+    """샌드박스 실행 결과를 Blue에게 돌려줄 문장으로. 고칠 거리가 없으면(verified·error 등) None."""
+    if result.status != "fix_failed":
+        return None
+    notes = []
+    if result.message.startswith("수정 후 앱이"):
+        notes.append("수정본을 적용한 앱이 시작되지 않거나 요청에 응답하지 않았습니다(시간 초과). 응답을 보내는 코드"
+                     "(res.send, res.json, return 등)를 지우거나 빠뜨리지 않았는지 확인하세요. 편집 범위 안의 줄은 바꾸지 않더라도 모두 다시 쓰세요.")
+    for attack in result.attacks:
+        if attack.after_succeeded:
+            evidence = (attack.after_evidence or "")[:200]
+            notes.append(f"수정 후에도 '{attack.id}' 공격이 통했습니다(응답 일부: {evidence!r}). 이 취약점을 실제로 막으세요.")
+    if result.after_tests.ok is False and result.before_tests.ok is not False:
+        notes.append(f"수정 후 기능 테스트가 깨졌습니다(통과 {result.after_tests.passed}, 실패 {result.after_tests.failed}). "
+                     "정상 동작·응답 형식은 바꾸지 마세요.")
+    return " ".join(notes) or result.message
+
+
+async def revise_patch(client: LLMClient, findings: list[FindingInput], repo_dir: str | Path, rel: str,
+                       previous: str, feedback: str) -> tuple[str | None, str]:
+    """실행 결과(feedback)를 붙여 Blue에게 원본 기준 편집을 다시 받습니다. (수정본, 요약 또는 거절 이유)"""
+    source = (Path(repo_dir) / rel).read_text(encoding="utf-8", errors="replace")
+    messages = blue_patch_messages(findings, rel, source)
+    diff = "".join(difflib.unified_diff(source.splitlines(keepends=True), previous.splitlines(keepends=True), "a/" + rel, "b/" + rel, n=1))
+    messages[-1]["content"] += (f"\n\n<previous_attempt>\n{diff[:2500]}\n</previous_attempt>\n"
+                                f"<sandbox_result>\n{feedback[:1200]}\n</sandbox_result>\n"
+                                "위 이전 수정을 격리 환경에서 실제로 실행한 결과입니다. 원본 파일 기준으로 편집 목록을 처음부터 다시 출력하세요.")
+    blue = await client.chat_json(messages, BluePatch, sampling=BLUE_PATCH_SAMPLING, check=blue_check(rel, source))
+    content, why = to_patch_content(blue.data, rel, source)
+    if content is not None and (broken := syntax_error(rel, content)):
+        content, why = None, broken
+    return (content, blue.data.summary) if content is not None else (None, why)
 
 
 async def verify_findings(client: LLMClient, findings: list[FindingInput], repo_dir: str | Path, *,

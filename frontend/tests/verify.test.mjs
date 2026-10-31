@@ -150,3 +150,12 @@ test('a fix that breaks the app is explained as a caught bad fix, not a tool fai
   assert.deepEqual(verdictHelp({mode:'reference', result:{status:'verified', message:'ok'}}), []);
   assert.match(verdictHelp({mode:'ai', result:{status:'not_reproduced', message:''}})[0], /오탐/);
 });
+
+test('AI retries are listed in order and old responses without attempts still parse', () => {
+  const { attemptsLine } = loaded.exports;
+  const job = parseVerifyJob({...doneJob, mode:'ai', ai:{red_reasons:{}, patch_summaries:{}, skipped:[],
+    attempts:[{attempt:1, status:'fix_failed', message:'수정 후 앱이 뜨지 않았습니다'}, {attempt:2, status:'verified', message:'ok'}, {attempt:'x'}]}});
+  assert.equal(job.ai.attempts.length, 2);
+  assert.equal(attemptsLine(job.ai), '1회차 수정 미흡 → 2회차 검증됨');
+  assert.equal(attemptsLine(parseVerifyJob({...doneJob, mode:'ai', ai:{red_reasons:{}, patch_summaries:{}, skipped:[]}}).ai), '');
+});

@@ -28,7 +28,8 @@ export interface VerifyJob {
 /** reference: 사람이 쓴 기준 수정본, ai: GPU Red·Blue가 만든 공격·수정본 (Docker 격리에서만 실행) */
 export type VerifyMode = "reference" | "ai";
 export interface AiSkipped { fingerprint: string; stage: string; reason: string }
-export interface AiPlan { red_reasons: Record<string, string>; patch_summaries: Record<string, string>; skipped: AiSkipped[] }
+export interface AiAttempt { attempt: number; status: VerifyStatus; message: string }
+export interface AiPlan { red_reasons: Record<string, string>; patch_summaries: Record<string, string>; skipped: AiSkipped[]; attempts: AiAttempt[] }
 
 const stringMap = (v: unknown): Record<string, string> => record(v)
   ? Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === "string")) : {};
@@ -37,7 +38,9 @@ function parseAi(v: unknown): AiPlan | null {
   if (!record(v)) return null;
   const skipped = Array.isArray(v.skipped) ? v.skipped.filter((s): s is AiSkipped => record(s)
     && typeof s.fingerprint === "string" && typeof s.stage === "string" && typeof s.reason === "string") : [];
-  return { red_reasons: stringMap(v.red_reasons), patch_summaries: stringMap(v.patch_summaries), skipped };
+  const attempts = Array.isArray(v.attempts) ? v.attempts.filter((a): a is AiAttempt => record(a) && typeof a.attempt === "number"
+    && ["verified", "not_reproduced", "fix_failed", "error"].includes(String(a.status)) && typeof a.message === "string") : [];
+  return { red_reasons: stringMap(v.red_reasons), patch_summaries: stringMap(v.patch_summaries), skipped, attempts };
 }
 
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -107,6 +110,12 @@ export function verdictHelp(job: Pick<VerifyJob, "mode" | "result">): string[] {
   if (result.status === "fix_failed") return ["수정 후에도 공격이 통하거나, 수정 전에는 통과하던 기능 테스트가 깨졌습니다. 공격별 결과와 기능 테스트를 확인하세요."];
   if (result.status === "not_reproduced") return ["수정 전에도 공격이 통하지 않았습니다. 이 탐지는 실제로는 위험하지 않은 오탐일 수 있습니다."];
   return [];
+}
+
+/** "1회차 수정 미흡 → 2회차 검증됨". 재시도가 없었으면 빈 문자열 */
+export function attemptsLine(ai: AiPlan | null): string {
+  if (!ai || ai.attempts.length < 2) return "";
+  return ai.attempts.map(a => `${a.attempt}회차 ${verdictLabels[a.status].label}`).join(" → ");
 }
 
 export const verdictLabels: Record<VerifyStatus, { label: string; tone: "ok" | "danger" | "warn" | "muted" }> = {

@@ -116,6 +116,10 @@ def _exploitation(finding, analysis, signals, records) -> tuple[str, str]:
         return "public poc", f"{top.cve}는 30일 안에 악용될 확률이 {top.epss:.0%}로 높은 편입니다(EPSS)"
     if finding.category != "dependency" and (known := sorted(set(finding.refs.cwe) & WELL_KNOWN_CWE)):
         return "public poc", f"{known[0]} 유형은 공격 방법이 널리 알려져 있습니다"
+    if unknown := next((r for r in records if r.kev is None), None):
+        # 목록을 못 받았을 때 '공격 없음'으로 단정하지 않습니다 (#93)
+        return "none", (f"실제 공격 목록(CISA KEV)을 받지 못해 {unknown.cve}가 실제 공격에 쓰였는지는 확인하지 못했습니다. "
+                        "공개된 공격 방법도 확인되지 않았습니다")
     return "none", "실제 공격이나 공개된 공격 방법은 확인되지 않았습니다"
 
 

@@ -50,6 +50,7 @@
 | Gitleaks | 8.30.1 | 보안엔진: 코드 속 비밀값(API 키 등) 노출 검사 | MIT | https://github.com/gitleaks/gitleaks |
 | jsonschema | 4.26.0 | 보안엔진 출력 규격 검증 테스트 (개발용) | MIT | https://github.com/python-jsonschema/jsonschema |
 | OWASP NodeGoat | c5cb68a7084e4ae7dcc60e6a98768720a81841e8 | 공개 취약 앱 소스의 스캐너·OSV 온라인·마스킹 검증 (앱 실행 없음) | Apache-2.0 | https://github.com/OWASP/NodeGoat |
+| maebsy/cafe-order-demo (팀 제작 시연용 취약 과녁) | v1-vulnerable 4bc145805557068aa7478c8fbab845040eed0282 · v2-partial-fix 475b6fc | 72hours 시연·탐지율 측정용으로 일부러 취약하게 만든 공개 저장소(가짜 키·데이터, 배포 금지). 정답지·실검증 공격 정의 포함. 과녁 안 의존성: next 16.4.3·react 19.3.1·@supabase/supabase-js 2.118.0·lodash 4.17.11(의도적 구버전)·express 5.3.0·cors 2.8.6·jsonwebtoken 9.0.3 | MIT | https://github.com/maebsy/cafe-order-demo |
 | CERT/CC SSVC 결정표 (CISA Coordinator v2.0.3) | 커밋 c5be80f180f0 | 위험도 해석의 결정표 (`backend/app/llm/data/` 사본) | MIT (SEI) 계열, 전문은 `backend/app/llm/data/SSVC-LICENSE.txt` | https://github.com/CERTCC/SSVC |
 | OpenVEX 명세 (용어만 사용) | v0.2.0 | 문맥 분석 결과의 상태·사유 용어 | CC0-1.0 | https://github.com/openvex/spec |
 | MCP Python SDK (`mcp`) | 1.30.0 | 독립 stdio 및 Streamable HTTP MCP로 로컬 LLM 수정 제안을 사용자 AI 에이전트에 전달 | MIT | https://github.com/modelcontextprotocol/python-sdk |

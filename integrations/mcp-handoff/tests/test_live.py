@@ -72,6 +72,32 @@ class LiveSnapshotTests(unittest.TestCase):
         live.fix_prompt("demo-sql-001")
         self.assertIs(live._snapshot, loaded)
 
+    def test_detects_overwrite_with_same_size_and_mtime(self):
+        """수정 시각·크기가 같아도 내용이 바뀌면 다시 읽습니다 (#72)."""
+        self.write(web_file("finding-a"))
+        live = LiveSnapshot(self.path, "demo/example")
+        self.assertEqual(live.list_findings()["findings"][0]["fingerprint"], "finding-a")
+        before = self.path.stat()
+        self.path.write_text(json.dumps(web_file("finding-b"), ensure_ascii=False), encoding="utf-8")
+        os.utime(self.path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        after = self.path.stat()
+        self.assertEqual((after.st_size, after.st_mtime_ns), (before.st_size, before.st_mtime_ns))
+        self.assertEqual(live.list_findings()["findings"][0]["fingerprint"], "finding-b")
+
+    def test_deleted_file_keeps_last_result_with_notice(self):
+        """한 번 읽은 파일이 사라지면 직전 결과를 유지하고 알립니다 (#72)."""
+        self.write(web_file())
+        live = LiveSnapshot(self.path, "demo/example")
+        self.assertNotIn("notice", live.list_findings())
+        self.path.unlink()
+        listing = live.list_findings()
+        self.assertEqual(listing["findings"][0]["fingerprint"], "demo-sql-001")
+        self.assertIn("없어졌습니다", listing["notice"])
+        self.assertIn("쿼리", live.fix_prompt("demo-sql-001"))
+        # 같은 내용으로 다시 저장돼도 안내가 사라짐
+        self.write(web_file())
+        self.assertNotIn("notice", live.list_findings())
+
     def test_keeps_last_good_result_when_new_file_is_broken(self):
         self.write(web_file())
         live = LiveSnapshot(self.path, "demo/example")

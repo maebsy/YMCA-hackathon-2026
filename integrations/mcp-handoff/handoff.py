@@ -211,7 +211,7 @@ class Snapshot:
 
 
 class LiveSnapshot:
-    """같은 경로의 결과 파일이 바뀌면 다음 호출 때 다시 읽습니다 (웹 자동 저장용).
+    """같은 경로의 결과 파일 내용이 바뀌면 다음 호출 때 다시 읽습니다 (웹 자동 저장용).
 
     - `repository`를 주면 고정합니다. 파일이 다른 저장소를 가리키면 그 파일은 받지 않습니다.
     - 커밋은 파일의 source.revision을 씁니다. 재검사로 커밋이 바뀌어도 설정을 고칠 필요가 없습니다.
@@ -226,21 +226,32 @@ class LiveSnapshot:
         self.path = path
         self.repository = repository
         self._snapshot: Snapshot | None = None
-        self._signature: tuple[int, int] | None = None
+        self._digest: str | None = None
         self._problem: str | None = None
 
     def _refresh(self) -> None:
         try:
-            stat = self.path.stat()
-        except OSError:
+            with self.path.open("rb") as stream:
+                raw = stream.read(MAX_BYTES + 1)
+        except FileNotFoundError:
             if self._snapshot is None:
                 self._problem = "아직 결과 파일이 없습니다. 웹에서 검사하고 자동 저장을 켜 주세요."
+            else:
+                self._problem = "결과 파일이 없어졌습니다. 웹에서 자동 저장 위치를 확인해 주세요."
+            # 파일이 다시 생기면 내용이 같아도 다시 읽습니다
+            self._digest = None
             return
-        signature = (stat.st_mtime_ns, stat.st_size)
-        if signature == self._signature:
+        except OSError:
+            # 저장 도중 잠김(Windows) 등: 다음 호출에서 다시 시도합니다
+            self._problem = "결과 파일을 읽지 못했습니다. 잠시 뒤 다시 호출해 주세요."
+            self._digest = None
             return
-        # 실패한 파일도 서명을 기억해, 파일이 다시 바뀔 때까지 같은 파일을 반복해서 읽지 않습니다
-        self._signature = signature
+        # 수정 시각·크기는 같은 시각·같은 크기로 덮어쓰면 놓칠 수 있어 내용으로 비교합니다 (최대 2 MiB)
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest == self._digest:
+            return
+        # 실패한 파일도 기억해, 내용이 다시 바뀔 때까지 같은 파일을 반복해서 검사하지 않습니다
+        self._digest = digest
         try:
             self._snapshot = Snapshot(self.path, self.repository, None)
             self._problem = None

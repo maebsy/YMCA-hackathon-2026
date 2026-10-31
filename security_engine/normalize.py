@@ -195,22 +195,136 @@ def first_sentence(text: str, limit: int = 120) -> str:
     return s if len(s) <= limit else s[: limit - 1] + "…"
 
 
-def version_key(v: str) -> tuple:
-    """'4.17.21' -> (4, 17, 21). 숫자가 아닌 부분은 뒤로 미룬다. (정확한 semver 비교는 아님)"""
-    parts = re.split(r"[.\-+_]", str(v))
-    key = []
-    for p in parts:
-        key.append((0, int(p), "") if p.isdigit() else (1, 0, p))
-    return tuple(key)
+# ── 버전 비교 (#92) ──
+# 생태계마다 규칙이 달라 한 가지 규칙으로 비교하면 낮은 버전을 '업그레이드'로 안내할 수 있다.
+# 그래서 OSV 생태계 이름으로 비교기를 고르고, 그 규칙으로 읽을 수 없는 버전은 None(비교 불가)으로 둔다.
+# 비교 불가한 버전은 추천에 쓰지 않는다 (추측해서 올리라고 하지 않음).
+SEMVER_ECOSYSTEMS = frozenset({"npm", "Go", "crates.io", "Hex", "Pub", "SwiftURL"})
+PEP440_ECOSYSTEMS = frozenset({"PyPI"})
+MAVEN_ECOSYSTEMS = frozenset({"Maven"})
+
+_SEMVER = re.compile(
+    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
+_PEP440 = re.compile(
+    r"^v?(?:(\d+)!)?(\d+(?:\.\d+)*)"
+    r"(?:[-_.]?(a|alpha|b|beta|rc|c|pre|preview)[-_.]?(\d*))?"
+    r"(?:-(\d+)|[-_.]?(?:post|rev|r)[-_.]?(\d*))?"
+    r"(?:[-_.]?(dev)[-_.]?(\d*))?"
+    r"(?:\+[a-z0-9]+(?:[-_.][a-z0-9]+)*)?$",
+    re.IGNORECASE,
+)
+_PEP440_PRE = {"a": 0, "alpha": 0, "b": 1, "beta": 1, "rc": 2, "c": 2, "pre": 2, "preview": 2}
+_MAVEN = re.compile(r"^(\d+(?:\.\d+)*)(?:[-.]?([A-Za-z]+)[-.]?(\d*))?$")
+# Maven 한정자 순서: alpha < beta < milestone < rc(cr) < snapshot < 정식(ga·final·release) < sp
+_MAVEN_QUALIFIER = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "milestone": 2, "m": 2, "rc": 3, "cr": 3,
+                    "snapshot": 4, "": 5, "ga": 5, "final": 5, "release": 5, "sp": 6}
+_NUMERIC = re.compile(r"^v?(\d+(?:\.\d+)*)$")
 
 
-def pick_fix_version(current: str | None, fixed: list[str]) -> str | None:
-    """현재 버전보다 높은 '고친 버전' 중 가장 낮은 것 (가장 작게 올리는 버전)."""
-    if not fixed:
+def _trim(parts: list[int]) -> tuple:
+    while len(parts) > 1 and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
+
+
+def _semver_key(v: str) -> tuple | None:
+    """SemVer 2.0.0 §11: 사전 출시는 정식보다 낮고, 점으로만 나눈 식별자를 비교한다.
+    숫자로만 된 식별자는 숫자로, 나머지는 대소문자를 구분해 ASCII 순서로 비교한다(alpha10 < alpha2)."""
+    m = _SEMVER.match(v)
+    if not m:
         return None
-    cands = sorted(set(fixed), key=version_key)
+    pre = m[4]
+    if pre is None:
+        return (int(m[1]), int(m[2]), int(m[3]), 1, ())
+    ids = tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in pre.split("."))
+    return (int(m[1]), int(m[2]), int(m[3]), 0, ids)
+
+
+def _pep440_key(v: str) -> tuple | None:
+    """PEP 440: epoch(1!) → 숫자 → dev < a < b < rc < 정식 < post. 지역 버전(+...)은 무시한다."""
+    m = _PEP440.match(v)
+    if not m:
+        return None
+    epoch = int(m[1] or 0)
+    release = _trim([int(x) for x in m[2].split(".")])
+    pre_l, pre_n = m[3], m[4]
+    post_n = m[5] if m[5] is not None else m[6]
+    dev = m[7] is not None
+    if pre_l:
+        pre = (1, _PEP440_PRE[pre_l.lower()], int(pre_n or 0))
+    elif post_n is None and dev:
+        pre = (0,)  # 1.0.dev0 은 1.0a1 보다도 앞선다
+    else:
+        pre = (2,)  # 사전 출시 아님
+    post = (1, int(post_n or 0)) if post_n is not None else (0,)
+    dev_key = (0, int(m[8] or 0)) if dev else (1,)
+    return (epoch, release, pre, post, dev_key)
+
+
+def _maven_key(v: str) -> tuple | None:
+    m = _MAVEN.match(v)
+    if not m:
+        return None
+    qualifier = (m[2] or "").lower()
+    # Maven expands a/b/m only when a digit immediately follows the letter.
+    # Bare or separated aliases are unknown qualifiers; do not guess their order.
+    if qualifier in {"a", "b", "m"} and (not m[3] or m.start(3) != m.end(2)):
+        return None
+    if qualifier not in _MAVEN_QUALIFIER:
+        return None  # 모르는 한정자는 비교하지 않는다
+    if m[3]:
+        # 정식 별칭·snapshot 뒤 숫자와 점/하이픈이 섞인 한정자는 Maven의 목록 구조가 필요하다.
+        # (순위, 정수)로 비교하면 final1 > sp1, alpha.1 > alpha2, 1.0.alpha-1 > 1.0-alpha2 순서가 뒤집힌다.
+        qualifier_separator = v[m.end(1):m.start(2)]
+        number_separator = v[m.end(2):m.start(3)]
+        if qualifier in {"", "ga", "final", "release", "snapshot"}:
+            return None
+        if number_separator == "." or (qualifier_separator == "." and number_separator == "-"):
+            return None
+    return (_trim([int(x) for x in m[1].split(".")]), _MAVEN_QUALIFIER[qualifier], int(m[3] or 0))
+
+
+def _numeric_key(v: str) -> tuple | None:
+    m = _NUMERIC.match(v)
+    return (_trim([int(x) for x in m[1].split(".")]),) if m else None
+
+
+def version_key(v: str, ecosystem: str | None = None) -> tuple | None:
+    """생태계 규칙에 맞는 비교 키. 그 규칙으로 읽을 수 없으면 None(비교 불가).
+
+    - npm·Go·crates.io 등: SemVer 2.0.0 (사전 출시는 같은 숫자의 정식보다 항상 낮음, -post1 포함)
+    - PyPI: PEP 440 (epoch, dev/a/b/rc, post)
+    - Maven: 알려진 한정자(alpha·beta·milestone·rc·snapshot·sp)만
+    - 그 밖·생태계 모름: 숫자로만 된 버전(1.2.3)만
+    """
+    s = str(v or "").strip()
+    if not s:
+        return None
+    if ecosystem in SEMVER_ECOSYSTEMS:
+        return _semver_key(s)
+    if ecosystem in PEP440_ECOSYSTEMS:
+        return _pep440_key(s)
+    if ecosystem in MAVEN_ECOSYSTEMS:
+        return _maven_key(s)
+    return _numeric_key(s)
+
+
+def pick_fix_version(current: str | None, fixed: list[str], ecosystem: str | None = None) -> str | None:
+    """현재 버전보다 높은 '고친 버전' 중 가장 낮은 것 (가장 작게 올리는 버전).
+
+    - 현재 버전보다 높은 후보가 없으면 None. 낮은 버전을 '업그레이드'로 안내하지 않는다 (#92).
+    - 그 생태계 규칙으로 읽을 수 없는 후보(커밋 해시 등)는 빼고, 현재 버전을 읽을 수 없으면 추천하지 않는다.
+    - 현재 버전을 모르면 읽을 수 있는 후보 중 가장 높은 것을 돌려준다.
+    """
+    keyed = sorted((k, f) for f in set(fixed or []) if (k := version_key(f, ecosystem)) is not None)
+    if not keyed:
+        return None
     if current:
-        higher = [f for f in cands if version_key(f) > version_key(current)]
-        if higher:
-            return higher[0]
-    return cands[-1]
+        now = version_key(current, ecosystem)
+        if now is None:
+            return None
+        higher = [f for k, f in keyed if k > now]
+        return higher[0] if higher else None
+    return keyed[-1][1]

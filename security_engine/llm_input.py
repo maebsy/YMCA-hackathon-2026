@@ -33,6 +33,7 @@ from .models import (
     STATUS_LABEL_KO,
     TOOL_OK,
 )
+from .normalize import version_key
 
 LLM_INPUT_VERSION = "1.0"
 
@@ -114,6 +115,18 @@ def _fix_hint(f: dict, pkg_targets: dict | None = None) -> dict:
             tmpl = _UPGRADE_CMD.get(p["ecosystem"])
             hint["command"] = tmpl.format(name=p["name"], version=tv) if tmpl else None
             hint["text"] = f"{p['name']}을(를) {p['version']} → {tv} 이상으로 올리고 lockfile도 함께 커밋"
+        elif p.get("fixed_versions"):
+            listed = ", ".join(p["fixed_versions"][:5])
+            now = version_key(p["version"], p["ecosystem"])
+            keys = [version_key(v, p["ecosystem"]) for v in p["fixed_versions"]]
+            if now is not None and all(k is not None for k in keys):
+                # 모두 비교했는데 현재보다 높은 수정 버전이 없음: 고쳐졌다가 현재 버전에서 다시 생긴 경우 (#92)
+                hint["text"] = (f"알려진 고친 버전({listed})이 모두 현재 버전 {p['version']}보다 낮거나 같음. 현재 버전에서 다시 생긴 "
+                                "취약점일 수 있어 낮은 버전으로 내리지 말고, 더 높은 수정 버전이 나왔는지 확인하거나 우회 필요")
+            else:
+                # 고친 버전 후보는 있지만 이 생태계 규칙으로 현재 버전과 비교하지 못해 목표를 정하지 않음 (#92)
+                hint["text"] = (f"고친 버전 후보({listed})는 있지만 현재 버전 {p['version']}과 순서를 확실히 비교하지 못해 "
+                                "업그레이드 목표를 정하지 않았음. 패키지 관리자의 버전 규칙으로 현재보다 높은 수정 버전인지 직접 확인 필요")
         else:
             hint["text"] = "아직 고친 버전이 없음. 다른 패키지로 바꾸거나, 취약한 기능을 쓰지 않도록 우회 필요"
     elif f["tool"] == "gitleaks":

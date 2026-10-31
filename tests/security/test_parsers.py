@@ -252,3 +252,41 @@ def test_clone_keeps_repository_line_endings(monkeypatch, tmp_path):
     args = seen[0]
     assert ["-c", "core.autocrlf=false"] == args[args.index("core.autocrlf=false") - 1:args.index("core.autocrlf=false") + 1]
     assert args.index("core.autocrlf=false") < args.index("clone")
+
+
+# ── #92: 수정 버전 선택 ──
+def test_pick_fix_version_never_suggests_a_downgrade():
+    from security_engine.normalize import pick_fix_version as pick
+
+    assert pick("2.0.0", ["1.9.0"]) is None  # 이슈 재현: 예전에는 1.9.0
+    assert pick("2.0.0", ["1.9.0", "2.0.0"]) is None  # 같은 버전도 '올리기'가 아님
+    assert pick("2.0.0", ["1.9.0", "2.0.1"]) == "2.0.1"
+    assert pick(None, ["1.2.0", "1.10.0"]) == "1.10.0"  # 현재 버전을 모르면 가장 높은 후보
+
+
+def test_pick_fix_version_handles_prereleases():
+    from security_engine.normalize import pick_fix_version as pick
+
+    assert pick("1.2.3-beta.1", ["1.2.3", "1.2.4"]) == "1.2.3"  # 이슈 재현: 예전에는 1.2.4
+    assert pick("1.2.3", ["1.2.3-rc.1", "1.2.4"]) == "1.2.4"  # 사전 출시는 정식보다 낮음
+    assert pick("1.0.0-alpha", ["1.0.0-alpha.1", "1.0.0"]) == "1.0.0-alpha.1"
+    assert pick("v1.4.0", ["v1.4.1"]) == "v1.4.1"  # Go 모듈의 v 접두어
+
+
+def test_version_key_follows_semver_precedence():
+    from security_engine.normalize import version_key
+
+    # SemVer 2.0.0 명세 11번의 예시 순서
+    chain = ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2",
+             "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0"]
+    assert sorted(reversed(chain), key=version_key) == chain
+    assert version_key("1.0.0+build.5") == version_key("1.0.0")  # 빌드 정보는 순서에 영향 없음
+    assert version_key("1.2") == version_key("1.2.0") < version_key("1.2.1") < version_key("1.10")
+
+
+def test_version_key_handles_common_pypi_and_maven_tags():
+    from security_engine.normalize import version_key
+
+    pypi = ["1.0.dev0", "1.0a1", "1.0b2", "1.0rc1", "1.0", "1.0.post1", "1.0.1"]
+    assert sorted(reversed(pypi), key=version_key) == pypi
+    assert version_key("2.0-SNAPSHOT") < version_key("2.0") < version_key("2.0-sp1") < version_key("2.0.1")

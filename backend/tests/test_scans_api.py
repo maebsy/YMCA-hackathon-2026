@@ -1,4 +1,5 @@
 """검사 API (/api/scans): 접수 → 진행 조회 → 결과, 재검사 비교, 주소 제한. 실제 스캐너 없이 엔진의 scan_repo만 바꿔 끼웁니다."""
+import sys
 import time
 
 import pytest
@@ -104,3 +105,164 @@ def test_disallowed_owner_is_rejected_before_queueing(monkeypatch, fake_scan_rep
         ok = client.post("/api/scans", json={"repo_url": "https://github.com/OWASP/site"})
         assert ok.status_code == 202
         assert _wait(client, ok.json()["job_id"])["status"] == "done"
+
+
+# ── 검사 API 보호: 대기열 상한·엔진 미설치·오류 원문·인증 설정 조합 (#53) ──
+from fastapi import HTTPException  # noqa: E402
+
+URL = "https://github.com/demo/site"
+
+
+def test_queue_full_returns_429(monkeypatch, fake_scan_repo):
+    monkeypatch.setattr(scans, "MAX_ACTIVE", 0)  # 이미 꽉 찬 상태
+    with TestClient(app) as client:
+        r = client.post("/api/scans", json={"repo_url": URL})
+    assert r.status_code == 429
+    assert r.json()["detail"]["code"] == "SCAN_QUEUE_FULL"
+    assert r.headers["retry-after"] == "60"
+
+
+def test_queue_has_room_again_after_jobs_finish(fake_scan_repo):
+    with TestClient(app) as client:
+        for _ in range(scans.MAX_ACTIVE + 2):  # 하나씩 끝나면 참조가 빠져 상한에 걸리지 않습니다
+            job_id = client.post("/api/scans", json={"repo_url": URL}).json()["job_id"]
+            assert _wait(client, job_id)["status"] == "done"
+    assert not scans._tasks
+
+
+def test_missing_engine_returns_503(monkeypatch):
+    monkeypatch.setitem(sys.modules, "security_engine.git", None)  # import 하면 ImportError
+    with TestClient(app) as client:
+        r = client.post("/api/scans", json={"repo_url": URL})
+    assert r.status_code == 503
+    assert r.json()["detail"]["code"] == "ENGINE_UNAVAILABLE"
+
+
+def test_scan_error_hides_internal_message(monkeypatch):
+    def boom(repo_url, previous=None, **kw):
+        raise RuntimeError("/srv/72hours/private/path exploded")
+
+    monkeypatch.setattr(security_engine, "scan_repo", boom)
+    with TestClient(app) as client:
+        job = _wait(client, client.post("/api/scans", json={"repo_url": URL}).json()["job_id"])
+    assert job["status"] == "failed" and job["error"]["code"] == "SCAN_ERROR"
+    assert "/srv" not in job["error"]["message"] and "RuntimeError" not in job["error"]["message"]
+
+
+class FakeAuth:
+    USERS = {"token-a": UUID(int=1), "token-b": UUID(int=2)}
+
+    async def verify(self, token):
+        if token not in self.USERS:
+            raise HTTPException(401, "INVALID_ACCESS_TOKEN")
+        return self.USERS[token]
+
+
+@pytest.mark.parametrize(("llm_jobs_enabled", "scan_require_auth"), [(True, False), (False, True), (True, True)])
+def test_auth_settings_either_flag_requires_login(monkeypatch, fake_scan_repo, llm_jobs_enabled, scan_require_auth):
+    """두 설정 중 하나라도 켜면 로그인이 필요하고, 남의 검사는 404입니다."""
+    with TestClient(app) as client:
+        monkeypatch.setattr(job_settings, "llm_jobs_enabled", llm_jobs_enabled)
+        monkeypatch.setattr(job_settings, "scan_require_auth", scan_require_auth)
+        monkeypatch.setattr(app.state, "job_auth", FakeAuth(), raising=False)
+        a, b = {"Authorization": "Bearer token-a"}, {"Authorization": "Bearer token-b"}
+
+        assert client.post("/api/scans", json={"repo_url": URL}).status_code == 401
+        assert client.post("/api/scans", json={"repo_url": URL}, headers={"Authorization": "Bearer nope"}).status_code == 401
+        r = client.post("/api/scans", json={"repo_url": URL}, headers=a)
+        assert r.status_code == 202
+        job_id = r.json()["job_id"]
+
+        assert client.get(f"/api/scans/{job_id}").status_code == 401
+        assert client.get(f"/api/scans/{job_id}", headers=b).status_code == 404
+        for _ in range(100):
+            job = client.get(f"/api/scans/{job_id}", headers=a).json()
+            if job["status"] in ("done", "failed"):
+                break
+            time.sleep(0.05)
+        assert job["status"] == "done"
+        # 재검사도 내 저장본만 이어 받습니다: 남이 내 scan_id를 previous로 쓰면 404
+        prev = {"scan_id": job["result"]["scan_id"]}
+        assert client.post("/api/scans", json={"repo_url": URL, "previous": prev}, headers=b).status_code == 404
+        assert client.post("/api/scans", json={"repo_url": URL, "previous": prev}, headers=a).status_code == 202
+
+
+def test_auth_off_by_default(fake_scan_repo):
+    assert not job_settings.llm_jobs_enabled and not job_settings.scan_require_auth
+    with TestClient(app) as client:
+        assert client.post("/api/scans", json={"repo_url": URL}).status_code == 202
+
+
+# ── 대기열 상한의 동시성 (#55 리뷰): 정원 확인과 접수가 원자적이어야 합니다 ──
+import asyncio  # noqa: E402
+import threading  # noqa: E402
+
+from fastapi import Response  # noqa: E402
+
+
+class SlowStore:
+    """DB 저장이 늦는 상황(20ms). fail=True 이면 저장이 실패합니다."""
+
+    def __init__(self):
+        self.rows, self.fail, self.lock = [], False, threading.Lock()
+
+    def create(self, job_id, repo_url, user):
+        time.sleep(0.02)
+        if self.fail:
+            raise RuntimeError("db down")
+        with self.lock:
+            self.rows.append(job_id)
+
+
+@pytest.mark.anyio
+async def test_concurrent_posts_never_exceed_queue_cap(monkeypatch):
+    release = asyncio.Event()
+
+    async def stuck_worker(job_id, body, store):  # 끝나지 않는 검사
+        await release.wait()
+
+    monkeypatch.setattr(scans, "_worker", stuck_worker)
+    monkeypatch.setattr(scans, "_active", 0)
+    monkeypatch.setattr(scans, "_tasks", set())
+    store = SlowStore()
+
+    async def post():
+        try:
+            return await scans.start_scan(scans.ScanRequest(repo_url=URL), Response(), store, None)
+        except HTTPException as exc:
+            return exc.status_code
+
+    results = await asyncio.gather(*(post() for _ in range(25)))
+    accepted = [r for r in results if isinstance(r, dict)]
+    assert len(accepted) == scans.MAX_ACTIVE
+    assert results.count(429) == 25 - scans.MAX_ACTIVE
+    assert len(store.rows) == scans.MAX_ACTIVE  # 거절된 요청은 DB 행을 만들지 않음
+    assert scans._active == scans.MAX_ACTIVE
+
+    release.set()  # 검사가 끝나면 자리가 모두 돌아옴
+    await asyncio.gather(*list(scans._tasks))
+    await asyncio.sleep(0)
+    assert scans._active == 0 and not scans._tasks
+
+
+@pytest.mark.anyio
+async def test_storage_failure_and_cancel_return_the_slot(monkeypatch):
+    monkeypatch.setattr(scans, "_active", 0)
+    monkeypatch.setattr(scans, "_tasks", set())
+    monkeypatch.setattr(scans, "MAX_ACTIVE", 1)
+    store = SlowStore()
+    store.fail = True
+
+    with pytest.raises(HTTPException) as caught:
+        await scans.start_scan(scans.ScanRequest(repo_url=URL), Response(), store, None)
+    assert caught.value.status_code == 503
+    assert scans._active == 0  # 저장 실패 → 자리 반환
+
+    store.fail = False
+    pending = asyncio.ensure_future(scans.start_scan(scans.ScanRequest(repo_url=URL), Response(), store, None))
+    await asyncio.sleep(0.005)  # DB 저장 도중 요청이 끊김
+    assert scans._active == 1
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert scans._active == 0  # 요청 취소 → 자리 반환

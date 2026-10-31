@@ -1,0 +1,38 @@
+{
+  "comment": "실검증이 수정 전/후에 보내는 공격 요청과 '성공 판정' 기준. runtime=true 만 Before/After 실행 검증 대상. base_url은 실검증 모듈이 샌드박스에서 띄운 주소로 채웁니다.",
+  "attacks": [
+    {
+      "id": "sqli-orders",
+      "cwe": "CWE-89",
+      "rule_id": "vibe-coding/sql-string-concat",
+      "runtime": true,
+      "request": { "method": "GET", "path": "/api/orders", "query": { "orderId": "0 OR 1=1" } },
+      "baseline": { "method": "GET", "path": "/api/orders", "query": { "orderId": "1" } },
+      "success_when": "json_array_len_gte:2",
+      "note": "정상(baseline)은 1건, 공격 성공 시 2건 이상(전체 주문 노출). 수정 후엔 공격이 1건 이하/오류."
+    },
+    {
+      "id": "xss-search",
+      "cwe": "CWE-79",
+      "rule_id": "code",
+      "runtime": true,
+      "request": { "method": "GET", "path": "/search", "query": { "q": "<script>alert(1)</script>" } },
+      "success_when": "body_contains:<script>alert(1)</script>",
+      "note": "입력이 이스케이프 없이 그대로 HTML에 반사되면 성공. 수정 후엔 &lt;script&gt; 로 이스케이프."
+    },
+    {
+      "id": "jwt-hardcoded",
+      "cwe": "CWE-798",
+      "rule_id": "vibe-coding/jwt-hardcoded-secret",
+      "runtime": false,
+      "note": "정적 탐지만. 런타임 공격 없음 — 수정은 환경변수 이동, 재검사로 해결 확인."
+    },
+    {
+      "id": "outdated-dep",
+      "cwe": "CWE-1104",
+      "rule_id": "osv",
+      "runtime": false,
+      "note": "정적 탐지만(OSV). 수정은 버전 업, 재검사로 해결 확인."
+    }
+  ]
+}

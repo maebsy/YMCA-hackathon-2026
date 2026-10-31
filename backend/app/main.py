@@ -18,6 +18,9 @@ async def lifespan(app: FastAPI):
             await prepare(app, engine, job_settings, stack)
         else:
             init_db()
+            if job_settings.scan_require_auth:  # 검사 API만 로그인 확인을 켠 경우
+                from app.explain_jobs.runtime import prepare_auth
+                await prepare_auth(app, job_settings, stack)
         app.state.scan_engine = engine
         # SQLite is a local demo; PostgreSQL scanners require an explicit migration.
         # Keep unrelated health/report endpoints available before that migration.
@@ -26,6 +29,10 @@ async def lifespan(app: FastAPI):
         app.state.explainer = create_explainer()
         # LLM 연결과 위협 정보(KEV·EPSS) 연결을 함께 닫습니다
         stack.push_async_callback(app.state.explainer.aclose)
+        if not job_settings.llm_jobs_enabled:
+            from app.llm.preview_jobs import PreviewJobs
+            app.state.preview_jobs = PreviewJobs()
+            stack.push_async_callback(app.state.preview_jobs.aclose)
         stack.push_async_callback(scans.drain_tasks)
         yield
 

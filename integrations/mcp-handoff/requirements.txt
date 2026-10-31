@@ -1,2 +1,4 @@
 # Official MCP Python SDK, v1 maintenance API; isolated from backend dependencies.
 mcp==1.30.0
+starlette==1.10.0
+httpx==0.28.1

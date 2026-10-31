@@ -1,46 +1,54 @@
-# 72hours 프론트엔드 프로토타입
+# 72hours 프론트엔드
 
-로그인·스캔·재검사·GPU 상태·공격 재현·리포트는 데모 데이터입니다. 실제 인증이나 보안 검증을 수행하지 않으며, 예제 리포트를 실제 조치 증빙으로 사용할 수 없습니다.
+홈에서 공개 GitHub 저장소 주소를 입력하면 실제 엔진 검사를 시작하고 `/repository`에서 진행 상황과 결과를 확인합니다. 엔진의 관찰 근거, 선택적 GPU Red–Blue 해석, 수정 안내와 MCP 전달을 한 흐름으로 제공합니다.
 
-Node.js와 npm을 설치한 뒤 이 디렉터리에서 `npm ci`를 먼저 실행하세요. `npm run lint`와 `npm run build`로 검증할 수 있습니다.
+## 실행
 
-Tailwind CSS는 설치된 `@tailwindcss/turbopack` 로더로 빌드합니다. 브라우저의 Tailwind CDN 스크립트를 사용하지 않습니다. Google Fonts 연결 실패 시 시스템 폰트를 사용합니다.
-
-신고서 입력은 탭 전환 동안 유지되며, 페이지 새로고침 시 초기화됩니다.
-
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
-
-## Getting Started
-
-First, run the development server:
+Node.js와 npm을 설치한 뒤 이 디렉터리에서 실행합니다.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+npm run dev -- --port 3004
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+http://localhost:3004 에서 확인할 수 있습니다. Production 실행은 `npm run build` 후 `npm run start -- --port 3004`를 사용합니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`/api/*`는 기본적으로 `http://127.0.0.1:8000/api/*`로 전달됩니다. 다른 백엔드를 사용하면 `.env.local`의 `BACKEND_ORIGIN`을 설정합니다. 실제 검사는 실행 중인 백엔드가 필요하며, 추가 AI 해석을 사용할 수 없어도 엔진 결과를 유지합니다. 서버 설정에 따라 로그인과 허용된 저장소 소유자 권한이 필요합니다. 일반 웹사이트 URL은 검사 대상으로 받지 않습니다.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 화면과 상태
 
-## Learn More
+- `/` → `/repository`: GitHub 저장소 입력, 실제 검사, 진행 로그, 발견 항목과 상세, 재검사, HTML/Markdown 리포트와 MCP 전달.
+- `/scan`, `/findings`, `/repair`, `/repair/[id]`, `/report`: 이전 경로로 접근하면 `/repository`로 이동합니다.
+- `/incident`: 사실 확인 → 신고 준비 두 단계. 신고 판단에 필요한 사실만 먼저 묻고, 한 번에 신고 대상·기한 확인과 두 신고서 초안 생성을 실행합니다. 이후 서버가 초안에서 비어 있다고 알려 준 칸(`missing`)과 자동 제안 값(`auto`)을 ‘남은 질문’으로 보여 주고, 답하면 두 초안에 함께 반영합니다. 검사 결과가 있으면 수정·재검사 기록을 조치 내용으로 가져오고, 원인 후보 발견은 사용자가 고릅니다. 외부 신고는 제출하지 않습니다.
+- `/help`: 실제 검사 범위와 접근 조건, 결과 보관, MCP·리포트 사용 방법.
 
-To learn more about Next.js, take a look at the following resources:
+마지막 검사 결과와 수동 조치 표시는 브라우저의 `72hours:last-scan:v1`에 저장·복원합니다. 저장값의 `result`와 `reportInput` 계약을 유지하며, MCP용 결과 파일도 이 검사 데이터를 사용합니다. 수동 조치는 재검증 대기이며 엔진의 `code_resolved` 상태만 해결 확인으로 표시합니다. 다른 저장소의 검사가 실패해도 이전 결과는 그 결과의 저장소 이름과 함께 유지합니다. 사고 사실 입력과 편집 중인 초안은 화면 이동 동안 유지되며 새로고침하면 초기화됩니다.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+MCP 자동 저장은 브라우저의 파일 접근 권한이 필요합니다. 지원하지 않는 브라우저에서는 MCP용 결과 파일을 내려받아 같은 이름으로 저장할 수 있습니다. 최초 설정 시 복사한 설정의 사용자 경로와 설치 위치를 확인하세요. 전달 가능 건수와 차단 사유는 실제 결과를 기준으로 표시합니다.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+헤더·본문·푸터는 공통 최대 폭 748px를 사용합니다. 수정 안내·사고 기록·도움말과 실제 발견 목록/상세는 한 열로 배치합니다. 기존 전역 색상·폰트·칩을 재사용하고 새 흐름 CSS의 scope 경계로 기존 컴포넌트와 스타일을 구분합니다.
 
-## Deploy on Vercel
+## 검증
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run test:domain
+npm run test:integration
+npm run build
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+검사는 GitHub 주소 검증, 실제 검사 진입, API 오류 처리, 저장 복원 계약과 provider의 상태 흐름을 확인합니다. 사고 도메인 검사는 한국 시간 변환, 미확인 값 보존과 선택한 원본 검사 발견의 전달을 확인합니다. 사고 provider 검사는 중복 요청·오래된 응답·부분 실패·편집 보존과 한 번에 확인·초안 생성(`prepare`)을 확인합니다. `tests/fixtures/privacy-72h-unknown-facts.json`은 백엔드 리포트 코드로 만든 실제 응답이며, 서버 칸 이름과 개인정보 초안 보정 규칙을 이 응답으로 검증합니다. 통합 검사의 API 응답은 fixture이므로 외부 저장소 실제 검사나 브라우저 검증을 대신하지 않습니다. 실제 엔진·추가 AI·리포트 서버 연결은 별도로 확인해야 합니다.
+
+## 사고 신고 지원 범위
+
+`/incident`는 `/api/reports/assess`, `/api/reports/incident-24h`, `/api/reports/privacy-72h` 서버 API를 사용합니다. 입력은 평가·문서 생성 시 서버로 전송되며, 검사 발견은 사용자가 선택한 원본 항목만 문서 요청에 첨부합니다. 사고 정보와 초안의 브라우저 영구 저장은 추가하지 않았습니다. 화면 이동 중에는 유지되지만 새로고침하면 초기화됩니다. 서버 측 보관 정책은 서버 운영 설정을 별도로 확인해야 합니다.
+
+기관별 침해사고 신고와 개인정보 유출 신고를 나누어 안내합니다. 미확인 사실이 남아 있으면 ‘의무 없음’으로 확정하지 않습니다. 서버 문구는 2026-10-31에 공식 안내로 확인한 내용(침해사고 미신고·지연 신고 5천만 원 이하 과태료, 2026-09-11 시행 위조·변조·훼손 포함·유출 가능성 통지·통지 항목 확대)을 반영합니다. 근거는 `docs/reports.md`에 있습니다. 서버는 정보주체 통지 의무(유출 가능성 통지 포함)를 판정하지 않으므로 화면과 복사·다운로드 결과에 검토 안내와 공식 출처를 넣습니다. 완전한 법률 판단, 최신 법정 서식 보장, 기관 자동 접수는 지원하지 않습니다.
+
+서버는 빠진 값을 기본값으로 채웁니다(대응 상태 → 대응 중, 신고 구분 → 최초, 민감정보·고유식별정보·외부 접근·통지 → 아니오). 그래서 대응 상태·신고 구분을 모르면 초안을 만들지 않고, 개인정보 문서는 유출 의심·확인과 통지 여부를 먼저 묻습니다. 민감정보 등 판단 사실을 모르는 상태에서 서버가 ‘신고 대상 아닐 수 있음’이라고 답하면, 저장·복사·다운로드되는 초안의 그 결론을 ‘판단 보류’와 미확인 질문 목록으로 바꿉니다. 서버가 미확인 값을 받도록 바뀌면 이 보정(`qualifyPrivacyDraft`)은 지워도 됩니다. ‘남은 질문’은 서버 칸 이름을 입력 항목에 대응시키며(`remainingQuestions`), 대응표에 없는 칸은 초안에서 직접 보완하도록 이름만 보여 줍니다.
+
+공통 사실 변경 시 기존 편집본은 보존하고 재생성 전 내보내기를 막습니다. 직접 편집한 초안은 다시 만들 때 교체 확인을 받습니다. Markdown 편집은 복사·다운로드에 반영됩니다. 두 문서는 각각 생성·수정할 수 있고 공식 기관에 접수되지 않습니다.
+
+Tailwind CSS는 설치된 `@tailwindcss/turbopack` 로더로 빌드합니다. Google Fonts 연결 실패 시 시스템 폰트를 사용합니다. CSS `@scope`를 지원하지 않는 구형 브라우저는 별도 호환성 검증이 필요합니다.

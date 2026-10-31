@@ -35,6 +35,17 @@ class ExplainResponse(BaseModel):
     results: list[ExplainResult]
 
 
+@router.post("/explain/tasks", status_code=202)
+async def start_explain_task(body: ExplainRequest, request: Request, explainer: ExplainerDep):
+    """Legacy demo: acknowledge immediately so public proxies never wait on GPU generation."""
+    return request.app.state.preview_jobs.submit(lambda: explain(body, explainer))
+
+
+@router.get("/explain/tasks/{job_id}")
+async def get_explain_task(job_id: str, request: Request):
+    return request.app.state.preview_jobs.get(job_id)
+
+
 @router.get("/health")
 async def health(explainer: ExplainerDep):
     try:

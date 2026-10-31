@@ -3,12 +3,14 @@
 - KEV: https://www.cisa.gov/known-exploited-vulnerabilities-catalog (미국 정부 공개 자료)
 - EPSS: https://www.first.org/epss/api (무료 공개 API, 등록 불필요)
 
-네트워크가 안 되면 빈 결과를 돌려주고, 위험도 해석은 "모름"으로 진행합니다. 검사를 멈추지 않습니다.
+네트워크가 안 되면 KEV는 "모름(kev=None)", EPSS는 빈 값으로 돌려주고 검사를 멈추지 않습니다.
+목록을 받은 적이 없을 때 "목록에 없음(False)"으로 답하지 않습니다 (#93).
 """
 
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Protocol
 
 import httpx
@@ -55,6 +57,7 @@ class HttpThreatIntel:
         self._backoff = failure_backoff_s
         self._kev: dict[str, str] = {}  # CVE → 추가된 날짜
         self._kev_loaded_at = 0.0
+        self._kev_loaded_wall: str | None = None  # 받은 시각 (사람이 읽는 UTC 시각)
         self._kev_retry_at = 0.0  # 이 시각 전에는 KEV 를 다시 받으러 가지 않음 (실패 뒤)
         self._epss_retry_at = 0.0
         self._epss: dict[str, tuple[float, float, float]] = {}  # CVE → (epss, percentile, 받은 시각)
@@ -70,13 +73,18 @@ class HttpThreatIntel:
         async with self._lock:  # 동시에 여러 건이 와도 KEV 는 한 번만 받습니다
             await self._refresh_kev()
             await self._fetch_epss([c for c in cves if not self._fresh_epss(c)])
+        loaded = bool(self._kev_loaded_at)
+        stale = loaded and time.monotonic() - self._kev_loaded_at >= self._ttl
         out = {}
         for cve in cves:
             epss = self._epss.get(cve)
             out[cve] = ThreatIntelRecord(
                 cve=cve,
-                kev=cve in self._kev,
-                kev_date_added=self._kev.get(cve),
+                # 한 번도 받지 못했으면 '없음'이 아니라 '모름'입니다
+                kev=(cve in self._kev) if loaded else None,
+                kev_date_added=self._kev.get(cve) if loaded else None,
+                kev_checked_at=self._kev_loaded_wall,
+                kev_stale=stale,
                 epss=epss[0] if epss else None,
                 epss_percentile=epss[1] if epss else None,
             )
@@ -97,6 +105,7 @@ class HttpThreatIntel:
             resp.raise_for_status()
             self._kev = {v["cveID"].upper(): v.get("dateAdded") for v in resp.json().get("vulnerabilities", [])}
             self._kev_loaded_at = time.monotonic()
+            self._kev_loaded_wall = datetime.now(timezone.utc).isoformat(timespec="seconds")
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             self._kev_retry_at = time.monotonic() + self._backoff
             log.warning("KEV 목록을 받지 못했습니다 (모름으로 진행, %.0f초 뒤 다시 시도): %s", self._backoff, exc)

@@ -1,26 +1,12 @@
 import type { Metadata } from "next";
+import { IncidentProvider } from "@/components/incident-provider";
+import Shell from "@/components/shell";
+import { RepositoryProvider } from "@/components/repository-provider";
 import "./globals.css";
+import "./flow.css";
+import "./incident.css";
 
-export const metadata: Metadata = {
-  title: "72hours — 바이브 코더 보안 플랫폼 | 찾고, 고치고, 72시간 안에 끝냅니다.",
-  description:
-    "바이브코더와 비개발자도 즉시 다음 행동이 보이는 웹사이트 보안 서비스. Opengrep·OSV·Gitleaks 및 자체 특화 룰셋으로 진단하고, 로컬 GPU LLM의 Red–Blue 검증 루프를 통과한 안전한 수정 지시만 코딩툴(MCP)로 전달합니다.",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="ko">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      </head>
-      <body className="min-h-screen bg-[#0a0a0a] text-[#fafafa] selection:bg-[#d4ff3a] selection:text-black antialiased font-sans">
-        {children}
-      </body>
-    </html>
-  );
+export const metadata: Metadata = { title: "72hours — 만드는 사람 곁의 보안 가이드", description: "공개 GitHub 저장소를 실제 엔진으로 검사하고, GPU Red–Blue 해석과 MCP로 수정과 재검사를 준비하세요." };
+export default function RootLayout({ children }: Readonly<{children: React.ReactNode}>) {
+  return <html lang="ko" data-theme="dark" suppressHydrationWarning><body><IncidentProvider><RepositoryProvider><Shell>{children}</Shell></RepositoryProvider></IncidentProvider></body></html>;
 }

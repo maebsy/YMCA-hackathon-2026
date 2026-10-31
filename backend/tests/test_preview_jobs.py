@@ -90,3 +90,30 @@ def test_task_without_user_settings_returns_all_os_commands(api, fake_vllm):
     guide = result["result"]["results"][0]["explanation"]["guide"]
     assert set(guide) == {"package_manager", "actions"}
     assert {b["os"] for a in guide["actions"] for b in a["commands"]} == {"windows", "macos", "linux"}
+
+
+def test_preview_queue_limits_come_from_settings(monkeypatch):
+    # 공개 시연 대기열이 기본 2건이라 여러 사람이 쓰면 막혔습니다 (#147). 설정으로 정하고 빈 값은 기본값입니다
+    from app.config import Settings
+
+    monkeypatch.setenv("LLM_PREVIEW_RUNNING", "")
+    monkeypatch.setenv("LLM_PREVIEW_CAPACITY", "")
+    defaults = Settings(_env_file=None)
+    assert (defaults.llm_preview_running, defaults.llm_preview_capacity) == (6, 30)
+    monkeypatch.setenv("LLM_PREVIEW_RUNNING", "3")
+    monkeypatch.setenv("LLM_PREVIEW_CAPACITY", "12")
+    tuned = Settings(_env_file=None)
+    assert (tuned.llm_preview_running, tuned.llm_preview_capacity) == (3, 12)
+
+
+def test_app_builds_preview_queue_from_settings(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.config import settings
+    from app.main import app
+
+    monkeypatch.setattr(settings, "llm_preview_running", 5)
+    monkeypatch.setattr(settings, "llm_preview_capacity", 17)
+    with TestClient(app):
+        queue = app.state.preview_jobs
+        assert queue.capacity == 17 and queue.slots._value == 5

@@ -32,7 +32,8 @@ async def lifespan(app: FastAPI):
         stack.push_async_callback(app.state.explainer.aclose)
         if not job_settings.llm_jobs_enabled:
             from app.llm.preview_jobs import PreviewJobs
-            app.state.preview_jobs = PreviewJobs()
+            from app.config import settings
+            app.state.preview_jobs = PreviewJobs(running=settings.llm_preview_running, capacity=settings.llm_preview_capacity)
             stack.push_async_callback(app.state.preview_jobs.aclose)
         stack.push_async_callback(scans.drain_tasks)
         app.state.verify_jobs = VerifyJobs()

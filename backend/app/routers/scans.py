@@ -213,6 +213,17 @@ async def _worker(job_id: str, body: "ScanRequest", store: ScanStore) -> None:
         await asyncio.gather(heartbeat, return_exceptions=True)
 
 
+def _target_allowed(repo_url: str, user) -> bool:
+    """남의 저장소를 검사해 취약점을 캐는 데 쓰이지 않게, 허용한 소유자의 저장소만 받습니다 (관리자는 예외, #67)."""
+    allowed = job_settings.allowed_owners()
+    if not allowed:
+        return True
+    if user is not None and str(user).lower() in job_settings.admin_user_ids():
+        return True
+    owner = repo_url.removeprefix("https://github.com/").split("/", 1)[0].lower()
+    return owner in allowed
+
+
 @router.post("", status_code=202)
 async def start_scan(body: ScanRequest, response: Response, store: StoreDep, user: ActorDep):
     """검사를 접수합니다. 주소 형식은 바로 확인해서, 잘못된 주소는 기다리지 않고 400으로 돌려줍니다."""
@@ -221,6 +232,9 @@ async def start_scan(body: ScanRequest, response: Response, store: StoreDep, use
     if not _ALLOWED_URL.match(body.repo_url.strip()):
         raise HTTPException(400, detail={"code": "CLONE_FAILED",
                                          "message": "https://github.com/<owner>/<repo> 형식의 공개 저장소 주소만 받을 수 있습니다."})
+    if not _target_allowed(body.repo_url.strip(), user):
+        raise HTTPException(403, detail={"code": "SCAN_TARGET_NOT_ALLOWED",
+                                         "message": "본인 저장소만 검사할 수 있습니다. 이 서버에서 허용한 저장소인지 확인해 주세요."})
     if body.previous is not None:
         scan_id = body.previous.get("scan_id")
         previous = None

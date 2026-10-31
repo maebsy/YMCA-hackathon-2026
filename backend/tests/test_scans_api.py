@@ -62,3 +62,45 @@ def test_rejects_non_github_url():
         r = client.post("/api/scans", json={"repo_url": "https://169.254.169.254/latest"})
         assert r.status_code == 400
         assert client.get("/api/scans/nope").status_code == 404
+
+
+# ── 검사 대상 제한: 허용한 소유자만, 관리자는 예외 (#67) ──
+from uuid import UUID  # noqa: E402
+
+from app.explain_jobs.config import job_settings  # noqa: E402
+from app.routers import scans  # noqa: E402
+
+ADMIN = UUID(int=7)
+
+
+@pytest.mark.parametrize(
+    ("url", "user", "allowed"),
+    [
+        ("https://github.com/OWASP/NodeGoat", None, True),
+        ("https://github.com/owasp/juice-shop.git", None, True),  # 대소문자 무시
+        ("https://github.com/someone-else/shop", None, False),
+        ("https://github.com/OWASPx/NodeGoat", None, False),  # 접두어만 같은 소유자
+        ("https://github.com/someone-else/shop", UUID(int=8), False),  # 관리자가 아닌 로그인 사용자
+        ("https://github.com/someone-else/shop", ADMIN, True),  # 관리자는 예외
+    ],
+)
+def test_target_owner_allowlist(monkeypatch, url, user, allowed):
+    monkeypatch.setattr(job_settings, "scan_allowed_owners", "OWASP, maebsy")
+    monkeypatch.setattr(job_settings, "scan_admin_user_ids", str(ADMIN).upper())
+    assert scans._target_allowed(url, user) is allowed
+
+
+def test_empty_allowlist_means_no_restriction(monkeypatch):
+    monkeypatch.setattr(job_settings, "scan_allowed_owners", "")
+    assert scans._target_allowed("https://github.com/anyone/repo", None)
+
+
+def test_disallowed_owner_is_rejected_before_queueing(monkeypatch, fake_scan_repo):
+    monkeypatch.setattr(job_settings, "scan_allowed_owners", "OWASP")
+    with TestClient(app) as client:
+        r = client.post("/api/scans", json={"repo_url": "https://github.com/demo/site"})
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "SCAN_TARGET_NOT_ALLOWED"
+        ok = client.post("/api/scans", json={"repo_url": "https://github.com/OWASP/site"})
+        assert ok.status_code == 202
+        assert _wait(client, ok.json()["job_id"])["status"] == "done"

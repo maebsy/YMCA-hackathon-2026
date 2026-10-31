@@ -10,6 +10,7 @@ interface HeaderProps {
   onOpenCmdPalette: () => void;
   onOpenLoginModal: () => void;
   authUser: string;
+  gpuStatus: "checking" | "online" | "offline";
   theme: "dark" | "light";
   onToggleTheme: () => void;
 }
@@ -20,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCmdPalette,
   onOpenLoginModal,
   authUser,
+  gpuStatus,
   theme,
   onToggleTheme,
 }) => {
@@ -35,11 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="animate-pulse text-[#d4ff3a]">_</span>
           </a>
           <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-[#111113] border border-[#27272a] font-mono text-xs text-[#a1a1aa]">
-            <span className="w-2 h-2 rounded-full bg-[#d4ff3a] animate-ping" />
-            <span className="w-2 h-2 rounded-full bg-[#d4ff3a] -ml-3" />
-            <span>GPU LLM (vLLM · L4) : ONLINE</span>
-            <span className="text-[#27272a]">|</span>
-            <span className="text-[#fafafa]">Red–Blue Loop v1.4</span>
+            <span className={`w-2 h-2 shrink-0 rounded-full ${gpuStatus === "online" ? "bg-[#d4ff3a]" : "bg-[#ff9f43]"}`} />
+            <span className="whitespace-nowrap">GPU LLM: {gpuStatus === "checking" ? "확인 중" : gpuStatus === "online" ? "연결됨" : "연결 안 됨"}</span>
           </div>
         </div>
 

@@ -1,0 +1,18 @@
+{
+  "name": "demo-vulnerable-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "72hours 실검증용 취약 데모 사이트 (배포 금지)",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "4.21.2",
+    "jsonwebtoken": "9.0.2",
+    "lodash": "4.17.11"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

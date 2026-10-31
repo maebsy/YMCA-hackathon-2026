@@ -1,0 +1,16 @@
+[Unit]
+Description=72hours independent public read-only MCP
+After=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/72hours/mcp.env
+ExecStart=%h/apps/72hours/mcp/.venv/bin/python %h/apps/72hours/mcp/current/http_server.py --results %h/apps/72hours/mcp/results.json --repository ${MCP_REPOSITORY} --revision ${MCP_REVISION} --public-origin ${MCP_PUBLIC_ORIGIN} --publish-approved-snapshot
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

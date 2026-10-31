@@ -1,0 +1,23 @@
+name: MCP handoff
+on:
+  pull_request:
+    paths:
+      - 'integrations/mcp-handoff/**'
+      - '.github/workflows/mcp-handoff.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/mcp-handoff/**'
+      - '.github/workflows/mcp-handoff.yml'
+permissions:
+  contents: read
+jobs:
+  mcp-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r integrations/mcp-handoff/requirements.txt
+      - run: python -m unittest discover -s integrations/mcp-handoff/tests -v

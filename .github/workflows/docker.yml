@@ -4,13 +4,17 @@ on:
   pull_request:
     paths:
       - compose.yaml
+      - compose.production.yaml
       - backend/**
+      - frontend/**
       - .github/workflows/docker.yml
   push:
     branches: [main]
     paths:
       - compose.yaml
+      - compose.production.yaml
       - backend/**
+      - frontend/**
       - .github/workflows/docker.yml
 
 permissions:
@@ -20,7 +24,7 @@ concurrency:
   group: docker-${{ github.ref }}
   cancel-in-progress: true
 
-# 필수 검사가 아닙니다. backend 나 compose 파일이 바뀐 PR에서만 돕니다.
+# 개발 모드와 standalone 배포 모드의 화면·API 연결을 실제 컨테이너로 확인합니다.
 jobs:
   compose:
     name: compose
@@ -30,11 +34,18 @@ jobs:
       - name: compose 파일 문법 검사
         run: docker compose config --quiet
       - name: 빌드 폴더에 가짜 .env 넣기 (.dockerignore 가 이미지에서 빼는지 확인용)
-        run: echo "FAKE_SECRET=should-not-be-in-image" > backend/.env
+        run: |
+          echo "FAKE_SECRET=should-not-be-in-image" > backend/.env
+          echo "FAKE_SECRET=should-not-be-in-image" > frontend/.env
+          echo "FAKE_SECRET=should-not-be-in-image" > frontend/.env.local
       - name: 이미지 빌드, 실행, 헬스체크 통과까지 대기
-        run: docker compose up --build --detach --wait --wait-timeout 120
+        run: docker compose up --build --detach --wait --wait-timeout 180
       - name: API 응답 확인 (PostgreSQL 연결 포함)
-        run: curl --fail --silent --show-error http://127.0.0.1:8000/api/health | tee /dev/stderr | grep -q '"db":"postgresql"'
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8000/api/health | tee /dev/stderr | grep -q '"db":"postgresql"'
+          curl -fsS http://127.0.0.1:3000/ -o /tmp/frontend.html
+          grep -q '72hours' /tmp/frontend.html
+          curl -fsS http://127.0.0.1:3000/api/health | tee /dev/stderr | grep -q '"db":"postgresql"'
       - name: 보안 기본값 확인 (비root 실행, 포트는 127.0.0.1에만, .env 는 이미지에 없음)
         run: |
           uid=$(docker compose exec -T backend id -u)
@@ -43,6 +54,9 @@ jobs:
           docker compose port backend 8000 | tee /dev/stderr | grep -q '^127\.0\.0\.1:'
           docker compose port db 5432 | tee /dev/stderr | grep -q '^127\.0\.0\.1:'
           docker compose exec -T backend sh -c 'test ! -e /srv/backend/.env'
+          test "$(docker compose exec -T frontend id -u)" != "0"
+          docker compose port frontend 3000 | grep -q '^127\.0\.0\.1:'
+          docker compose exec -T frontend sh -c 'test ! -e /app/.env && test ! -e /app/.env.local && test -z "$LLM_API_KEY" && test -z "$DATABASE_URL"'
       - name: LLM 주소 확인 (컨테이너에서 내 PC의 8001로 연결)
         run: |
           docker compose exec -T backend printenv LLM_BASE_URL | tee /dev/stderr | grep -qx 'http://host.docker.internal:8001/v1'
@@ -52,8 +66,9 @@ jobs:
           docker compose watch --no-up > watch.log 2>&1 &
           sleep 5
           printf '\n\n@app.get("/__watch_probe")\ndef watch_probe():\n    return {"ok": True}\n' >> backend/app/main.py
+          printf 'frontend-watch-ok' > frontend/public/__watch_probe.txt
           for i in $(seq 1 30); do
-            if curl -fs http://127.0.0.1:8000/__watch_probe; then
+            if curl -fs http://127.0.0.1:8000/__watch_probe && [ "$(curl -fs http://127.0.0.1:3000/__watch_probe.txt)" = 'frontend-watch-ok' ]; then
               echo " -> ${i}초 만에 반영"
               exit 0
             fi
@@ -62,6 +77,32 @@ jobs:
           cat watch.log
           docker compose logs backend
           exit 1
+      - name: 실패하면 로그 출력
+        if: failure()
+        run: docker compose logs
+      - name: 정리
+        if: always()
+        run: docker compose down --volumes
+
+  frontend-production:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: compose.yaml:compose.production.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker compose up --build --detach --wait --wait-timeout 180
+      - name: Standalone 화면·정적 파일·API 프록시 확인
+        run: |
+          curl -fsS http://127.0.0.1:3000/ -o /tmp/frontend.html
+          grep -q '72hours' /tmp/frontend.html
+          curl -fsS http://127.0.0.1:3000/favicon.ico -o /tmp/favicon.ico
+          curl -fsS http://127.0.0.1:3000/api/health | tee /dev/stderr | grep -q '"db":"postgresql"'
+          asset=$(grep -o '/_next/static/[^" ]*\.js' /tmp/frontend.html | head -n 1)
+          test -n "$asset"
+          curl -fsS "http://127.0.0.1:3000$asset" -o /dev/null
+          test "$(docker compose exec -T frontend id -u)" != "0"
+          docker compose exec -T frontend sh -c 'test -f /app/server.js && test ! -d /app/src && test "$NODE_ENV" = production'
       - name: 실패하면 로그 출력
         if: failure()
         run: docker compose logs

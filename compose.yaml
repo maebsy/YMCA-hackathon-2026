@@ -1,4 +1,4 @@
-# 로컬 개발 환경: API 서버(FastAPI) + PostgreSQL
+# 로컬 개발 환경: 프론트(Next.js) + API 서버(FastAPI) + PostgreSQL
 #
 #   docker compose up --build --watch    코드를 저장하면 컨테이너에 바로 반영됩니다
 #   docker compose down                  끄기 (DB 데이터는 남음)
@@ -8,6 +8,37 @@
 name: ymca-hackathon
 
 services:
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+      args:
+        BACKEND_ORIGIN: http://backend:8000
+    environment:
+      # 서버 프록시 전용. 루트 .env의 DB/GPU 키를 프론트 컨테이너에 전달하지 않습니다.
+      BACKEND_ORIGIN: http://backend:8000
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+        - action: rebuild
+          path: ./frontend/next.config.ts
+        - action: rebuild
+          path: ./frontend/tsconfig.json
+
   db:
     image: postgres:17-alpine
     environment:

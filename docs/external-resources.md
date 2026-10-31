@@ -12,6 +12,7 @@
 | Caddy | 2.11.7 | 일반 서버의 웹·API 프록시, 공개 시연 HTTPS 및 접근 인증 | Apache-2.0 | https://github.com/caddyserver/caddy |
 | cloudflared | 2026.10.7 | 승인된 시연용 HTTPS 터널 클라이언트, 공식 SHA-256 고정 검증 | Apache-2.0 | https://github.com/cloudflare/cloudflared |
 | Node.js | 24.19.0 | 별도 담당자가 구현할 프론트엔드의 서버 실행 환경 | MIT 및 포함 구성요소별 라이선스 | https://nodejs.org/ |
+| Node.js 공식 Docker 이미지 | 24.19.0-bookworm-slim | Next.js 개발·standalone 배포 컨테이너 | MIT (포함 Debian 패키지는 각 라이선스) | https://hub.docker.com/_/node |
 | Next.js | 16.4.3 | 프론트엔드 웹 대시보드 및 SSR/App Router 프레임워크 | MIT | https://github.com/vercel/next.js |
 | React & React-DOM | 19.3.0 | 사용자 인터페이스 렌더링 및 상태 관리 라이브러리 | MIT | https://github.com/facebook/react |
 | Tailwind CSS | 4.x | 대시보드 반응형 유틸리티 디자인 스타일링 | MIT | https://github.com/tailwindlabs/tailwindcss |
@@ -68,6 +69,6 @@
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
 | Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
-| Codex (OpenAI) | 일반 서버·독립 MCP·비동기 LLM 큐·인증 경계·DB 스키마와 테스트·연결 문서 작성 및 PR 병합 오류 수정 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
+| Codex (OpenAI) | 일반 서버·독립 MCP·비동기 LLM 큐·인증 경계·DB 스키마·프론트 Compose 통합과 테스트·연결 문서 작성 및 PR 병합 오류 수정 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
 | Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |
 | Claude (Anthropic) | 보안엔진(`security_engine/`) 설계·코드·Semgrep 규칙 작성 보조 | Anthropic 이용약관 | https://claude.ai |

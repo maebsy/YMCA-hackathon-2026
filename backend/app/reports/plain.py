@@ -139,9 +139,56 @@ def location(finding: FindingInput) -> str | None:
     return finding.file_path
 
 
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def basic_explanation(f: FindingInput) -> tuple[list[str], list[str]]:
+    """언어모델 해석이 없는 항목의 기본 쉬운 설명(규칙 기반). GPU 없이 항상 같은 문장을 만듭니다.
+
+    언어모델 해석은 위험도 상위 몇 건에만 만들기 때문에, 나머지 항목도 비전공자가 읽을 수 있게 합니다.
+    내용은 엔진이 준 사실(분류·번호·패키지·버전)만 씁니다. 지어내지 않습니다.
+    """
+    refs = {r.upper() for r in (*f.refs.cwe, *f.refs.cve)}
+    text = f"{f.title} {f.rule_id}".lower()
+    meaning = next((m for keys, _, m in GLOSSARY if keys != ("CVE-",) and any(_glossary_hit(k, refs, text) for k in keys)), None)
+    paragraphs: list[str] = []
+    steps: list[str] = []
+    if f.category == "dependency":
+        name = f.package_name or "이 부품"
+        version = f" {f.installed_version}" if f.installed_version else ""
+        paragraphs.append(
+            f"사이트가 가져다 쓰는 외부 부품 {name}{version}에 전 세계에 공개된 취약점이 있습니다. "
+            "공격 방법도 함께 알려져 있어, 이 부품을 쓰는 사이트는 따라 하기 쉬운 공격 대상이 됩니다."
+        )
+        if f.fixed_version:
+            steps.append(f"{name}을(를) {f.fixed_version} 이상으로 올린 뒤 사이트가 잘 동작하는지 확인하고 다시 검사하세요.")
+        else:
+            steps.append(f"{name}의 고친 버전이 아직 확인되지 않았습니다. 다른 부품으로 바꿀 수 있는지 개발자와 상의하세요.")
+    elif f.category == "secret":
+        paragraphs.append(
+            "서비스에 들어가는 열쇠(비밀키·토큰)가 코드에 그대로 적혀 있습니다. "
+            "저장소를 볼 수 있는 사람은 누구나 이 열쇠로 서비스에 들어갈 수 있고, 지운 뒤에도 커밋 기록에 남습니다."
+        )
+        steps += [
+            "그 서비스의 관리 화면에서 이 키를 바로 폐기하고 새 키를 발급하세요. 코드에서 지우는 것만으로는 부족합니다.",
+            "새 키는 코드가 아니라 환경 변수(.env, 배포 설정)에 넣고, .env 파일은 .gitignore에 추가하세요.",
+            "고친 뒤 다시 검사해 이 항목이 '키 재발급 필요' 또는 해결로 바뀌는지 확인하세요.",
+        ]
+    elif f.category == "config":
+        paragraphs.append(meaning or "사이트 설정이 안전하지 않게 되어 있습니다. 코드는 맞아도 설정 때문에 정보가 새거나 막아야 할 접근이 열릴 수 있습니다.")
+    else:
+        paragraphs.append(meaning or "코드를 작성한 방식 때문에 공격자가 입력값으로 사이트를 원래 의도와 다르게 움직일 수 있습니다.")
+    if meaning and f.category in ("dependency", "secret") and meaning not in paragraphs:
+        paragraphs.append(meaning)
+    # 엔진 규칙 설명은 한국어일 때만 덧붙입니다. 외부 도구의 영어 원문(예: Gitleaks)은 비전공자가 읽기 어렵습니다
+    if f.what and _HANGUL.search(f.what) and f.category != "secret":
+        paragraphs.append(redact_secrets(f.what))
+    return paragraphs, steps
+
+
 def verification_badge(explanation: Explanation | None) -> Badge | None:
     if explanation is None:
-        return Badge(text="설명 준비 중", tone="muted")
+        return Badge(text="기본 설명", tone="muted")
     if explanation.false_positive_suspect:
         return Badge(text="오탐일 수 있음", tone="muted")
     if explanation.variant == "D":
@@ -178,14 +225,11 @@ def finding_card(item: Item) -> Card:
             )
         steps = [f"{s.title} — {s.detail}" for s in e.fix_steps]
     else:
-        paragraphs.append(
-            "쉬운 설명을 아직 만들지 못했습니다. 아래 정보를 개발자에게 전달하거나 잠시 후 리포트를 다시 만들어 주세요."
-        )
-        if f.what:
-            paragraphs.append(redact_secrets(f.what))
+        # 언어모델 해석은 위험도 상위 항목에만 만듭니다. 나머지는 규칙 기반 기본 설명으로 채웁니다
+        paragraphs, steps = basic_explanation(f)
         # 엔진 힌트가 "규칙 설명(what)을 보라"는 내부용 문장이면 위 설명과 겹치므로 넣지 않습니다
-        if f.fix_hint and f.fix_hint.text and "(what)" not in f.fix_hint.text:
-            steps.append(redact_secrets(f.fix_hint.text))
+        if f.fix_hint and f.fix_hint.text and "(what)" not in f.fix_hint.text and f.category != "secret":
+            steps.insert(0, redact_secrets(f.fix_hint.text))
 
     if f.fix_hint and f.fix_hint.command:
         fields.append(FormField(label="실행할 명령", value=f.fix_hint.command))

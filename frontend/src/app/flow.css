@@ -94,6 +94,7 @@ label { display:block; font-size:12px; font-weight:600; margin-bottom:8px; }
 .entry-benefits article>svg { display:block; color:var(--accent); margin:0 auto 12px; }
 .entry-benefits h2 { font-size:14px; margin-bottom:7px; }
 .entry-benefits p { color:var(--muted); font-size:12px; line-height:1.85; }
+[data-simple="on"] .entry-benefits h2 { margin-bottom:0; }
 
 .workspace { padding-block:32px 70px; }
 .back-link { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; margin-bottom:25px; min-height:28px; }

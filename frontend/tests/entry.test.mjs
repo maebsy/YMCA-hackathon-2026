@@ -170,15 +170,32 @@ test("website and malformed repository inputs stay on the form without engine re
     assert.ok(ui.errors.some(Boolean)); assert.equal(ui.focused(), 1);
   }
 });
-test("Simple hides the three home links and the whole benefits layout without hiding the form", () => {
+test("Simple hides three home links and card descriptions while keeping icons, titles and the form", () => {
   const ui = entry();
   const marked = ui.tree.filter(node => node.props["data-simple-hide"] === true);
-  assert.equal(marked.length, 4);
+  assert.equal(marked.length, 6);
   const links = marked.flatMap(nodes).filter(node => node.props.href).map(node => node.props.href);
   assert.deepEqual(links, ["/repository", "/incident", "/verify"]);
-  const benefits = marked.find(node => node.props.className === "entry-benefits");
+  const benefits = ui.tree.find(node => node.props.className === "entry-benefits");
+  assert.equal(benefits.props["data-simple-hide"], undefined);
+  const cards = nodes(benefits).filter(node => node.type === "article");
+  assert.equal(cards.length, 3);
   assert.deepEqual(nodes(benefits).filter(node => node.type === "h2").map(node => node.props.children),
-    ["엔진으로 발견", "GPU로 해석", "MCP로 전달"]);
+    ["보안엔진으로 발견", "언어모델로 쉬운 설명", "MCP로 편리한 접근"]);
+  const descriptions = [
+    ["코드·의존성·비밀정보의", "실제 관찰 근거를 확인하세요."],
+    ["연결 가능한 경우 Red–Blue가", "위험과 수정 방향을 설명합니다."],
+    ["결과를 코딩 도구에 전달하고", "수정 후 다시 검사하세요."],
+  ];
+  cards.forEach((card, index) => {
+    const children = card.props.children;
+    assert.equal(card.props["data-simple-hide"], undefined);
+    assert.ok(children[0].type, "card keeps its icon");
+    assert.equal(children[0].props["data-simple-hide"], undefined);
+    assert.equal(children[1].props["data-simple-hide"], undefined);
+    assert.equal(children[2].props["data-simple-hide"], true);
+    assert.deepEqual(Array.from(children[2].props.children).filter(child => typeof child === "string"), descriptions[index]);
+  });
   assert.equal(marked.some(node => nodes(node).some(child => child.type === "form")), false);
 });
 test("restoration and in-flight scans block home submissions", () => {

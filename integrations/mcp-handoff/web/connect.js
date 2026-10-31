@@ -122,6 +122,8 @@ window.addEventListener("storage", event => { if (event.key === STORE) refresh()
 try {
   const savedLinks = JSON.parse(localStorage.getItem(LINKS) || "[]");
   if (Array.isArray(savedLinks)) links = savedLinks.filter(x => x?.source && Array.isArray(x.findings) &&
-    typeof x.token === "string" && x.guide_url === `${location.origin}/mcp/h/${x.token}/agent.txt`).slice(0,20);
+    typeof x.token === "string" && typeof x.guide_url === "string" && x.guide_url.startsWith("https://") &&
+    // 안내 주소는 대표(고정) 주소로 만들어지므로, 다른 허용 주소에서 연 화면이어도 같은 연결로 봅니다 (#136)
+    x.guide_url.endsWith(`/mcp/h/${x.token}/agent.txt`)).slice(0,20);
 } catch { /* Storage may be unavailable. No synthetic data fallback. */ }
 showLinks(); refresh();

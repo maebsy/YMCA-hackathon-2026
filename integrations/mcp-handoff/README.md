@@ -9,6 +9,8 @@ Python·CMD·결과 파일 설치 없이 원격 HTTP MCP를 지원하는 클라�
 클라이언트 자체의 연결 승인·재접속은 필요할 수 있으며, stdio 전용 앱은 별도 브리지가 필요합니다.
 
 `create_workspace → start_scan → get_scan → start_analysis → get_analysis → get_fix_prompt`
+
+`start_analysis`는 workspace_token·scan_id·fingerprint만 받습니다. 해석 API는 사용자 OS·호스팅 입력 없이 세 OS 명령을 모두 생성하며 패키지 관리자는 자동 판별합니다.
 순으로 실제 서버 API를 호출합니다. 수정은 사용자 AI의 작업본에서 수행합니다.
 `rescan`은 같은 저장소의 **게시된 기본 브랜치**를 이전 결과와 비교합니다. 미게시 로컬 수정이나
 PR 브랜치를 확인하지 못하므로 커밋이 같으면 수정 검증 완료로 표시하면 안 됩니다.
@@ -20,7 +22,7 @@ PR 브랜치를 확인하지 못하므로 커밋이 같으면 수정 검증 완�
 실제 저장소·커밋·FindingInput을 연결합니다. GPU 키는 전달받지 않습니다.
 
 운영 실행은 기존 `live_server.py --database /absolute/private/links.sqlite3 --public-origin https://HOST`
-명령을 사용합니다. 같은 디렉터리의 `workspaces.sqlite3`에 만료 시간·capability 해시·접수 ID만
+명령을 사용합니다. `--public-origin`은 쉼표로 여러 주소를 받으며 첫 주소(대표, 고정 주소)로 연결 주소·안내문을 만들고 나머지 주소의 요청도 받습니다. 같은 디렉터리의 `workspaces.sqlite3`에 만료 시간·capability 해시·접수 ID만
 보관하며, 원본 코드·분석 전문·비밀키는 저장하지 않습니다. backend는 고정 loopback `127.0.0.1:8000`을
 호출하고 기존 인증·allowlist·queue 정책을 그대로 따릅니다. 인증이 필요한 환경에서는 정책 오류를
 반환하며 우회하지 않습니다. 이 구성은 인증 없는 공개 데모 API가 이미 허용된 배포용입니다.

@@ -1,6 +1,6 @@
-"""OS·사용 환경별 대응 가이드: 검증된 명령 템플릿.
+"""세 OS 대응 가이드: 검증된 명령 템플릿.
 
-명령은 LLM 이 만들지 않습니다. 탐지 결과(분류·패키지·lockfile·규칙)와 사용자 환경으로 여기서 만들고,
+명령은 LLM 이 만들지 않습니다. 탐지 결과(분류·패키지·lockfile·규칙)로 여기서 만들고,
 Blue 는 "아래 Windows 명령을 실행하세요"처럼 가리키기만 합니다. 모델이 지어낸 명령을 비개발자가 그대로 실행하는 일을 막습니다.
 
 - Windows 는 기본 설치된 Windows PowerShell 5.1 에서도 되는 문법만 씁니다 (&&·rm -rf 대신 줄 나눔·Remove-Item)
@@ -20,7 +20,6 @@ from app.llm.schemas import (
     PackageManager,
     RemediationGuide,
     TargetOS,
-    UserEnvironment,
 )
 
 ALL_OS: tuple[TargetOS, ...] = ("windows", "macos", "linux")
@@ -59,14 +58,6 @@ _KEY_CONSOLES = [
     ("sendgrid", "SendGrid", "https://app.sendgrid.com/settings/api_keys"),
     ("twilio", "Twilio", "https://console.twilio.com/"),
 ]
-_HOSTING_ENV = {
-    "vercel": (["vercel env add {name} production"], "https://vercel.com/docs/environment-variables"),
-    "cloudflare": (["npx wrangler secret put {name}"], "https://developers.cloudflare.com/workers/configuration/secrets/"),
-    "netlify": ([], "https://docs.netlify.com/environment-variables/overview/"),
-    "supabase": ([], "https://supabase.com/docs/guides/functions/secrets"),
-    "render": ([], "https://render.com/docs/configure-environment-variables"),
-    "railway": ([], "https://docs.railway.com/guides/variables"),
-}
 _CREATE_TABLE = re.compile(
     r'create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?public"?\.)?"?([A-Za-z_][A-Za-z0-9_]*)"?', re.IGNORECASE
 )
@@ -110,21 +101,20 @@ def detect_package_manager(finding: FindingInput) -> PackageManager | None:
     return _ECOSYSTEM.get(finding.package_ecosystem or "")
 
 
-def build_guide(finding: FindingInput, environment: UserEnvironment | None = None) -> RemediationGuide:
-    env = environment or UserEnvironment()
-    oses = [env.os] if env.os else list(ALL_OS)
-    manager = env.package_manager or detect_package_manager(finding)
+def build_guide(finding: FindingInput) -> RemediationGuide:
+    oses = list(ALL_OS)
+    manager = detect_package_manager(finding)
     actions: list[GuideAction] = []
     if finding.category == "dependency":
         actions += _dependency(finding, manager, oses)
     elif finding.category == "secret":
-        actions += _secret(finding, env, oses)
+        actions += _secret(finding, oses)
     elif finding.category == "config" and _is_rls(finding):
         actions += _rls(finding)
     else:
         actions.append(_work_branch(finding, oses))
     actions.append(_rescan())
-    return RemediationGuide(environment=env, package_manager=manager, actions=actions)
+    return RemediationGuide(package_manager=manager, actions=actions)
 
 
 def _blocks(oses: list[TargetOS], lines_for) -> list[CommandBlock]:
@@ -144,40 +134,26 @@ def _python(os_: TargetOS) -> str:
     return "py" if os_ == "windows" else "python3"
 
 
-def _upgrade_lines(manager: PackageManager | None, pkg: str, ver: str, os_: TargetOS) -> list[str] | None:
+def _dependency_commands(
+    manager: PackageManager | None, pkg: str, ver: str, os_: TargetOS,
+) -> tuple[list[str] | None, list[str] | None]:
     def q(value: str) -> str:
         return quote(os_, value)
 
+    p = q(pkg)
     return {
-        "npm": [f"npm install {q(f'{pkg}@{ver}')}"],
-        "pnpm": [f"pnpm add {q(f'{pkg}@{ver}')}"],
-        "yarn": [f"yarn add {q(f'{pkg}@{ver}')}"],
-        "bun": [f"bun add {q(f'{pkg}@{ver}')}"],
-        "pip": [f"{_python(os_)} -m pip install {q(f'{pkg}>={ver}')}"],
-        "uv": [f"uv add {q(f'{pkg}>={ver}')}"],
-        "poetry": [f"poetry add {q(f'{pkg}@^{ver}')}"],
-        "composer": [f"composer require {q(f'{pkg}:^{ver}')}"],
-        "bundler": [f"bundle update {q(pkg)}"],
-        "go": [f"go get {q(pkg + '@v' + ver.lstrip('v'))}", "go mod tidy"],
-        "cargo": [f"cargo update -p {q(pkg)} --precise {q(ver)}"],
-    }.get(manager or "")
-
-
-def _verify_lines(manager: PackageManager | None, pkg: str, os_: TargetOS) -> list[str] | None:
-    p = quote(os_, pkg)
-    return {
-        "npm": [f"npm ls {p}"],
-        "pnpm": [f"pnpm why {p}"],
-        "yarn": [f"yarn why {p}"],
-        "bun": ["bun pm ls"],
-        "pip": [f"{_python(os_)} -m pip show {p}"],
-        "uv": [f"uv pip show {p}"],
-        "poetry": [f"poetry show {p}"],
-        "composer": [f"composer show {p}"],
-        "bundler": [f"bundle info {p}"],
-        "go": [f"go list -m {p}"],
-        "cargo": [f"cargo tree -i {p}"],
-    }.get(manager or "")
+        "npm": ([f"npm install {q(f'{pkg}@{ver}')}"], [f"npm ls {p}"]),
+        "pnpm": ([f"pnpm add {q(f'{pkg}@{ver}')}"], [f"pnpm why {p}"]),
+        "yarn": ([f"yarn add {q(f'{pkg}@{ver}')}"], [f"yarn why {p}"]),
+        "bun": ([f"bun add {q(f'{pkg}@{ver}')}"], ["bun pm ls"]),
+        "pip": ([f"{_python(os_)} -m pip install {q(f'{pkg}>={ver}')}"], [f"{_python(os_)} -m pip show {p}"]),
+        "uv": ([f"uv add {q(f'{pkg}>={ver}')}"], [f"uv pip show {p}"]),
+        "poetry": ([f"poetry add {q(f'{pkg}@^{ver}')}"], [f"poetry show {p}"]),
+        "composer": ([f"composer require {q(f'{pkg}:^{ver}')}"], [f"composer show {p}"]),
+        "bundler": ([f"bundle update {p}"], [f"bundle info {p}"]),
+        "go": ([f"go get {q(pkg + '@v' + ver.lstrip('v'))}", "go mod tidy"], [f"go list -m {p}"]),
+        "cargo": ([f"cargo update -p {p} --precise {q(ver)}"], [f"cargo tree -i {p}"]),
+    }.get(manager or "", (None, None))
 
 
 def _dependency(finding: FindingInput, manager, oses) -> list[GuideAction]:
@@ -217,19 +193,20 @@ def _dependency(finding: FindingInput, manager, oses) -> list[GuideAction]:
         manual.append(f"사용하는 패키지 관리자로 {pkg} 를 {ver} 이상으로 올립니다 (lockfile 을 찾지 못했습니다)")
     raw_lockfile = finding.file_path or (finding.fix_hint.lockfile if finding.fix_hint else None)
     lockfile = safe_path(raw_lockfile)
+    commands_by_os = {o: _dependency_commands(manager, pkg, ver, o) for o in oses}
     actions = [
         GuideAction(
             id="upgrade_dependency",
             title=f"{pkg} 를 {ver} 이상으로 올리기",
             why="고쳐진 버전으로 올리면 이 취약점이 사라집니다",
-            commands=_blocks(oses, lambda o: _upgrade_lines(manager, pkg, ver, o)),
+            commands=_blocks(oses, lambda o: commands_by_os[o][0]),
             manual_steps=manual,
         ),
         GuideAction(
             id="verify_dependency",
             title="설치된 버전 확인",
             why=f"{ver} 이상이 설치됐는지 확인합니다",
-            commands=_blocks(oses, lambda o: _verify_lines(manager, pkg, o)),
+            commands=_blocks(oses, lambda o: commands_by_os[o][1]),
         ),
     ]
     if raw_lockfile and manager:
@@ -265,7 +242,7 @@ def _env_name(finding: FindingInput) -> str:
     return name[:60] or "SECRET_KEY"
 
 
-def _secret(finding: FindingInput, env: UserEnvironment, oses) -> list[GuideAction]:
+def _secret(finding: FindingInput, oses) -> list[GuideAction]:
     text = " ".join(filter(None, [finding.rule_id, finding.title, finding.snippet])).lower()
     consoles = {label: url for key, label, url in _KEY_CONSOLES if key in text}
     name = _env_name(finding)
@@ -298,23 +275,12 @@ def _secret(finding: FindingInput, env: UserEnvironment, oses) -> list[GuideActi
                 ],
             ),
             manual_steps=[
+                "배포 환경(호스팅)의 환경 변수도 새 키로 바꾸고 다시 배포하세요.",
                 f".env 파일을 편집기로 열어 {_PLACEHOLDER} 자리에 새 키를 붙여 넣습니다 (터미널에 키를 직접 치면 기록에 남습니다)",
                 f"코드에서는 환경 변수 {name} 를 읽게 바꿉니다. NEXT_PUBLIC_·VITE_ 같은 접두어를 붙이면 브라우저에 그대로 실리니 붙이지 않습니다",
             ],
         ),
     ]
-    if env.hosting and env.hosting in _HOSTING_ENV:
-        lines, doc = _HOSTING_ENV[env.hosting]
-        actions.append(
-            GuideAction(
-                id="hosting_env",
-                title=f"{env.hosting} 배포 환경에도 새 키 등록",
-                why="배포된 사이트는 내 PC 의 .env 를 읽지 않습니다",
-                commands=_blocks(oses, _same([line.format(name=name) for line in lines])),
-                manual_steps=[] if lines else [f"{env.hosting} 대시보드의 환경 변수 설정에서 {name} 를 새 키로 등록합니다"],
-                links=[doc],
-            )
-        )
     path = (finding.file_path or "").replace("\\", "/")
     if re.search(r"(^|/)\.env(\.[\w.-]+)?$", path) and not path.endswith(".example"):
         tracked = safe_path(path)

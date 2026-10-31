@@ -48,6 +48,10 @@ def repository_url(value):
     return f'https://github.com/{match[1]}/{match[2].removesuffix(".git")}'
 
 
+class Gone(ValueError):
+    """서버가 404로 결과가 없거나 만료되었다고 확인해 준 경우 (일시 오류와 구분)."""
+
+
 class ServiceAPI:
     def __init__(self, store, client):
         self.store, self.client = store, client
@@ -61,7 +65,7 @@ class ServiceAPI:
                 if response.status_code in (401, 403):
                     raise ValueError('서버 인증 또는 검사 정책이 이 요청을 허용하지 않습니다. 운영자에게 문의하세요.')
                 if response.status_code == 404:
-                    raise ValueError('서버 결과가 만료되었거나 없습니다. 새 검사가 필요합니다.')
+                    raise Gone('서버 결과가 만료되었거나 없습니다. 새 검사가 필요합니다.')
                 if response.status_code == 429:
                     raise ValueError('서버 대기열이 가득 찼습니다. 잠시 후 다시 시도하세요.')
                 if response.status_code >= 400:
@@ -153,18 +157,15 @@ class ServiceAPI:
                        notice='LLM 입력 가능한 최대 50건입니다. 전체 수는 summary를 확인하세요. 웹 결과 파일은 필요 없습니다.')
         return out
 
-    async def start_analysis(self, token, scan_id, fingerprint, os, hosting):
-        if os not in ('windows', 'macos', 'linux') or hosting not in (
-                'vercel', 'netlify', 'cloudflare', 'supabase', 'render', 'railway', 'self_hosted', 'unknown'):
-            raise ValueError('지원하는 os 및 hosting 값을 지정하세요.')
+    async def start_analysis(self, token, scan_id, fingerprint):
         result, _ = await self.scan_result(token, scan_id)
         finding = next((f for f in result['findings'] if f['fingerprint'] == fingerprint), None)
         if finding is None:
             raise ValueError('이 검사의 LLM 입력 항목이 아닙니다.')
-        metadata = {'scan_id': scan_id, 'fingerprint': fingerprint, 'os': os, 'hosting': hosting}
+        metadata = {'scan_id': scan_id, 'fingerprint': fingerprint}
         key = hashlib.sha256(json.dumps(metadata, sort_keys=True).encode()).hexdigest()
         return await self.dispatch(token, 'analysis', key, metadata, '/api/llm/explain/tasks',
-            {'findings': [finding], 'mode': 'red_blue', 'environment': {'os': os, 'hosting': hosting}})
+            {'findings': [finding], 'mode': 'red_blue'})
 
     async def analysis_snapshot(self, token, analysis_id):
         data, result = await self.poll(token, analysis_id, 'analysis')
@@ -238,8 +239,7 @@ class ServiceAPI:
                 return data
             await sleep(POLL_SECONDS)
 
-    async def audit(self, token, url, request_id, authorized, os='linux', hosting='unknown',
-                    max_analyses=3, wait_seconds=MAX_WAIT_SECONDS):
+    async def audit(self, token, url, request_id, authorized, max_analyses=3, wait_seconds=MAX_WAIT_SECONDS):
         """검사 시작 → (최대 90초) 완료 대기 → 위험도 상위 항목의 GPU 해석 자동 시작 → 요약과 다음 할 일."""
         if not 0 <= int(max_analyses) <= MAX_AUTO_ANALYSES:
             raise ValueError(f'max_analyses는 0~{MAX_AUTO_ANALYSES}입니다.')
@@ -260,7 +260,7 @@ class ServiceAPI:
         result, source = await self.scan_result(token, scan_id)
         analyses = []
         for f in pick_findings(result['findings'], int(max_analyses)):
-            started = await self.start_analysis(token, scan_id, f['fingerprint'], os, hosting)
+            started = await self.start_analysis(token, scan_id, f['fingerprint'])
             analyses.append({'fingerprint': f['fingerprint'], 'title': clean(f.get('title')),
                              'severity': f.get('severity'), **started})
         out.update(source=source, summary=clean(result.get('summary')),
@@ -359,8 +359,12 @@ class ServiceAPI:
             if job:
                 try:
                     state = await self.request('GET', f'/api/verify/{job}')
-                except ValueError:
-                    state = {}
+                except Gone:
+                    state = {}  # 404: 만료가 확인된 영수증만 버린다
+                except ValueError as exc:
+                    # 503·타임아웃 같은 일시 오류: 작업은 살아 있을 수 있으니 영수증을 지키고 재접수하지 않는다
+                    raise ValueError(f'진행 중인 실검증({job}) 상태를 확인하지 못했습니다. 잠시 뒤 '
+                                     f'verify_demo(verify_job_id="{job}")로 다시 확인하세요. 새로 접수하지 않았습니다.') from exc
                 if state.get('status') in ('queued', 'running'):
                     return job
                 self.verify_running.pop(mode, None)

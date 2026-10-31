@@ -45,7 +45,7 @@ test('manual review is never shown as Red passed', () => {
   assert.equal(result.verdictType, 'warn');
 });
 
-test('environment includes the selected hosting and malformed responses fail clearly', async () => {
+test('explanations omit environment and malformed responses fail clearly', async () => {
   const original = global.fetch;
   let payload;
   global.fetch = async (_, options) => {
@@ -53,8 +53,8 @@ test('environment includes the selected hosting and malformed responses fail cle
     return {ok:true, json:async()=>({})};
   };
   try {
-    await assert.rejects(explain([{}], 'windows', 'netlify'), /LLM/);
-    assert.deepEqual(payload.environment, {os:'windows', hosting:'netlify'});
+    await assert.rejects(explain([{}]), /LLM/);
+    assert.deepEqual(payload, {findings:[{}], mode:'red_blue'});
   } finally {
     global.fetch = original;
   }
@@ -69,7 +69,7 @@ test('LLM result is retrieved from the accepted job without holding the POST ope
       ? {job_id:'test-job', status:'queued'} : {status:'done', result:{results}}};
   };
   try {
-    assert.deepEqual(await explain([{}], 'linux'), results);
+    assert.deepEqual(await explain([{}]), results);
     assert.equal(calls[0].url, '/api/llm/explain/tasks');
     assert.equal(calls[0].options.method, 'POST');
     assert.equal(calls[1].url, '/api/llm/explain/tasks/test-job');
@@ -85,7 +85,7 @@ test('failed and expired LLM jobs surface the server message', async () => {
       global.fetch = async () => ({ok:++calls === 1 || !expired, status:expired ? 404 : 200,
         json:async()=>calls === 1 ? {job_id:'test-job'} : expired
           ? {detail:{message:'작업이 만료됐습니다'}} : {status:'failed', error:{message:'GPU 오류'}}});
-      await assert.rejects(explain([{}], 'linux'), expired ? /만료/ : /GPU 오류/);
+      await assert.rejects(explain([{}]), expired ? /만료/ : /GPU 오류/);
     }
   } finally { global.fetch = original; }
 });

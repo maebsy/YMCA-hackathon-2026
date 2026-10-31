@@ -74,3 +74,19 @@ def test_job_does_not_turn_gpu_failure_into_success(api, fake_vllm):
         time.sleep(0.01)
     assert result["status"] == "failed"
     assert result["error"]["code"] == "LLM_UNAVAILABLE"
+
+
+def test_task_without_user_settings_returns_all_os_commands(api, fake_vllm):
+    fake_vllm.queue("BlueDraft", blue_draft())
+    response = api.post("/api/llm/explain/tasks", json={"findings": [sample_findings(4)[3]], "mode": "blue"})
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    for _ in range(100):
+        result = api.get("/api/llm/explain/tasks/" + job_id).json()
+        if result["status"] in ("done", "failed"):
+            break
+        time.sleep(0.01)
+    assert result["status"] == "done"
+    guide = result["result"]["results"][0]["explanation"]["guide"]
+    assert set(guide) == {"package_manager", "actions"}
+    assert {b["os"] for a in guide["actions"] for b in a["commands"]} == {"windows", "macos", "linux"}

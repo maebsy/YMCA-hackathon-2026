@@ -88,7 +88,7 @@ def case_run(client, evidence, case, args, model):
         evidence.event(prefix, f'GPU Red/Blue 실제 분석 {index+1}/{len(selected)}')
         try:
             batch = client.job(prefix + '-llm-' + str(index), '/api/llm/explain/tasks',
-                {'findings': [finding], 'mode': 'red_blue', 'environment': {'os': args.os, 'hosting': args.hosting}},
+                {'findings': [finding], 'mode': 'red_blue'},
                 args.llm_timeout, case['llm_jobs'][-1])
             analyses.append(llm_checks(evidence, case, finding, batch, model))
         except CheckError as exc:
@@ -154,8 +154,6 @@ def main():
     p.add_argument('--scan-timeout', type=int, default=600)
     p.add_argument('--llm-timeout', type=int, default=900)
     p.add_argument('--max-run-seconds', type=int, default=3600)
-    p.add_argument('--os', choices=['windows', 'macos', 'linux'], default='linux')
-    p.add_argument('--hosting', default='unknown')
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--resume', action='store_true')
     p.add_argument('--rescan', action='store_true')

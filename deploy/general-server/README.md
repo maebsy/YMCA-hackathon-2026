@@ -21,6 +21,7 @@
 | `72hours-public-web` | 선택적 systemd 시스템 서비스 | 도메인 HTTPS·시연용 인증, 80/443 바인딩 권한만 부여 |
 | `72hours-quick-web` | 선택적 사용자 서비스 | 터널 전용 루프백 8088, 시연 계정 인증 |
 | `72hours-quick-tunnel` | 선택적 사용자 서비스 | 승인된 Cloudflare 임시 HTTPS 진입점 |
+| `72hours-ngrok` | 선택적 사용자 서비스 | ngrok 고정 도메인 HTTPS 진입점 (웹·API·원격 MCP) |
 
 `/healthz`는 프록시만, `/api/health`는 API/DB, `/api/llm/health`는 GPU 모델 연결을 확인합니다. 프론트가 없으면 일반 페이지는 502가 정상이며 이를 완성된 서비스로 표시하지 않습니다. 프론트는 상대 경로 `/api/...`를 사용하고 GPU 주소·키를 브라우저에 넣지 않습니다.
 
@@ -134,6 +135,28 @@ journalctl --user -u 72hours-quick-tunnel -n 80 --no-pager
 터널은 **재생성/프로세스 재시작 시 주소가 바뀝니다**. 종료는 `systemctl --user disable --now 72hours-quick-tunnel 72hours-quick-web`입니다. 재시작 후에는 로그에서 새 주소를 확인하고 이전 공유 주소를 갱신해야 합니다. 기존 로컬 프록시·백엔드·GPU는 이 명령으로 중지되지 않습니다.
 
 [Quick Tunnel 공식 제한](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/): 가용성 보장 없음, 동시 진행 요청 200개, SSE 미지원. 이 터널은 웹 시연용이며 기존 stdio MCP를 HTTP MCP로 바꾸지 않습니다. Cloudflare의 요청 시간 제한도 별도로 적용되므로 Caddy의 900초 설정만으로 긴 동기 LLM 호출 성공을 보장하지 않습니다. 실제 배포에는 고정 호스트·앱 인증·작업 큐를 별도로 구성해야 합니다.
+
+### 고정 주소 (ngrok 무료 고정 도메인)
+
+임시 터널 주소는 재시작마다 바뀌어, 사용자 설정에 주소를 저장하는 MCP 연결이 끊깁니다. 공인 IP·도메인이 없을 때는 ngrok 무료 고정 도메인으로 같은 로컬 Caddy(`127.0.0.1:8088`)를 고정 HTTPS 주소로 엽니다. 임시 터널과 함께 둘 수 있습니다(웹은 두 주소 모두, MCP는 아래 한 주소만).
+
+1. 팀이 ngrok 계정을 만들고 대시보드 **Domains**에서 무료 고정 도메인을 받습니다. 계정 토큰은 운영자가 서버에서 직접 넣습니다(채팅·저장소에 올리지 않음).
+   ```bash
+   ~/.local/share/72hours/bin/ngrok config add-authtoken <토큰>
+   printf 'NGROK_DOMAIN=%s\n' '<도메인>' > ~/.config/72hours/ngrok.env && chmod 600 ~/.config/72hours/ngrok.env
+   ```
+2. ngrok 에이전트는 공식 배포 파일을 `~/.local/share/72hours/ngrok-<버전>/`에 두고 `~/.local/share/72hours/bin/ngrok`로 링크합니다(시스템 설치 없음). 버전·SHA-256은 외부 자원 표에 적습니다.
+3. 서비스를 켭니다. 토큰(`~/.config/ngrok/ngrok.yml`)이나 `ngrok.env`가 없으면 시작하지 않습니다.
+   ```bash
+   cp deploy/general-server/systemd/72hours-ngrok.service ~/.config/systemd/user/
+   systemctl --user daemon-reload && systemctl --user enable --now 72hours-ngrok
+   ```
+4. 고정 주소를 쓰는 설정 두 곳을 바꾸고 MCP를 재시작합니다. MCP는 DNS 리바인딩 방지로 **한 주소의 Host만** 받습니다.
+   - `~/.config/72hours/mcp.env`: `MCP_PUBLIC_ORIGIN=https://<도메인>`
+   - `~/.config/72hours/auto-deploy.env`: `DEPLOYMENT_PUBLIC_URL=https://<도메인>` (배포 후 공개 상태 확인 주소)
+5. 확인: `https://<도메인>/healthz`, `/api/health`, `/api/llm/health`가 200이고, `POST /mcp/service/rpc`의 `initialize`가 응답하는지 봅니다.
+
+주의: 무료 요금제는 브라우저로 처음 들어갈 때 경고 안내 페이지가 한 번 뜹니다(MCP·API 호출은 영향 없음). 사용자 서비스 관리자 전체를 재시작하면 임시 터널 주소는 바뀌지만 고정 도메인은 그대로입니다.
 
 ## 검증과 변경 범위
 

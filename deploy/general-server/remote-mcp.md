@@ -11,8 +11,10 @@
 ```dotenv
 MCP_REPOSITORY=owner/repo
 MCP_REVISION=검사한_40자리_SHA
-MCP_PUBLIC_ORIGIN=https://현재-공개호스트
+MCP_PUBLIC_ORIGIN=https://고정-공개호스트,https://함께-쓰는-임시-호스트
 ```
+
+`MCP_PUBLIC_ORIGIN`은 쉼표로 여러 주소를 줄 수 있습니다. **첫 주소가 대표 주소**로 안내문·연결 주소·클라이언트 설정에 쓰이고, 나머지 주소에서 온 요청(Origin·Host)도 받습니다. 고정 도메인(ngrok)을 첫 주소로, 웹에 함께 쓰는 Cloudflare 임시 주소를 뒤에 둡니다(#136).
 
 5. `systemd/72hours-mcp.service`를 `~/.config/systemd/user/`에 복사하고
    `systemctl --user daemon-reload && systemctl --user enable --now 72hours-mcp`.
@@ -33,8 +35,8 @@ MCP 등록 권한/승인은 필요하며 모든 호스트가 자연어만으로 
 Caddy에 SIGUSR1을 보낸 뒤 `systemctl --user stop 72hours-mcp`.
 다른 배포가 프록시를 바꾼 뒤에는 파일 전체를 복원하지 말고 MCP 블록만 제거합니다.
 
-Quick Tunnel은 임시 주소입니다. 운영용 고정 도메인/터널로 전환할 때 MCP_PUBLIC_ORIGIN과
-클라이언트 주소를 함께 갱신합니다. SSE 대신 stateless JSON 응답을 사용합니다.
+Quick Tunnel은 임시 주소입니다. 고정 도메인(`72hours-ngrok`, README의 "고정 주소")을 대표 주소로 두면 터널 주소가 바뀌어도
+클라이언트 설정은 그대로입니다. 임시 주소가 바뀌면 `MCP_PUBLIC_ORIGIN`의 뒤쪽 주소만 바꾸고 `72hours-mcp`를 재시작합니다. SSE 대신 stateless JSON 응답을 사용합니다.
 
 참고: [MCP SDK](https://py.sdk.modelcontextprotocol.io/v1/server/),
 [Quick Tunnel 제한](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).

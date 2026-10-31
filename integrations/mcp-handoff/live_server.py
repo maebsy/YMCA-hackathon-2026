@@ -14,8 +14,8 @@ from starlette.routing import Route
 import uvicorn
 import httpx
 
-from handoff import HandoffError, _unique_keys
-from http_server import public_origin
+from handoff import _unique_keys
+from http_server import public_origins
 from live_store import LinkStore, MAX_BODY, normalize
 from server import create_server
 from service_api import ServiceAPI
@@ -77,16 +77,18 @@ Expired/revoked connections return 404: return to {origin}/mcp/connect to issue 
 
 
 def create_live_app(store, origin, port=8765, service=None):
-    origin = public_origin(origin)
+    # 허용 주소 여러 개(쉼표). 첫 주소(대표)로 연결 주소·안내문을 만들고, 나머지 주소에서 온 요청도 받습니다 (#136)
+    origins = public_origins(origin)
+    origin = origins[0]
     server = create_server(RequestSnapshot(), stateless_http=True, json_response=True,
         max_request_body_size=65536, transport_security=TransportSecuritySettings(
-            allowed_hosts=[urlsplit(origin).netloc, f"127.0.0.1:{port}"], allowed_origins=[origin]))
+            allowed_hosts=[*(urlsplit(o).netloc for o in origins), f"127.0.0.1:{port}"], allowed_origins=origins))
     transport = server.streamable_http_app()
-    full_service = create_service_server(service, origin, port) if service else None
+    full_service = create_service_server(service, origins, port) if service else None
     service_transport = full_service.streamable_http_app() if full_service else None
 
     async def read_body(request):
-        if request.headers.get("origin") != origin:
+        if request.headers.get("origin") not in origins:
             raise PermissionError("같은 서비스의 연결 화면에서 요청해 주세요.")
         if request.headers.get("content-type", "").split(";")[0] != "application/json":
             raise ValueError("JSON 요청이 필요합니다.")
@@ -166,14 +168,15 @@ def create_live_app(store, origin, port=8765, service=None):
 
     class ScopedTransport:
         async def __call__(self, scope, receive, send):
+            async def protected_send(message):
+                if message["type"] == "http.response.start":
+                    message["headers"] = list(message.get("headers", [])) + [
+                        (key.lower().encode(), value.encode()) for key, value in HEADERS.items()]
+                await send(message)
+
             if scope['type'] == 'http' and service_transport and (
                     scope.get('path') == '/mcp/service' or scope.get('path', '').startswith('/mcp/service/')):
-                async def service_send(message):
-                    if message['type'] == 'http.response.start':
-                        message['headers'] = list(message.get('headers', [])) + [
-                            (key.lower().encode(), value.encode()) for key, value in HEADERS.items()]
-                    await send(message)
-                return await service_transport(scope, receive, service_send)
+                return await service_transport(scope, receive, protected_send)
             match = re.fullmatch(r"/mcp/h/([A-Za-z0-9_-]{43})/?", scope.get("path", ""))
             if scope["type"] != "http" or not match:
                 return await app(scope, receive, send)
@@ -182,13 +185,8 @@ def create_live_app(store, origin, port=8765, service=None):
             except LookupError:
                 return await Response(status_code=404, headers=HEADERS)(scope, receive, send)
             context = CURRENT.set(snapshot)
-            async def private_send(message):
-                if message["type"] == "http.response.start":
-                    message["headers"] = list(message.get("headers", [])) + [
-                        (key.lower().encode(), value.encode()) for key, value in HEADERS.items()]
-                await send(message)
             try:
-                await transport({**scope, "path": "/mcp", "raw_path": b"/mcp", "root_path": ""}, receive, private_send)
+                await transport({**scope, "path": "/mcp", "raw_path": b"/mcp", "root_path": ""}, receive, protected_send)
             finally:
                 CURRENT.reset(context)
 
@@ -198,7 +196,8 @@ def create_live_app(store, origin, port=8765, service=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", required=True, type=Path)
-    parser.add_argument("--public-origin", required=True)
+    parser.add_argument("--public-origin", required=True,
+                        help="공개 HTTPS 주소. 여러 개면 쉼표로 나누고 첫 주소가 대표 주소(고정 주소)입니다")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     if not args.database.is_absolute() or not 1024 <= args.port <= 65535:

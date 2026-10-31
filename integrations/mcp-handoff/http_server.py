@@ -3,7 +3,6 @@ import argparse
 import base64
 import hashlib
 from html import escape
-import json
 from pathlib import Path
 import re
 from urllib.parse import urlsplit
@@ -22,6 +21,18 @@ def public_origin(value):
             or not re.fullmatch(r"[a-z0-9.-]+", parsed.netloc)):
         raise ValueError("public-origin must be an HTTPS hostname without credentials, port or path")
     return value.rstrip("/")
+
+
+def public_origins(value):
+    """쉼표로 나눈 공개 주소 목록. 첫 주소가 대표 주소(안내문·연결 주소에 씀)이고 나머지도 Origin·Host로 받는다.
+
+    예) 고정 주소(ngrok) + 웹에 함께 쓰는 임시 주소(Cloudflare). MCP 설정에는 바뀌지 않는 대표 주소만 남긴다 (#136).
+    """
+    items = value if isinstance(value, (list, tuple)) else str(value).split(",")
+    origins = list(dict.fromkeys(public_origin(item.strip()) for item in items if item.strip()))
+    if not origins:
+        raise ValueError("public-origin must contain at least one HTTPS origin")
+    return origins
 
 
 def agent_guide(origin, source):

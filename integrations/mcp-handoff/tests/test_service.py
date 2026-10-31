@@ -75,7 +75,7 @@ class ServiceTests(unittest.TestCase):
 
     def analyse(self, scan):
         return self.call('start_analysis', workspace_token=self.token, scan_id=scan,
-                         fingerprint='demo-sql-001', os='linux', hosting='self_hosted')
+                         fingerprint='demo-sql-001')
 
     def test_end_to_end_protocol_actual_api_payload_and_report(self):
         response = self.rpc('initialize', {'protocolVersion': '2025-06-18', 'capabilities': {},
@@ -89,7 +89,7 @@ class ServiceTests(unittest.TestCase):
         analysis = self.analyse(scan)['analysis_id']
         submitted = next(data for method, path, data in self.calls if method == 'POST' and 'explain' in path)
         self.assertEqual(submitted['findings'], self.scan['findings'])
-        self.assertEqual(submitted['mode'], 'red_blue')
+        self.assertEqual(submitted, {'findings': self.scan['findings'], 'mode': 'red_blue'})
         status = self.call('get_analysis', workspace_token=self.token, analysis_id=analysis)
         self.assertTrue(status['findings'][0]['ready'])
         prompt = self.call('get_fix_prompt', workspace_token=self.token, analysis_id=analysis)
@@ -152,7 +152,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
         scan = self.start()['scan_id']
         self.call('start_analysis', error=True, workspace_token=self.token, scan_id=scan,
-                  fingerprint='not-in-scan', os='linux')
+                  fingerprint='not-in-scan')
         analysis = self.analyse(scan)['analysis_id']
         self.review['results'][0]['explanation']['needs_manual_review'] = True
         self.call('get_fix_prompt', error=True, workspace_token=self.token, analysis_id=analysis)
@@ -181,8 +181,12 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(config['mcpServers']['72hours-service']['url'], ORIGIN + '/mcp/service/rpc')
         self.assertIn('default branch', self.client.get('/mcp/service/agent.txt').text)
         tool_list = self.rpc('tools/list', {}).json()['result']['tools']
+        analysis_schema = next(t['inputSchema'] for t in tool_list if t['name'] == 'start_analysis')
+        self.assertEqual(set(analysis_schema['properties']), {'workspace_token', 'scan_id', 'fingerprint'})
         self.assertEqual(len(tool_list), 15)  # 기존 11개 + 한 번에 점검·고치기 증명 4개 (#140)
         self.assertTrue({'audit_repository', 'audit_status', 'check_fix', 'verify_demo'} <= {t['name'] for t in tool_list})
+        audit_schema = next(t['inputSchema'] for t in tool_list if t['name'] == 'audit_repository')
+        self.assertFalse({'os', 'hosting'} & set(audit_schema['properties']))  # #142: 환경 입력 없음
         tools = {t['name']: t for t in tool_list}
         self.assertFalse(tools['start_scan']['annotations']['readOnlyHint'])
         response = self.client.post('/mcp/service/rpc', headers={'Origin': 'https://evil.example'}, json={})

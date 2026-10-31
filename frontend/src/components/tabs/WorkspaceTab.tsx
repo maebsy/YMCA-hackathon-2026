@@ -10,7 +10,7 @@ import {
   Check,
   AlertTriangle,
 } from "lucide-react";
-import { Finding, LogItem, OS, Hosting } from "@/types/security";
+import { Finding, LogItem, OS } from "@/types/security";
 import { McpHandoff } from "@/components/McpHandoff";
 
 interface WorkspaceTabProps {
@@ -27,8 +27,6 @@ interface WorkspaceTabProps {
   hasRealScan: boolean;
   os: OS;
   onChangeOS: (os: OS) => void;
-  hosting: Hosting;
-  onChangeHosting: (host: Hosting) => void;
   countdown: string;
   onShowToast: (msg: string) => void;
   repoInput: string;
@@ -46,8 +44,6 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   hasRealScan,
   os,
   onChangeOS,
-  hosting,
-  onChangeHosting,
   countdown,
   onShowToast,
   repoInput,
@@ -190,51 +186,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               </p>
             )}
 
-            {/* 환경 선택 칩 */}
-            <div className="pt-2 flex flex-wrap items-center gap-y-3 gap-x-6 font-mono text-xs border-t border-[#27272a]/60">
-              <div className="flex items-center gap-2">
-                <span className="text-[#a1a1aa]">사용 OS:</span>
-                <button
-                  onClick={() => onChangeOS("windows")}
-                  className={`os-chip ${os === "windows" ? "active-chip" : ""}`}
-                >
-                  Windows
-                </button>
-                <button
-                  onClick={() => onChangeOS("macos")}
-                  className={`os-chip ${os === "macos" ? "active-chip" : ""}`}
-                >
-                  macOS
-                </button>
-                <button
-                  onClick={() => onChangeOS("linux")}
-                  className={`os-chip ${os === "linux" ? "active-chip" : ""}`}
-                >
-                  Linux
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[#a1a1aa]">배포 환경:</span>
-                <button
-                  onClick={() => onChangeHosting("vercel")}
-                  className={`host-chip ${hosting === "vercel" ? "active-chip" : ""}`}
-                >
-                  Vercel
-                </button>
-                <button
-                  onClick={() => onChangeHosting("netlify")}
-                  className={`host-chip ${hosting === "netlify" ? "active-chip" : ""}`}
-                >
-                  Netlify
-                </button>
-                <button
-                  onClick={() => onChangeHosting("unknown")}
-                  className={`host-chip ${hosting === "unknown" ? "active-chip" : ""}`}
-                >
-                  모름
-                </button>
-              </div>
-            </div>
+
           </div>
         </div>
 
@@ -290,7 +242,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
 
       </>}
       {/* 2. 실시간 터미널 보안 엔진 로그 */}
-      <div className="bg-[#111113] border border-[#27272a] rounded-xl overflow-hidden">
+      {!compact && <div className="bg-[#111113] border border-[#27272a] rounded-xl overflow-hidden">
         <div className="chrome-bar justify-between">
           <div className="flex items-center gap-2">
             <div className="dots">
@@ -349,8 +301,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
             </div>
           ))}
         </div>
-      </div>
-
+      </div>}
       {/* 3. 취약점 목록 & 상세 2단 분할 뷰 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* 왼쪽: 취약점 목록 */}
@@ -590,7 +541,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                     </button>
                   </div>
                   <span className="font-mono text-[11px] text-[#a1a1aa]">
-                    {compact ? `선택 환경: ${os === "windows" ? "Windows" : os === "macos" ? "macOS" : "Linux"} · ${hosting === "unknown" ? "직접 운영 / 모름" : hosting === "vercel" ? "Vercel" : "Netlify"}` : `guide.actions[].commands[os=${os}].lines · hosting=${hosting}`}
+                    표시 OS: {os === "windows" ? "Windows" : os === "macos" ? "macOS" : "Linux"} · 보기 설정은 서버로 보내지 않습니다.
                   </span>
                 </div>
               </div>

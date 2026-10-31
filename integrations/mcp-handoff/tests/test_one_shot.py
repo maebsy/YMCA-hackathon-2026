@@ -30,7 +30,7 @@ class OneShotTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
         self.store = WorkspaceStore(root / 'workspaces.db')
-        self.calls, self.pending, self.verify_state = [], False, 'done'
+        self.calls, self.pending, self.verify_state, self.verify_fail = [], False, 'done', None
         self.commit = 'a' * 40
         self.review = batch()
         self.engine_findings = []
@@ -50,6 +50,10 @@ class OneShotTests(unittest.TestCase):
             if request.method == 'POST' and path == '/api/verify':
                 return httpx.Response(202, json={'job_id': '7' * 32, 'status': 'queued', 'reused': False})
             if request.method == 'GET' and path.startswith('/api/verify/'):
+                if self.verify_fail == 'timeout':
+                    raise httpx.ReadTimeout('upstream')
+                if self.verify_fail:
+                    return httpx.Response(self.verify_fail)
                 result = {'status': 'verified', 'sandbox': 'docker', 'isolation_confirmed': True, 'message': 'ok',
                           'before_tests': {'ok': True}, 'after_tests': {'ok': True},
                           'attacks': [{'id': 'sqli', 'verdict': 'verified', 'before_evidence': '[3 rows]',
@@ -169,6 +173,26 @@ class OneShotTests(unittest.TestCase):
         asyncio.run(self.api.verify_demo('reference', wait_seconds=0))
         asyncio.run(self.api.verify_demo('reference', wait_seconds=0))
         self.assertEqual(len(posts()), 3)  # 끝난 작업의 영수증은 버리고 백엔드에 맡김(최근 결과 재사용은 백엔드 정책)
+
+    def test_verify_demo_transient_lookup_error_keeps_receipt(self):
+        # 재리뷰 #141 P2: 503·타임아웃은 작업이 살아 있을 수 있으므로 영수증을 지키고 재접수하지 않는다. 404만 만료로 본다.
+        self.verify_state = 'running'
+        posts = lambda: [c for c in self.calls if c[:2] == ('POST', '/api/verify')]
+        job = asyncio.run(self.api.verify_demo('reference', wait_seconds=0))['verify_job_id']
+        for fail in (503, 'timeout'):
+            self.verify_fail = fail
+            with self.assertRaises(ValueError) as caught:
+                asyncio.run(self.api.verify_demo('reference', wait_seconds=0))
+            self.assertIn(job, str(caught.exception))
+            self.assertEqual(len(posts()), 1)
+            self.assertEqual(self.api.verify_running, {'reference': job})
+        self.verify_fail = None
+        self.assertEqual(asyncio.run(self.api.verify_demo('reference', wait_seconds=0))['verify_job_id'], job)
+        self.assertEqual(len(posts()), 1)
+        self.verify_fail = 404
+        with self.assertRaises(ValueError):  # 만료 확인 → 새로 접수했지만 이 mock은 조회도 404
+            asyncio.run(self.api.verify_demo('reference', wait_seconds=0))
+        self.assertEqual(len(posts()), 2)
 
     def test_prompts_are_listed_and_never_ask_to_print_secrets(self):
         listed = self.client.post('/mcp/service/rpc', headers={'Accept': 'application/json, text/event-stream'},

@@ -1,5 +1,4 @@
 export type OS = "windows" | "macos" | "linux";
-export type Hosting = "vercel" | "netlify" | "unknown";
 export type TabType = "workspace" | "architecture" | "incident" | "report";
 export type ReportType = "24h" | "72h";
 

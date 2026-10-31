@@ -29,6 +29,8 @@ test("검색 페이지가 응답", async () => {
   assert.equal(res.status, 200);
   const html = await res.text();
   assert.ok(html.includes("검색 결과"));
+  // 검색어를 지워 버리는 '수정'은 공격은 막아도 기능이 깨진 것입니다. 입력값은 이스케이프해서 계속 보여야 합니다
+  assert.ok(html.includes("커피"), "검색어가 결과 화면에 보여야 함");
 });
 
 test("토큰 발급이 응답", async () => {

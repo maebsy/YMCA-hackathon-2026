@@ -117,8 +117,11 @@ function isolationCheck() {
 async function main() {
   const cfg = JSON.parse((await readStdin()) || "{}");
   // 워치독: 어떤 경우에도 probe가 영원히 멈추지 않게 (기본 90초)
+  let stopApp = () => {};
   const watchdog = setTimeout(() => {
-    process.stdout.write(JSON.stringify({ reachable: false, appError: "probe timeout", attacks: [], tests: { ok: null, passed: null, failed: null } }));
+    stopApp(); // 멈춘 앱이 포트를 잡은 채 남지 않게 (LocalSandbox는 다음 실행이 같은 포트를 씀)
+    // 격리 확인도 함께 냅니다. 빠지면 '수정 후 앱이 응답하지 않음'이 '격리를 확인하지 못함'으로 잘못 보입니다
+    process.stdout.write(JSON.stringify({ reachable: false, appError: "probe timeout: 앱이 제한 시간 안에 응답하지 않았습니다", attacks: [], tests: { ok: null, passed: null, failed: null }, isolation: isolationCheck() }));
     process.exit(0);
   }, cfg.hardTimeoutMs || 90000);
   watchdog.unref();
@@ -145,6 +148,7 @@ async function main() {
     }
   };
 
+  stopApp = killApp;
   const reachable = await waitForPort(base, cfg.startTimeoutMs || 15000);
   const results = [];
   if (reachable) {

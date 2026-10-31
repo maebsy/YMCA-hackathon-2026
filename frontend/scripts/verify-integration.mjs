@@ -41,14 +41,17 @@ async function checkAsync(name, fn) { requests.length = 0; replies = []; await f
 check("GitHub URL accepts only a repository root and normalizes .git", () => {
   for (const [input, expected] of [
     ["https://github.com/acme/app", "https://github.com/acme/app"],
+    ["github.com/acme/app", "https://github.com/acme/app"],
+    [" github.com/acme/app.git/ ", "https://github.com/acme/app"],
     [" https://github.com/acme/app.git/ ", "https://github.com/acme/app"],
     ["https://GitHub.com/acme/app", "https://github.com/acme/app"],
+    ["GitHub.com/acme/app", "https://github.com/acme/app"],
     ["https://github.com/a/a-b_c.d", "https://github.com/a/a-b_c.d"],
     [`https://github.com/${"a".repeat(39)}/${"b".repeat(100)}`, `https://github.com/${"a".repeat(39)}/${"b".repeat(100)}`],
   ]) assert.equal(normalizeRepositoryUrl(input), expected, input);
 });
 check("GitHub URL rejects website URLs, credentials, subpaths and ambiguous encodings", () => {
-  const invalid = ["", "github.com/acme/app", "http://github.com/acme/app", "https://example.com/a/b", "https://github.com.evil.com/a/b",
+  const invalid = ["", "http://github.com/acme/app", "https://example.com/a/b", "https://github.com.evil.com/a/b",
     "https://github.com@evil.com/a/b", "https://user:secret@github.com/a/b", "https://github.com:443/a/b", "https://github.com/a/b/tree/main",
     "https://github.com/a/b?token=secret", "https://github.com/a/b#readme", "https://github.com/a/b%2fhidden", "https://github.com/a/b\\x",
     "https://github.com/a", "https://github.com/a//", "https://github.com/a/.", "https://github.com/a/..", "https://github.com/a/.git",

@@ -17,6 +17,8 @@ import uuid
 from pathlib import Path
 
 PROBE = Path(__file__).parent / "probe.mjs"
+# probe는 UTF-8로 출력합니다. 지정하지 않으면 Windows는 cp949로 읽다가 한국어에서 깨집니다
+_TEXT = {"text": True, "encoding": "utf-8", "errors": "replace"}
 
 
 class SandboxError(RuntimeError):
@@ -42,13 +44,14 @@ class LocalSandbox:
     def run(self, workdir: Path, cfg: dict, *, timeout: int = 150) -> dict:
         workdir = Path(workdir)
         if not (workdir / "node_modules").is_dir():
-            ci = subprocess.run(["npm", "ci", "--no-audit", "--no-fund"], cwd=workdir,
-                                capture_output=True, text=True, timeout=timeout)
+            # Windows의 npm은 npm.cmd라 이름만으로는 subprocess가 찾지 못합니다
+            ci = subprocess.run([shutil.which("npm") or "npm", "ci", "--no-audit", "--no-fund"], cwd=workdir,
+                                capture_output=True, **_TEXT, timeout=timeout)
             if ci.returncode != 0:
                 raise SandboxError(f"npm ci 실패: {(ci.stderr or ci.stdout)[-300:]}")
         cfg = {**cfg, "cwd": str(workdir)}
         proc = subprocess.run(["node", str(PROBE)], input=json.dumps(cfg), cwd=str(workdir),
-                              capture_output=True, text=True, timeout=timeout)
+                              capture_output=True, **_TEXT, timeout=timeout)
         return _parse_probe(proc)
 
 
@@ -73,7 +76,7 @@ class DockerSandbox:
             (ctx / "Dockerfile").write_text(_DOCKERFILE, encoding="utf-8")
             try:
                 build = subprocess.run([self.docker, "build", "-t", tag, "."], cwd=str(ctx),
-                                       capture_output=True, text=True, timeout=timeout)
+                                       capture_output=True, **_TEXT, timeout=timeout)
                 if build.returncode != 0:
                     raise SandboxError(f"docker build 실패: {(build.stderr or build.stdout)[-400:]}")
                 cfg = {**cfg, "cwd": "/app/repo"}
@@ -83,7 +86,7 @@ class DockerSandbox:
                      "--memory", self.memory, "--cpus", self.cpus, "--pids-limit", str(self.pids),
                      "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                      tag, "node", "/app/probe.mjs"],
-                    input=json.dumps(cfg), capture_output=True, text=True, timeout=timeout)
+                    input=json.dumps(cfg), capture_output=True, **_TEXT, timeout=timeout)
                 return _parse_probe(run)
             finally:
                 subprocess.run([self.docker, "rmi", "-f", tag], capture_output=True, timeout=60)

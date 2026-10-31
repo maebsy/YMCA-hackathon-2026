@@ -17,9 +17,8 @@ def publish(alias, output):
     remote = 'apps/72hours/validation/releases/' + str(time.time_ns())
     ssh = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', alias]
     subprocess.run(ssh + ['umask 077 && mkdir -p ' + remote], check=True, timeout=20)
-    for path in files:
-        subprocess.run(['scp', '-q', '-o', 'BatchMode=yes', str(path), alias+':'+remote+'/'+path.name],
-                       check=True, timeout=60)
+    subprocess.run(['scp', '-q', '-o', 'BatchMode=yes', *map(str, files), alias+':'+remote+'/'],
+                   check=True, timeout=max(60, len(files)*5))
     # Paths contain only constant segments and a numeric run ID. Keep prior releases for rollback.
     subprocess.run(ssh + ['ln -sfn releases/' + remote.rsplit('/', 1)[1]
         + ' apps/72hours/validation/current.next && mv -Tf apps/72hours/validation/current.next apps/72hours/validation/current'],

@@ -6,7 +6,7 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock, patch
 
 from client import Client, CheckError, origin
 from evidence import Evidence
@@ -19,6 +19,7 @@ from diagnostics import failures
 from campaign import lock
 from engine_quality import evaluate_labels
 from quality_probe import summary
+from data_quality import check_data_contracts, source_metadata, collect_freshness
 import subprocess
 import sys
 
@@ -194,6 +195,33 @@ class ValidationTests(unittest.TestCase):
         rows = failures({'checks': [{'name': '엔진 설계 적합성 정답 검증', 'status': 'fail', 'detail': 'SSH unavailable'}]})
         self.assertEqual(len(rows), 1)
         self.assertIsNone(rows[0]['issue'])
+
+    def test_data_oracle_rejects_downgrade_prerelease_error_and_false_kev(self):
+        client = Mock(lookup=AsyncMock(return_value={'CVE-2021-23337': Mock(model_dump=lambda: {'kev': False})}),
+                      aclose=AsyncMock())
+        checks = []
+        check_data_contracts(lambda *args: checks.append(args), Mock(side_effect=['1.9.0', '1.2.4']),
+                             Mock(return_value=client), Mock(), Mock())
+        self.assertEqual([c[3] for c in checks], [False, False, False])
+        client.aclose.assert_awaited_once()
+        rows = failures({'engine_quality': {'failed_checks': [{'name': c[0]} for c in checks]}})
+        self.assertEqual([r['issue'].rsplit('/', 1)[1] for r in rows], ['92', '92', '93'])
+
+    def test_data_oracle_accepts_safe_versions_and_unknown_kev(self):
+        client = Mock(lookup=AsyncMock(return_value={}), aclose=AsyncMock())
+        checks = []
+        check_data_contracts(lambda *args: checks.append(args), Mock(side_effect=[None, '1.2.3']),
+                             Mock(return_value=client), Mock(), Mock())
+        self.assertEqual([c[3] for c in checks], [True, True, True])
+
+    def test_freshness_never_exports_raw_feed_or_marks_network_failure_received(self):
+        row = source_metadata('OSV 표본', {'id': 'test', 'modified': 'date', 'details': 'raw source'})
+        self.assertNotIn('details', row)
+        with patch('data_quality.urllib.request.urlopen', side_effect=OSError('private transport data')):
+            rows = collect_freshness()
+        self.assertEqual(len(rows), 6)
+        self.assertTrue(all(r['status'] == 'unavailable' for r in rows))
+        self.assertNotIn('private transport data', json.dumps(rows))
 
 
 if __name__ == '__main__':

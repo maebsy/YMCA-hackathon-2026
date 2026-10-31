@@ -10,7 +10,11 @@ def quality_failures(quality):
     revision = revision if re.fullmatch(r'[0-9a-f]{40}', revision) else None
     for check in quality.get('failed_checks', []):
         historical = check['name'] == '설계의 과거 커밋 비밀키 탐지'
-        code = 'HISTORICAL_SECRET_NOT_DETECTED' if historical else 'ENGINE_EXPECTATION_FAILED'
+        known = {'설계의 과거 커밋 비밀키 탐지': (87, 'HISTORICAL_SECRET_NOT_DETECTED'),
+                 '수정 버전 다운그레이드 금지': (92, 'FIX_VERSION_DOWNGRADE'),
+                 '사전 출시 최소 수정 버전': (92, 'FIX_VERSION_PRERELEASE'),
+                 'KEV 조회 실패와 정상 부재 구분': (93, 'KEV_UNAVAILABLE_AS_FALSE')}.get(check['name'])
+        code = known[1] if known else 'ENGINE_EXPECTATION_FAILED'
         rows.append({'signature': hashlib.sha256(('engine_quality|'+code+'|'+check['name']).encode()).hexdigest()[:16],
             'case': 'engine_quality', 'stage': 'engine_quality', 'check': check['name'],
             'repository': None, 'revision': revision, 'job_id': None,
@@ -21,7 +25,7 @@ def quality_failures(quality):
                       '이 결과만으로 검사 명령의 내부 원인을 확정하지 않습니다.' if historical else
                       '배포 엔진의 정답 사례가 기대값과 다릅니다. 검사기 실행 상태와 변환 추적을 대조해야 합니다.'),
             'evidence': {'artifact': 'engine-quality.json', 'source_revision': revision},
-            'issue': 'https://github.com/maebsy/YMCA-hackathon-2026/issues/87' if historical else None,
+            'issue': 'https://github.com/maebsy/YMCA-hackathon-2026/issues/'+str(known[0]) if known else None,
             'next_action': ('#87에서 현재 파일 검사와 Git 이력 검사의 지원 범위를 확인하고, 이력 검사를 구현하거나 설계 범위를 정정하세요.'
                             if historical else 'engine-quality.json의 기대값·실측값·coverage·flow를 대조해 엔진 담당자에게 전달하세요.'),
             'reproduce': {'command': 'python scripts/service-validation/engine_quality.py --source <동일 배포 커밋 경로> --output <새 결과 JSON>',

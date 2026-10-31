@@ -17,6 +17,8 @@
 
 정답 검증 실패는 `failures.json`과 `handoff.md`에도 기대값·실측값·배포 커밋·재현 명령을 항목별로 남깁니다. 과거 커밋 키 탐지 사례는 기존 #87에 연결합니다. 합성 엔진 검사는 API job ID가 없으므로 엔진 scan ID와 구분하며, 탐지 누락만으로 내부 명령의 원인을 확정하지 않습니다.
 
+수정 버전의 다운그레이드 금지·사전 출시 순서(#92), KEV 최초 조회 실패를 정상 부재와 구분하는지(#93)도 배포 함수에 독립 입력으로 검사합니다. KEV 장애는 새 클라이언트에만 HTTP 503을 주입하며 실제 네트워크나 서비스를 바꾸지 않습니다. OSV 표본·KEV·EPSS와 공식 검사기 릴리스의 버전/날짜를 별도로 조회·게시합니다. 원본 조회 성공은 기존 검사/LLM 캐시의 최신성 증명이 아니며 조회 실패를 최신으로 표시하지 않습니다. `engine_quality.py` 배포 시 `data_quality.py`도 같은 디렉터리에 배포하세요.
+
 ## 지속 운영과 팀 공유
 
 이 작업은 Codex의 현재 대화에 연결된 **30분 간격 반복 작업**으로 운영합니다. 운영자는 PC와 Codex 앱을 켜 두고, 서버 진단·게시가 필요하면 VPN을 유지해야 합니다. 반복 작업은 직접 결과를 비교하고 검증 도구를 보강합니다. 같은 실패로 중복 이슈를 만들지 않고, 새 실패·원인 확정·해결 확인·실행 차단처럼 필요한 변화만 알립니다. 예약은 OS 서비스/cron이 아니라 Codex에서 관리합니다.
@@ -95,7 +97,7 @@ python -m unittest discover -s scripts/service-validation -p test_validation.py 
 
 ```powershell
 ssh hk-server 'mkdir -p apps/72hours/validation/code'
-scp scripts/service-validation/serve.py scripts/service-validation/history.html scripts/service-validation/quality.html scripts/service-validation/engine_quality.py scripts/service-validation/evidence.py scripts/service-validation/diagnostics.py scripts/service-validation/server_diagnose.py scripts/service-validation/install_server.py scripts/service-validation/enable_route.py hk-server:apps/72hours/validation/code/
+scp scripts/service-validation/serve.py scripts/service-validation/history.html scripts/service-validation/quality.html scripts/service-validation/engine_quality.py scripts/service-validation/data_quality.py scripts/service-validation/evidence.py scripts/service-validation/diagnostics.py scripts/service-validation/server_diagnose.py scripts/service-validation/install_server.py scripts/service-validation/enable_route.py hk-server:apps/72hours/validation/code/
 python scripts/service-validation/publish.py --ssh hk-server --output outputs/my-validation
 ssh hk-server 'python3 apps/72hours/validation/code/install_server.py && python3 apps/72hours/validation/code/enable_route.py'
 ```

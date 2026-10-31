@@ -235,6 +235,13 @@ def main():
               {'findings': len(past['findings']), 'coverage': past['coverage']['gitleaks']['status']},
               any(f['tool']=='gitleaks' for f in past['findings']),
               'docs/system-flow.md §3: 비밀키(과거 커밋 포함). 현재 파일 검사와 기록 검사는 별개임', 'design_gap')
+    from data_quality import check_data_contracts, collect_freshness
+    from security_engine.normalize import pick_fix_version
+    from app.llm.intel import HttpThreatIntel
+    import httpx
+    check_data_contracts(check, pick_fix_version, HttpThreatIntel, httpx.MockTransport, httpx.Response)
+    data['source_freshness'] = collect_freshness()
+    data['freshness_notice'] = '외부 원본을 지금 조회한 결과입니다. 기존 검사/LLM 캐시가 이 버전을 사용했다는 증명은 아닙니다. unavailable은 최신 여부 미확인입니다.'
     data['finished_at'] = datetime.now(timezone.utc).isoformat()
     data['status'] = 'failed' if any(c['status']=='fail' for c in data['checks']) else 'passed'
     atomic_json(args.output, data)

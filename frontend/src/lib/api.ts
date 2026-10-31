@@ -73,11 +73,11 @@ export async function runLimited<T, R>(
   await Promise.all(Array.from({ length: workers }, worker));
 }
 
-export async function explain(findings: unknown[], os: string, hosting = "unknown") {
+export async function explain(findings: unknown[]) {
   const res = await fetch("/api/llm/explain/tasks", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ findings, mode: "red_blue", environment: { os, hosting } }),
+    body: JSON.stringify({ findings, mode: "red_blue" }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.detail?.message || `LLM 해석 실패 (${res.status})`);

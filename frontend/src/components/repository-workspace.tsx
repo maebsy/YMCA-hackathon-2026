@@ -8,7 +8,6 @@ import { normalizeRepositoryUrl, useRepository } from "@/components/repository-p
 import { Notice } from "@/components/ui/notice";
 import { useClipboard } from "@/components/ui/clipboard";
 import { plainReport } from "@/lib/api";
-import type { Hosting, OS } from "@/types/security";
 
 function ActualReport() {
   const repository = useRepository();
@@ -87,10 +86,6 @@ export default function RepositoryWorkspace() {
       <form onSubmit={submit} noValidate>
         <div className="form-field"><label htmlFor="repository-url">저장소 URL</label><div className="url-form-row"><div className="url-field"><Code2 size={19}/><input ref={input} id="repository-url" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="github.com/owner/repository" value={repository.repoInput} onChange={event => repository.setRepoInput(event.target.value)} disabled={repository.isScanning} aria-invalid={!!repository.error} aria-describedby="repository-hint repository-error"/></div><button className="button primary" type="submit" disabled={!repository.restored || repository.isScanning}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : <Play size={16}/>} {repository.isScanning ? "검사 진행 중" : "실제 검사 시작"}</button></div><p id="repository-hint" className="field-hint">github.com/owner/repository 또는 owner.github.io를 입력하세요.<br/>GitHub Pages는 해당 저장소로 변환해 검사합니다.</p></div>
         {repository.error && <p id="repository-error" className="form-error" role="alert">{repository.error}</p>}
-        <div className="repository-environment">
-          <fieldset><legend>수정 안내에 사용할 OS</legend><div className="chip-row">{([["windows", "Windows"], ["macos", "macOS"], ["linux", "Linux"]] as [OS, string][]).map(([os, label]) => <button key={os} type="button" className={`os-chip ${repository.os === os ? "active-chip" : ""}`} aria-pressed={repository.os === os} disabled={repository.isScanning} onClick={() => repository.setOS(os)}>{label}</button>)}</div></fieldset>
-          <fieldset><legend>호스팅 환경</legend><div className="chip-row">{([["vercel", "Vercel"], ["netlify", "Netlify"], ["unknown", "직접 운영 / 모름"]] as [Hosting, string][]).map(([host, label]) => <button key={host} type="button" className={`host-chip ${repository.hosting === host ? "active-chip" : ""}`} aria-pressed={repository.hosting === host} disabled={repository.isScanning} onClick={() => repository.setHosting(host)}>{label}</button>)}</div></fieldset>
-        </div>
       </form>
     </section>
     <p className="feedback" role="status">{repository.message}</p>
@@ -101,7 +96,7 @@ export default function RepositoryWorkspace() {
     <div className="legacy-workspace"><WorkspaceTab compact hasRealScan={!!repository.result} hasResult={!!repository.result} pendingIds={repository.pendingIds} findings={repository.findings}
       onToggleFindingFixed={repository.togglePending} selectedFindingId={repository.selectedFindingId} onSelectFindingId={repository.selectFinding}
       logs={repository.logs} onRunScan={url => { void repository.runScan(url); }} isScanning={repository.isScanning}
-      os={repository.os} onChangeOS={repository.setOS} hosting={repository.hosting} onChangeHosting={repository.setHosting} countdown=""
+      os={repository.os} onChangeOS={repository.setOS} countdown=""
       onShowToast={repository.showMessage} repoInput={repository.repoInput} onChangeRepoInput={repository.setRepoInput}/></div>
     <Notice compact>수정 명령은 자동 실행하지 않습니다. 직접 조치한 항목은 ‘재검증 대기’로 표시하고 같은 저장소를 다시 검사하세요. 엔진의 코드 해결 상태만 ‘해결 확인’으로 집계합니다. 검사 결과와 조치 표시는 이 브라우저에 저장됩니다.</Notice>
     <ActualReport/>

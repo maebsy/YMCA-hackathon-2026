@@ -11,12 +11,12 @@ const ts = require("typescript");
 const repoA = "https://github.com/test-org/project-a";
 const repoB = "https://github.com/test-org/project-b";
 
-function loadSource(relative, imports = {}) {
+function loadSource(relative, imports = {}, runtime = {}) {
   const compiled = ts.transpileModule(readFileSync(resolve(root, relative), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   const loaded = { exports: {} };
-  vm.runInNewContext(compiled, { module: loaded, exports: loaded.exports, URL, Date, Error, console,
+  vm.runInNewContext(compiled, { module: loaded, exports: loaded.exports, URL, Date, Error, console, ...runtime,
     require: name => imports[name] ?? require(name) }, { filename: relative });
   return loaded.exports;
 }
@@ -41,7 +41,7 @@ function result(repoUrl, items = []) {
  * flushing. API promises are controlled at the existing adapter boundary. This
  * tests state orchestration; browser QA still owns DOM and React scheduling.
  */
-function mountProvider({ saved = null, scan = async url => result(url), health = async () => false,
+function mountProvider({ saved = null, browser = {}, scan = async url => result(url), health = async () => false,
   explain = async () => [] } = {}) {
   const slots = [];
   let cursor = 0, dirty = true, mounted = true, view;
@@ -51,7 +51,7 @@ function mountProvider({ saved = null, scan = async url => result(url), health =
     saveLast: data => calls.saved.push(structuredClone(data)),
     startScan: (url, previous, onStatus) => { calls.scans.push({ url, previous }); return scan(url, previous, onStatus); },
     llmHealthy: () => { calls.health++; return health(); },
-    explain: (findings, os, hosting) => { calls.explanations.push({ findings, os, hosting }); return explain(findings, os, hosting); },
+    explain: (...args) => { calls.explanations.push({ findings: args[0], args }); return explain(...args); },
   };
   function nextSlot(kind, initialize) {
     const index = cursor++;
@@ -82,7 +82,7 @@ function mountProvider({ saved = null, scan = async url => result(url), health =
   const jsx = (type, props) => ({ type, props });
   const { RepositoryProvider } = loadSource("src/components/repository-provider.tsx", {
     react, "react/jsx-runtime": { jsx, jsxs: jsx }, "@/lib/api": api,
-  });
+  }, { navigator: browser });
   function flush() {
     let commits = 0;
     while (dirty) {
@@ -175,7 +175,7 @@ await check("Rejected optional AI cannot erase successful engine results", async
   provider.unmount();
 });
 
-await check("Delayed AI enrichment preserves selection/environment and keeps LLM_PARALLEL requests in flight (#91)", async () => {
+await check("Delayed AI enrichment preserves selection and display OS without sending it (#91)", async () => {
   const ai = deferred();
   let inFlight = 0, peak = 0;
   const data = result(repoA, [item("resolved", "code_resolved"), ...Array.from({ length: 6 }, (_, index) => item(String(index)))]);
@@ -184,22 +184,22 @@ await check("Delayed AI enrichment preserves selection/environment and keeps LLM
     return (findings[0].id === "opengrep:0" ? ai.promise : Promise.resolve([])).finally(() => { inFlight--; });
   } });
   provider.value.setOS("linux"); provider.flush();
-  provider.value.setHosting("netlify"); provider.flush();
   const running = provider.value.runScan(repoA); provider.flush();
   await provider.until(() => provider.calls.explanations.length >= 2);
   assert.equal(peak, realAPI.LLM_PARALLEL, "The second item must not wait for the slow first one");
   assert.equal(provider.value.isScanning, true); assert.equal(provider.value.findings.length, 7);
   provider.value.selectFinding("opengrep:1"); provider.flush();
+  provider.value.setOS("macos"); provider.flush();
   ai.resolve([{ fingerprint: "opengrep:0", status: "done", explanation: { summary: "Enriched explanation", red_verdict: "pass" } }]);
   await running; provider.flush();
   assert.equal(provider.value.selectedFindingId, "opengrep:1");
   assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:0").title, "Enriched explanation");
   assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:1").fixed, false);
   assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:resolved").fixed, true);
-  assert.equal(provider.calls.explanations[0].os, "linux"); assert.equal(provider.calls.explanations.length, 5);
+  assert.equal(provider.value.os, "macos"); assert.equal(provider.calls.explanations.length, 5);
   assert.equal(peak, realAPI.LLM_PARALLEL, "Never more than LLM_PARALLEL explanation requests at once");
   assert.ok(provider.calls.explanations.every(call => call.findings.length === 1));
-  assert.equal(provider.calls.explanations[0].hosting, "netlify");
+  assert.ok(provider.calls.explanations.every(call => call.args.length === 1));
   assert.ok(provider.calls.explanations[0].findings.every(finding => finding.status !== "code_resolved"));
   provider.value.selectFinding("opengrep:3"); provider.flush(); await provider.run(repoA);
   assert.equal(provider.value.selectedFindingId, "opengrep:3", "Same-repository rescan should preserve a surviving selection");
@@ -302,6 +302,20 @@ await check("Hydration restores a saved zero-finding result without sending a sc
   const provider = mountProvider({ saved });
   assert.equal(provider.value.restored, true); assert.equal(provider.value.resultRepo, repoA); assert.ok(provider.value.result);
   assert.equal(provider.value.findings.length, 0); assert.equal(provider.calls.scans.length, 0); assert.equal(provider.calls.saved.length, 0);
+  provider.unmount();
+});
+
+await check("Legacy environment survives restore while display OS is detected from the browser", async () => {
+  const environment = { os: "windows", hosting: "vercel" };
+  const saved = { verificationSource: "engine-status-v1", repoUrl: repoA, findings: [], result: result(repoA).result,
+    environment, reportInput: { scan: { id: "saved" }, findings: [], explain_results: [{ guide: { environment } }] },
+    logs: [], pendingIds: [] };
+  const provider = mountProvider({ saved, browser: { userAgentData: { platform: "macOS" } } });
+  assert.equal(provider.value.restored, true); assert.equal(provider.value.os, "macos");
+  assert.equal(provider.value.resultRepo, repoA);
+  assert.equal(provider.value.reportInput.explain_results[0].guide.environment, environment);
+  assert.equal(provider.calls.scans.length, 0); assert.equal(provider.calls.explanations.length, 0);
+  assert.equal("hosting" in provider.value, false); assert.equal("setHosting" in provider.value, false);
   provider.unmount();
 });
 

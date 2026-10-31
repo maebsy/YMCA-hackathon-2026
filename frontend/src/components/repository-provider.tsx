@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { explain, itemToFinding, LLM_PARALLEL, llmHealthy, loadLast, mergeExplanation, now, runLimited, saveLast, startScan } from "@/lib/api";
-import type { Finding, Hosting, LogItem, OS } from "@/types/security";
+import type { Finding, LogItem, OS } from "@/types/security";
 
 type JsonRecord = Record<string, unknown>;
 type ReportInput = { scan: JsonRecord; findings: unknown[]; explain_results: JsonRecord[] };
@@ -10,13 +10,23 @@ type SavedRepository = { verificationSource: "engine-status-v1"; repoUrl: string
 type RepositoryState = {
   repoInput: string; resultRepo: string; findings: Finding[]; result: JsonRecord | null;
   reportInput: ReportInput | null; logs: LogItem[]; pendingIds: string[]; selectedFindingId: string;
-  isScanning: boolean; restored: boolean; error: string; message: string; os: OS; hosting: Hosting;
+  isScanning: boolean; restored: boolean; error: string; message: string; os: OS;
 };
 const initialState: RepositoryState = {
   repoInput: "", resultRepo: "", findings: [], result: null, reportInput: null, logs: [], pendingIds: [],
-  selectedFindingId: "", isScanning: false, restored: false, error: "", message: "", os: "windows", hosting: "unknown",
+  selectedFindingId: "", isScanning: false, restored: false, error: "", message: "", os: "windows",
 };
 function record(value: unknown): value is JsonRecord { return !!value && typeof value === "object" && !Array.isArray(value); }
+
+/** OS only selects which commands and MCP example paths to display. */
+export function detectBrowserOS(browser: { userAgentData?: { platform?: string }; userAgent?: string } | undefined = typeof navigator === "undefined" ? undefined : navigator): OS {
+  function identify(platform: string): OS | undefined {
+    if (/windows/i.test(platform)) return "windows";
+    if (/mac|iphone|ipad|ipod/i.test(platform)) return "macos";
+    if (/linux/i.test(platform)) return "linux";
+  }
+  return identify(browser?.userAgentData?.platform ?? "") ?? identify(browser?.userAgent ?? "") ?? "windows";
+}
 
 /** Map GitHub repository roots and GitHub Pages sites to an HTTPS repository URL. */
 export function normalizeRepositoryUrl(value: string): string | null {
@@ -68,7 +78,7 @@ export function parseSavedRepository(value: unknown): SavedRepository | null {
 }
 
 type RepositoryContextValue = RepositoryState & {
-  setRepoInput: (value: string) => void; setOS: (os: OS) => void; setHosting: (hosting: Hosting) => void;
+  setRepoInput: (value: string) => void; setOS: (os: OS) => void;
   selectFinding: (id: string) => void; togglePending: (id: string) => void; showMessage: (message: string) => void;
   runScan: (url?: string) => Promise<void>;
 };
@@ -83,11 +93,12 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const lifecycle = operation;
     const saved = parseSavedRepository(loadLast<unknown>());
+    const os = detectBrowserOS();
     // Browser storage is read after hydration; zero-finding results are valid too.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(current => saved ? { ...current, repoInput: saved.repoUrl, resultRepo: saved.repoUrl, findings: saved.findings,
+    setState(current => saved ? { ...current, os, repoInput: saved.repoUrl, resultRepo: saved.repoUrl, findings: saved.findings,
       result: saved.result, reportInput: saved.reportInput, logs: saved.logs, pendingIds: saved.pendingIds,
-      selectedFindingId: saved.findings[0]?.id ?? "", restored: true, message: "이 브라우저에 저장된 마지막 검사 결과를 불러왔습니다." } : { ...current, restored: true });
+      selectedFindingId: saved.findings[0]?.id ?? "", restored: true, message: "이 브라우저에 저장된 마지막 검사 결과를 불러왔습니다." } : { ...current, os, restored: true });
     return () => { lifecycle.current++; };
   }, []);
   function persist(current: RepositoryState) {
@@ -113,8 +124,6 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
     const token = ++operation.current;
     const current = stateRef.current;
     const previous = current.resultRepo.toLowerCase() === repoUrl.toLowerCase() ? current.result : null;
-    const selectedOS = current.os;
-    const selectedHosting = current.hosting;
     const collected: LogItem[] = [];
     const active = () => operation.current === token;
     function log(step: string, msg: string, status: string, type: LogItem["type"] = "ok") {
@@ -166,7 +175,7 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
         log("LLM", `Red–Blue 해석 ${selected.length}건 시작 (동시 ${Math.min(LLM_PARALLEL, selected.length)}건). 끝나기 전 항목은 엔진 결과입니다.`, "해석 중");
         await runLimited(selected, async finding => {
           if (!active()) return [];
-          const received: unknown = await explain([finding], selectedOS, selectedHosting);
+          const received: unknown = await explain([finding]);
           if (!Array.isArray(received) || !received.every(record)) throw new Error("추가 해석의 응답 형식이 올바르지 않습니다.");
           return received as JsonRecord[];
         }, (index, outcome) => {
@@ -207,7 +216,7 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
   }
   return <RepositoryContext.Provider value={{ ...state,
     setRepoInput: repoInput => change(current => ({ ...current, repoInput, error: "" })),
-    setOS: os => change(current => ({ ...current, os })), setHosting: hosting => change(current => ({ ...current, hosting })),
+    setOS: os => change(current => ({ ...current, os })),
     selectFinding: selectedFindingId => change(current => ({ ...current, selectedFindingId })),
     showMessage: message => change(current => ({ ...current, message })), runScan,
     togglePending: id => change(current => {

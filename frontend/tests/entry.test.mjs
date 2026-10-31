@@ -16,7 +16,18 @@ function load(relative, imports = {}, runtime = {}) {
     require: name => imports[name] ?? require(name) }, { filename: relative });
   return loaded.exports;
 }
-const { normalizeRepositoryUrl } = load("../src/components/repository-provider.tsx", { "@/lib/api": {} });
+const { normalizeRepositoryUrl, detectBrowserOS } = load("../src/components/repository-provider.tsx", { "@/lib/api": {} });
+test("display OS prefers client hints, falls back to user agent, then Windows", () => {
+  for (const [browser, expected] of [
+    [{ userAgentData: { platform: "Windows" }, userAgent: "Macintosh" }, "windows"],
+    [{ userAgentData: { platform: "macOS" }, userAgent: "Windows NT" }, "macos"],
+    [{ userAgentData: { platform: "Linux" } }, "linux"],
+    [{ userAgentData: { platform: "Unknown" }, userAgent: "Macintosh; Intel Mac OS X" }, "macos"],
+    [{ userAgent: "Mozilla/5.0 (X11; Linux x86_64)" }, "linux"],
+    [{ userAgent: "Mozilla/5.0 (Windows NT 10.0)" }, "windows"],
+    [{ userAgent: "Unknown" }, "windows"], [{}, "windows"], [undefined, "windows"],
+  ]) assert.equal(detectBrowserOS(browser), expected);
+});
 const element = (type, props) => ({ type, props: props ?? {} });
 function nodes(tree) {
   if (!tree || typeof tree !== "object") return [];
@@ -110,6 +121,42 @@ function entry(overrides = {}) {
   const submit = () => form.props.onSubmit({ preventDefault() {} });
   return { calls, navigation, errors, tree, submit, focused: () => focusCount };
 }
+
+function repositoryView(overrides = {}) {
+  const repository = { repoInput: "", resultRepo: "", result: null, findings: [], pendingIds: [], logs: [],
+    restored: true, isScanning: false, error: "", message: "", os: "windows", ...overrides };
+  const { default: RepositoryWorkspace } = load("../src/components/repository-workspace.tsx", {
+    react: { useRef: () => ({ current: null }) }, "react/jsx-runtime": { jsx: element, jsxs: element },
+    "next/link": { default: "a" }, "@/components/tabs/WorkspaceTab": { WorkspaceTab: "workspace-tab" },
+    "@/components/repository-provider": { useRepository: () => repository, normalizeRepositoryUrl },
+    "@/components/ui/notice": { Notice: "notice" }, "@/components/ui/clipboard": {}, "@/lib/api": {},
+  });
+  return nodes(RepositoryWorkspace());
+}
+
+test("repository has no environment selectors and detail OS tabs drive commands and MCP paths", () => {
+  const tree = repositoryView();
+  assert.equal(tree.some(node => node.type === "fieldset"), false);
+  const { WorkspaceTab } = load("../src/components/tabs/WorkspaceTab.tsx", {
+    react: { useState: () => [false, () => {}] }, "react/jsx-runtime": { jsx: element, jsxs: element },
+    "@/components/McpHandoff": { McpHandoff: "mcp-handoff" },
+  });
+  const { clientConfig } = load("../src/lib/mcp.ts");
+  for (const [os, path] of [["windows", "C:/Users/"], ["macos", "/Users/"], ["linux", "/home/"]]) {
+    const selection = [];
+    const detail = nodes(WorkspaceTab({ compact: true, findings: [{ id: "one", commands: {
+      windows: "windows-command", macos: "macos-command", linux: "linux-command" }, why: [] }],
+      logs: [], os, onChangeOS: value => selection.push(value) }));
+    for (const [label, value] of [["Windows", "windows"], ["macOS", "macos"], ["Linux", "linux"]]) {
+      detail.find(node => node.type === "button" && node.props.children === label).props.onClick();
+      assert.equal(selection.at(-1), value);
+    }
+    assert.ok(detail.some(node => node.type === "pre" && node.props.children === `${os}-command`));
+    assert.equal(detail.find(node => node.type === "mcp-handoff").props.os, os);
+    const config = JSON.parse(clientConfig({ fileName: "scan.json", repository: "acme/app" }, os));
+    assert.ok(config.mcpServers["72hours-handoff"].args[2].startsWith(path));
+  }
+});
 
 test("home submit starts the actual scan once with the normalized explicit URL", () => {
   const ui = entry();

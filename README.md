@@ -44,9 +44,9 @@ docker compose -f compose.yaml -f compose.production.yaml up --build --detach --
 
 이 모드는 Next.js standalone 빌드와 정적 파일만 담은 비root 컨테이너를 사용하며, 백엔드 reload와 양쪽 watch를 끕니다. 종료도 같은 `-f` 두 개를 사용합니다. 개발 모드로 돌아갈 때는 기본 `docker compose up --build --watch`를 실행합니다. [Next.js Docker 배포 방식](https://docs.docker.com/guides/nextjs/)
 
-프록시 주소는 배포 **빌드 시** 확정됩니다. Compose의 `frontend.build.args.BACKEND_ORIGIN`을 바꾸면 이미지를 다시 빌드해야 합니다. Docker 없이 실행하면 기존 `127.0.0.1:8000` 기본값과 `npm run build/start`가 유지되며, 필요하면 서버 환경 변수 `BACKEND_ORIGIN`을 설정합니다. 브라우저 공개 변수(`NEXT_PUBLIC_*`)는 사용하지 않습니다.
+프록시 주소는 배포 **빌드 시** 확정됩니다. Compose의 `frontend.build.args.BACKEND_ORIGIN`을 바꾸면 이미지를 다시 빌드해야 합니다. Docker 없이 실행하면 기존 `127.0.0.1:8000` 기본값과 `npm run build/start`가 유지되며, 필요하면 서버 환경 변수 `BACKEND_ORIGIN`을 설정합니다. 선택적 GitHub 로그인에 쓰는 두 `NEXT_PUBLIC_SUPABASE_*` 공개 값도 빌드 시 확정됩니다.
 
-이 구성은 기존 일반 서버의 systemd/Caddy/GPU 터널을 자동 전환하지 않습니다. 공개 시연은 기존 인증 프록시를 거쳐 연결해야 합니다. 현재 프론트의 예제 데이터·OAuth·스캔 접수 같은 기능 통합은 별도 작업이며 Compose 기동이 전체 서비스 연동 완료를 뜻하지는 않습니다. Supabase를 지정해도 기본 Compose의 개발 DB 컨테이너는 함께 뜨지만 API는 지정한 Supabase에 연결합니다. 비동기 모드는 스키마와 별도 worker 준비 후 활성화합니다.
+이 구성은 기존 일반 서버의 systemd/Caddy/GPU 터널을 자동 전환하지 않습니다. 공개 시연은 기존 인증 프록시를 거쳐 연결해야 합니다. GitHub 로그인은 [Supabase·GitHub App 설정](docs/github-login.md)과 프런트 공개 환경 변수 적용 후 켜지며, Compose 기동만으로 실제 계정 연결까지 완료되지는 않습니다. Supabase를 지정해도 기본 Compose의 개발 DB 컨테이너는 함께 뜨지만 API는 지정한 Supabase에 연결합니다. 비동기 모드는 스키마와 별도 worker 준비 후 활성화합니다.
 
 문제가 생기면:
 

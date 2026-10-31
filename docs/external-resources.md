@@ -18,6 +18,7 @@
 | Tailwind CSS | 4.x | 대시보드 반응형 유틸리티 디자인 스타일링 | MIT | https://github.com/tailwindlabs/tailwindcss |
 | Lucide React | 1.65.0 | 보안 대시보드 아이콘 컴포넌트 라이브러리 | ISC | https://github.com/lucide-icons/lucide |
 | TypeScript | 5.9.3 | 프론트엔드 타입 검사·빌드 (개발용) | Apache-2.0 | https://github.com/microsoft/TypeScript |
+| Supabase JavaScript SDK (`@supabase/supabase-js`) | 2.118.0 (정확한 버전 고정) | 브라우저 PKCE GitHub 로그인·Supabase 세션과 내부 API access token 전달 | MIT | https://github.com/supabase/supabase-js |
 | ESLint · eslint-config-next | 9.39.5 · 16.4.3 | 프론트엔드 코드 검사 `npm run lint` (개발용) | MIT | https://github.com/eslint/eslint |
 | DefinitelyTyped 타입 정의 (`@types/node`·`@types/react`·`@types/react-dom`) | 20.19.43 · 19.3.0 · 19.3.0 | 프론트엔드 타입 정의 (개발용) | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 | Google Fonts (IBM Plex Sans KR, JetBrains Mono) | 최신 | 웹 대시보드 본문 한글 폰트 및 개발자 터미널 고정폭 폰트 | OFL-1.1 / Apache-2.0 | https://fonts.google.com |
@@ -68,6 +69,7 @@
 | Hugging Face Hub | 모델 내려받기 (가중치는 GPU 서버에서만 실행) | Hugging Face Terms of Service | https://huggingface.co |
 | Google OAuth (Google Identity) | Google 계정으로 가입·로그인 | Google APIs Terms of Service | https://developers.google.com/identity |
 | GitHub OAuth Apps | GitHub 계정으로 가입·로그인 | GitHub Terms of Service | https://docs.github.com/apps/oauth-apps |
+| GitHub Apps (사용자 인증 web application flow) | Supabase GitHub 공급자에 연결할 Client ID·Secret과 사용자 로그인; 실제 Hosted Supabase 연결은 확인 필요 | GitHub Terms of Service | https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app |
 | OSV.dev API (api.osv.dev) | OSV-Scanner가 취약점 DB 조회 (무료, 키 없음) | OSV.dev 이용약관, 데이터는 출처(GitHub Advisory 등)별 라이선스 — 제출 전 확인 | https://osv.dev |
 | OSV GHSA-35jh-r3h4-6jhm / CVE-2021-23337 | 합성 lodash 4.17.15→4.17.21 정답 사례의 탐지·수정 경계 검증 근거 | GitHub Advisory Database CC-BY-4.0, OSV 이용약관 | https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm |
 | Semgrep Registry (semgrep.dev) | 내부 비교용 `p/default` 룰셋 다운로드 (기본 꺼짐) | Semgrep Rules License v1.0 | https://docs.semgrep.dev/licensing |

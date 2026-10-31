@@ -22,6 +22,10 @@ _STATUS_ORDER = ("code_issue", "runtime_check_needed", "out_of_scope", "code_res
 _CHANGE_ORDER = ("new", "persisting", "unverifiable", "resolved")
 # 묶음 설명(what)에 적을 취약점 수. 나머지는 개수만 적습니다
 _MAX_LISTED = 15
+# FindingInput.what 한도(2,000자). 넘으면 묶음 전체가 검증에 실패하므로 여기서 맞춥니다 (#83)
+_WHAT_LIMIT = FindingInput.model_fields["what"].metadata[0].max_length
+# 묶음 목록 한 줄에 쓰는 제목 길이. 긴 설명 하나가 다른 항목을 밀어내지 않게 합니다
+_LISTED_TITLE = 160
 
 
 def from_engine_item(item: dict) -> FindingInput:
@@ -91,6 +95,35 @@ def _key(f: FindingInput) -> tuple:
     return (f.package_ecosystem, f.package_name, f.file_path)
 
 
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _group_what(members: list[FindingInput]) -> str:
+    """같은 패키지 취약점 목록을 what 한도 안에 씁니다 (#83).
+
+    설명이 길어 다 못 쓰면 앞에서부터 들어가는 만큼만 적고 남은 개수를 밝힙니다.
+    CVE·원본 항목 연결은 refs.cve와 covers에 그대로 남아 있으므로 목록을 줄여도 잃지 않습니다.
+    """
+    head = f"같은 패키지의 취약점 {len(members)}건:"
+    lines: list[str] = []
+    used = len(head)
+    for m in members[:_MAX_LISTED]:
+        line = f"- {m.rule_id} ({m.severity}): {_clip(m.title, _LISTED_TITLE)}"
+        rest = len(members) - len(lines) - 1
+        # 이 줄을 넣고도 '외 N건' 줄이 들어갈 자리가 남아야 넣습니다
+        tail = len(f"\n- 외 {rest}건 (설명이 길어 생략, 전체는 CVE·원본 항목 참고)") if rest else 0
+        if used + 1 + len(line) + tail > _WHAT_LIMIT:
+            break
+        lines.append(line)
+        used += 1 + len(line)
+    rest = len(members) - len(lines)
+    if rest:
+        reason = " (설명이 길어 생략, 전체는 CVE·원본 항목 참고)" if len(lines) < min(len(members), _MAX_LISTED) else ""
+        lines.append(f"- 외 {rest}건{reason}")
+    return _clip("\n".join([head, *lines]), _WHAT_LIMIT)
+
+
 def _package_finding(members: list[FindingInput], upgrade: dict | None) -> FindingInput:
     first = members[0]
     if len(members) == 1:
@@ -100,9 +133,6 @@ def _package_finding(members: list[FindingInput], upgrade: dict | None) -> Findi
     unfixable = [m for m in members if not m.fixed_version]
     hint = first.fix_hint or FixHint()
     fixed_count = (upgrade or {}).get("fix_count", len(members) - len(unfixable))
-    listed = "\n".join(f"- {m.rule_id} ({m.severity}): {m.title}" for m in members[:_MAX_LISTED])
-    if len(members) > _MAX_LISTED:
-        listed += f"\n- 외 {len(members) - _MAX_LISTED}건"
     note = f"{first.package_name}을(를) {first.installed_version} → {target} 이상으로 올리면 {fixed_count}건이 함께 해결됩니다"
     if unfixable:
         note += f". 고친 버전이 없는 {len(unfixable)}건은 다른 패키지로 바꾸거나 취약한 기능을 쓰지 않도록 따로 대처해야 합니다"
@@ -125,7 +155,7 @@ def _package_finding(members: list[FindingInput], upgrade: dict | None) -> Findi
             urls=[u for m in members for u in m.refs.urls][:3],
         ),
         snippet=first.snippet,
-        what=f"같은 패키지의 취약점 {len(members)}건:\n{listed}",
+        what=_group_what(members),
         flags=list({f.flag: f for m in members for f in m.flags}.values())[:10],
         fix_hint=hint.model_copy(update={"target_version": target, "text": note, "command": _command(hint, target)}),
         status=min((m.status for m in members if m.status), key=_STATUS_ORDER.index, default=None),

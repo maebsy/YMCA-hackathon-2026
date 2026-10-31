@@ -37,7 +37,8 @@
 `registry/server.json`은 원격 전용 서버 형식입니다(`remotes`, 패키지 없음). 이름 `io.github.maebsy/72hours`는 GitHub 계정 `maebsy`로 인증해야 등록됩니다. 그래서 **저장소 소유자가 직접** 진행합니다.
 
 ```bash
-# mcp-publisher 설치: https://github.com/modelcontextprotocol/registry/releases (OS에 맞는 파일)
+# mcp-publisher 설치: https://github.com/modelcontextprotocol/registry/releases (OS에 맞는 파일, 검증한 버전 1.8.7)
+# 등록 전 형식 확인: mcp-publisher validate
 cd integrations/mcp-handoff/registry
 mcp-publisher login github      # 브라우저에서 maebsy 계정으로 승인
 mcp-publisher publish           # server.json 등록

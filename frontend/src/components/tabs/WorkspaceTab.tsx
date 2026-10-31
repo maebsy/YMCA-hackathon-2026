@@ -596,7 +596,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                 </pre>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-mono text-[11px] text-[#a1a1aa]">
-                    MCP 도구: <code>list_findings</code>, <code>get_fix_task</code>
+                    MCP 도구: <code>list_findings</code>, <code>get_fix_prompt</code> · 프롬프트: <code>fix_finding</code>
                   </span>
                   <button
                     onClick={() =>

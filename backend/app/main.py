@@ -7,6 +7,7 @@ from app.db import engine, init_db
 from app.explain_jobs.config import job_settings
 from app.llm import create_explainer
 from app.routers import items, llm, reports, scans
+from app.scan_store import ScanStore
 
 
 @asynccontextmanager
@@ -20,6 +21,10 @@ async def lifespan(app: FastAPI):
             if job_settings.scan_require_auth:  # 검사 API만 로그인 확인을 켠 경우
                 from app.explain_jobs.runtime import prepare_auth
                 await prepare_auth(app, job_settings, stack)
+        app.state.scan_engine = engine
+        # SQLite is a local demo; PostgreSQL scanners require an explicit migration.
+        # Keep unrelated health/report endpoints available before that migration.
+        app.state.scan_store = ScanStore(engine) if engine.dialect.name == "sqlite" else None
         # LLM 서버가 꺼져 있어도 API 서버는 뜹니다. 생성 작업은 별도 worker가 실행합니다.
         app.state.explainer = create_explainer()
         # LLM 연결과 위협 정보(KEV·EPSS) 연결을 함께 닫습니다
@@ -28,6 +33,7 @@ async def lifespan(app: FastAPI):
             from app.llm.preview_jobs import PreviewJobs
             app.state.preview_jobs = PreviewJobs()
             stack.push_async_callback(app.state.preview_jobs.aclose)
+        stack.push_async_callback(scans.drain_tasks)
         yield
 
 

@@ -18,7 +18,7 @@ GitHub 주소 입력 → 보안엔진 검사(`/api/scans`) → GPU Red–Blue �
 
 | 항목 | 지금(MVP) | 추가할 것 |
 |---|---|---|
-| 결과 저장 | 서버 메모리(최근 50건) + 브라우저 보관(새로고침 유지) | DB(`scan`·`finding` 표, #36)에 저장, 재검사 이력·72시간 타이머를 서버에서 관리 |
+| 결과 저장 | DB에 전체 결과 저장, 재시작 후 job 조회 유지. PostgreSQL은 scan·tool_run·finding 저장([적용 절차](scan-persistence.md)) | 프로젝트별 재검사 이력·72시간 타이머를 서버에서 관리 |
 | 작업 처리 | 서버 안 백그라운드 작업 + 3초 간격 상태 조회 | 별도 작업자(worker)·작업 큐, 서버 재시작에도 이어서 처리 (#32 LLM 작업과 같은 구조) |
 | 배포 | 일반 서버(systemd·Caddy), Cloudflare 임시 주소 | 고정 도메인 HTTPS, 장애 알림, Docker 이미지에 엔진·스캐너 포함(지금 Compose 백엔드 이미지에는 없음) |
 

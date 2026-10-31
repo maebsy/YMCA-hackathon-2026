@@ -1,11 +1,8 @@
 """검사 API (/api/scans): 접수 → 진행 조회 → 결과, 재검사 비교, 주소 제한. 실제 스캐너 없이 엔진의 scan_repo만 바꿔 끼웁니다."""
 import sys
 import time
-from collections import OrderedDict
-from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.main import app  # app.routers.scans 가 저장소 루트(security_engine)를 import 경로에 넣습니다
@@ -13,9 +10,6 @@ from app.main import app  # app.routers.scans 가 저장소 루트(security_engi
 import security_engine  # noqa: E402
 from security_engine import scan  # noqa: E402
 from security_engine.models import ScanOptions  # noqa: E402
-
-from app.explain_jobs.config import job_settings  # noqa: E402
-from app.routers import scans  # noqa: E402
 
 
 @pytest.fixture
@@ -71,22 +65,56 @@ def test_rejects_non_github_url():
         assert client.get("/api/scans/nope").status_code == 404
 
 
-# ── 검사 API 보호 (#53) ──
+# ── 검사 대상 제한: 허용한 소유자만, 관리자는 예외 (#67) ──
+from uuid import UUID  # noqa: E402
+
+from app.explain_jobs.config import job_settings  # noqa: E402
+from app.routers import scans  # noqa: E402
+
+ADMIN = UUID(int=7)
+
+
+@pytest.mark.parametrize(
+    ("url", "user", "allowed"),
+    [
+        ("https://github.com/OWASP/NodeGoat", None, True),
+        ("https://github.com/owasp/juice-shop.git", None, True),  # 대소문자 무시
+        ("https://github.com/someone-else/shop", None, False),
+        ("https://github.com/OWASPx/NodeGoat", None, False),  # 접두어만 같은 소유자
+        ("https://github.com/someone-else/shop", UUID(int=8), False),  # 관리자가 아닌 로그인 사용자
+        ("https://github.com/someone-else/shop", ADMIN, True),  # 관리자는 예외
+    ],
+)
+def test_target_owner_allowlist(monkeypatch, url, user, allowed):
+    monkeypatch.setattr(job_settings, "scan_allowed_owners", "OWASP, maebsy")
+    monkeypatch.setattr(job_settings, "scan_admin_user_ids", str(ADMIN).upper())
+    assert scans._target_allowed(url, user) is allowed
+
+
+def test_empty_allowlist_means_no_restriction(monkeypatch):
+    monkeypatch.setattr(job_settings, "scan_allowed_owners", "")
+    assert scans._target_allowed("https://github.com/anyone/repo", None)
+
+
+def test_disallowed_owner_is_rejected_before_queueing(monkeypatch, fake_scan_repo):
+    monkeypatch.setattr(job_settings, "scan_allowed_owners", "OWASP")
+    with TestClient(app) as client:
+        r = client.post("/api/scans", json={"repo_url": "https://github.com/demo/site"})
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "SCAN_TARGET_NOT_ALLOWED"
+        ok = client.post("/api/scans", json={"repo_url": "https://github.com/OWASP/site"})
+        assert ok.status_code == 202
+        assert _wait(client, ok.json()["job_id"])["status"] == "done"
+
+
+# ── 검사 API 보호: 대기열 상한·엔진 미설치·오류 원문·인증 설정 조합 (#53) ──
+from fastapi import HTTPException  # noqa: E402
+
 URL = "https://github.com/demo/site"
 
 
-@pytest.fixture(autouse=True)
-def fresh_jobs(monkeypatch):
-    monkeypatch.setattr(scans, "_jobs", OrderedDict())
-
-
-def _fake_job(status):
-    return {"job_id": status, "status": status, "repo_url": URL, "result": None, "error": None, "owner": None}
-
-
-def test_queue_full_returns_429(fake_scan_repo):
-    for i in range(scans.MAX_ACTIVE):
-        scans._jobs[f"q{i}"] = _fake_job("queued")
+def test_queue_full_returns_429(monkeypatch, fake_scan_repo):
+    monkeypatch.setattr(scans, "MAX_ACTIVE", 0)  # 이미 꽉 찬 상태
     with TestClient(app) as client:
         r = client.post("/api/scans", json={"repo_url": URL})
     assert r.status_code == 429
@@ -94,23 +122,12 @@ def test_queue_full_returns_429(fake_scan_repo):
     assert r.headers["retry-after"] == "60"
 
 
-def test_eviction_keeps_unfinished_jobs():
-    scans._jobs["running"] = _fake_job("running")
-    for i in range(scans.MAX_KEPT + 10):
-        scans._jobs[f"d{i}"] = _fake_job("done")
-
-    scans._evict_finished()
-
-    assert "running" in scans._jobs  # 가장 오래됐어도 진행 중이면 남김
-    assert len(scans._jobs) == scans.MAX_KEPT
-    assert "d0" not in scans._jobs and f"d{scans.MAX_KEPT + 9}" in scans._jobs
-
-
-def test_task_reference_is_kept_until_done(fake_scan_repo):
+def test_queue_has_room_again_after_jobs_finish(fake_scan_repo):
     with TestClient(app) as client:
-        job_id = client.post("/api/scans", json={"repo_url": URL}).json()["job_id"]
-        assert _wait(client, job_id)["status"] == "done"
-    assert not scans._tasks  # 끝나면 참조도 정리
+        for _ in range(scans.MAX_ACTIVE + 2):  # 하나씩 끝나면 참조가 빠져 상한에 걸리지 않습니다
+            job_id = client.post("/api/scans", json={"repo_url": URL}).json()["job_id"]
+            assert _wait(client, job_id)["status"] == "done"
+    assert not scans._tasks
 
 
 def test_missing_engine_returns_503(monkeypatch):
@@ -141,11 +158,14 @@ class FakeAuth:
         return self.USERS[token]
 
 
-def test_auth_required_and_jobs_are_owner_only(monkeypatch, fake_scan_repo):
+@pytest.mark.parametrize(("llm_jobs_enabled", "scan_require_auth"), [(True, False), (False, True), (True, True)])
+def test_auth_settings_either_flag_requires_login(monkeypatch, fake_scan_repo, llm_jobs_enabled, scan_require_auth):
+    """두 설정 중 하나라도 켜면 로그인이 필요하고, 남의 검사는 404입니다."""
     with TestClient(app) as client:
-        monkeypatch.setattr(job_settings, "scan_require_auth", True)
+        monkeypatch.setattr(job_settings, "llm_jobs_enabled", llm_jobs_enabled)
+        monkeypatch.setattr(job_settings, "scan_require_auth", scan_require_auth)
         monkeypatch.setattr(app.state, "job_auth", FakeAuth(), raising=False)
-        a = {"Authorization": "Bearer token-a"}
+        a, b = {"Authorization": "Bearer token-a"}, {"Authorization": "Bearer token-b"}
 
         assert client.post("/api/scans", json={"repo_url": URL}).status_code == 401
         assert client.post("/api/scans", json={"repo_url": URL}, headers={"Authorization": "Bearer nope"}).status_code == 401
@@ -153,7 +173,21 @@ def test_auth_required_and_jobs_are_owner_only(monkeypatch, fake_scan_repo):
         assert r.status_code == 202
         job_id = r.json()["job_id"]
 
-        assert client.get(f"/api/scans/{job_id}", headers={"Authorization": "Bearer token-b"}).status_code == 404
         assert client.get(f"/api/scans/{job_id}").status_code == 401
-        mine = client.get(f"/api/scans/{job_id}", headers=a)
-        assert mine.status_code == 200 and "owner" not in mine.json()
+        assert client.get(f"/api/scans/{job_id}", headers=b).status_code == 404
+        for _ in range(100):
+            job = client.get(f"/api/scans/{job_id}", headers=a).json()
+            if job["status"] in ("done", "failed"):
+                break
+            time.sleep(0.05)
+        assert job["status"] == "done"
+        # 재검사도 내 저장본만 이어 받습니다: 남이 내 scan_id를 previous로 쓰면 404
+        prev = {"scan_id": job["result"]["scan_id"]}
+        assert client.post("/api/scans", json={"repo_url": URL, "previous": prev}, headers=b).status_code == 404
+        assert client.post("/api/scans", json={"repo_url": URL, "previous": prev}, headers=a).status_code == 202
+
+
+def test_auth_off_by_default(fake_scan_repo):
+    assert not job_settings.llm_jobs_enabled and not job_settings.scan_require_auth
+    with TestClient(app) as client:
+        assert client.post("/api/scans", json={"repo_url": URL}).status_code == 202

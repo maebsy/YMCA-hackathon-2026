@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Finding, LogItem, OS, Hosting } from "@/types/security";
+import { McpHandoff } from "@/components/McpHandoff";
 
 interface WorkspaceTabProps {
   findings: Finding[];
@@ -599,7 +600,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                 </pre>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-mono text-[11px] text-[#a1a1aa]">
-                    MCP 도구: <code>list_findings</code>, <code>get_fix_task</code>
+                    MCP 도구: <code>list_findings</code>, <code>get_fix_prompt</code> · 프롬프트: <code>fix_finding</code>
                   </span>
                   <button
                     onClick={() =>
@@ -613,6 +614,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                     <Sparkles className="w-3.5 h-3.5" /> AI 코딩툴에 지시문 복사
                   </button>
                 </div>
+                <McpHandoff os={os} onShowToast={onShowToast} />
               </div>
             </div>
           </div>

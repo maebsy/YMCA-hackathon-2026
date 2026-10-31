@@ -606,6 +606,8 @@ def test_basic_explanation_secret_skips_english_tool_text_and_says_reissue():
                           what="Detected a Generic API Key, potentially exposing access to various services.")
     assert all("Detected" not in p for p in paras)
     assert "열쇠" in paras[0]
+    # 같은 뜻의 용어 풀이("열쇠 같은 값입니다")를 한 번 더 붙이지 않습니다
+    assert len(paras) == 1
     assert "폐기" in steps[0] and "환경 변수" in steps[1]
 
 

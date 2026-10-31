@@ -178,7 +178,8 @@ def basic_explanation(f: FindingInput) -> tuple[list[str], list[str]]:
         paragraphs.append(meaning or "사이트 설정이 안전하지 않게 되어 있습니다. 코드는 맞아도 설정 때문에 정보가 새거나 막아야 할 접근이 열릴 수 있습니다.")
     else:
         paragraphs.append(meaning or "코드를 작성한 방식 때문에 공격자가 입력값으로 사이트를 원래 의도와 다르게 움직일 수 있습니다.")
-    if meaning and f.category in ("dependency", "secret") and meaning not in paragraphs:
+    # 비밀키는 위 문단이 이미 같은 뜻(열쇠 비유)이라 용어 풀이를 덧붙이지 않습니다. 의존성은 취약점 종류의 뜻을 덧붙입니다
+    if meaning and f.category == "dependency" and meaning not in paragraphs:
         paragraphs.append(meaning)
     # 엔진 규칙 설명은 한국어일 때만 덧붙입니다. 외부 도구의 영어 원문(예: Gitleaks)은 비전공자가 읽기 어렵습니다
     if f.what and _HANGUL.search(f.what) and f.category != "secret":

@@ -128,18 +128,15 @@ class ServiceAPI:
                        notice='LLM 입력 가능한 최대 50건입니다. 전체 수는 summary를 확인하세요. 웹 결과 파일은 필요 없습니다.')
         return out
 
-    async def start_analysis(self, token, scan_id, fingerprint, os, hosting):
-        if os not in ('windows', 'macos', 'linux') or hosting not in (
-                'vercel', 'netlify', 'cloudflare', 'supabase', 'render', 'railway', 'self_hosted', 'unknown'):
-            raise ValueError('지원하는 os 및 hosting 값을 지정하세요.')
+    async def start_analysis(self, token, scan_id, fingerprint):
         result, _ = await self.scan_result(token, scan_id)
         finding = next((f for f in result['findings'] if f['fingerprint'] == fingerprint), None)
         if finding is None:
             raise ValueError('이 검사의 LLM 입력 항목이 아닙니다.')
-        metadata = {'scan_id': scan_id, 'fingerprint': fingerprint, 'os': os, 'hosting': hosting}
+        metadata = {'scan_id': scan_id, 'fingerprint': fingerprint}
         key = hashlib.sha256(json.dumps(metadata, sort_keys=True).encode()).hexdigest()
         return await self.dispatch(token, 'analysis', key, metadata, '/api/llm/explain/tasks',
-            {'findings': [finding], 'mode': 'red_blue', 'environment': {'os': os, 'hosting': hosting}})
+            {'findings': [finding], 'mode': 'red_blue'})
 
     async def analysis_snapshot(self, token, analysis_id):
         data, result = await self.poll(token, analysis_id, 'analysis')

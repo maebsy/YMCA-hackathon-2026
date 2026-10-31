@@ -183,16 +183,7 @@ class RiskAssessment(BaseModel):
 # ── OS별 대응 가이드 (remediation.py, 검증된 템플릿) ──
 
 TargetOS = Literal["windows", "macos", "linux"]
-Hosting = Literal["vercel", "netlify", "cloudflare", "supabase", "render", "railway", "self_hosted", "unknown"]
 PackageManager = Literal["npm", "pnpm", "yarn", "bun", "pip", "uv", "poetry", "composer", "bundler", "go", "cargo"]
-
-
-class UserEnvironment(BaseModel):
-    """사용자 작업 환경. 비우면 세 OS 명령을 모두 만들고, 패키지 관리자는 lockfile 로 알아냅니다."""
-
-    os: TargetOS | None = None
-    hosting: Hosting | None = None
-    package_manager: PackageManager | None = None
 
 
 class CommandBlock(BaseModel):
@@ -212,7 +203,6 @@ class GuideAction(BaseModel):
 
 
 class RemediationGuide(BaseModel):
-    environment: UserEnvironment
     package_manager: PackageManager | None = None
     actions: list[GuideAction] = Field(default_factory=list)
 

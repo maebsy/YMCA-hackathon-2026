@@ -2,7 +2,7 @@
 
   ① 문맥 분석: 규칙 신호(context.py) + LLM 판단. LLM 이 실패하면 규칙 신호만으로 판단
   ② 위험도: 문맥 분석 + KEV·EPSS → CISA SSVC 결정 (risk.py, 코드로 결정)
-  ③ 대응 가이드: 사용자 OS·배포 환경에 맞는 명령 (remediation.py, 검증된 템플릿)
+  ③ 대응 가이드: 윈도·맥·리눅스 명령 (remediation.py, 검증된 템플릿)
   ④ Blue: ①~③을 근거로 설명·수정 지시 작성 (평가 C 는 여기까지)
   ⑤ Red (red_blue 모드, 평가 D): 공격자 관점 판정 → pass 가 아니면 지적을 붙여 Blue 재작성 (최대 max_rewrites)
      끝까지 pass 가 아니면 마지막 수정 지시에 needs_manual_review 를 붙여 내보냅니다.
@@ -39,7 +39,6 @@ from app.llm.schemas import (
     RemediationGuide,
     RiskAssessment,
     ThreatIntelRecord,
-    UserEnvironment,
 )
 
 log = logging.getLogger(__name__)
@@ -79,12 +78,11 @@ class Briefing:
     signals: ContextSignals
     analysis: ContextAnalysis
     risk: RiskAssessment
-    environment: UserEnvironment | None = None
     guide: RemediationGuide | None = None
     tokens: int = 0
 
     def render(self) -> str:
-        return prompts.render_briefing(self.analysis, self.risk, self.environment, self.guide)
+        return prompts.render_briefing(self.analysis, self.risk, self.guide)
 
 
 class Explainer:
@@ -110,16 +108,14 @@ class Explainer:
         if close := getattr(self.intel, "aclose", None):
             await close()
 
-    async def explain_many(
-        self, findings: list[FindingInput], mode: Mode, environment: UserEnvironment | None = None
-    ) -> list[ExplainResult]:
+    async def explain_many(self, findings: list[FindingInput], mode: Mode) -> list[ExplainResult]:
         """여러 건을 동시에 보냅니다. GPU가 묶어서 처리해야 L4에서 전체 시간이 줄어듭니다.
 
         한 건이 실패해도 나머지는 그대로 돌려줍니다. 코드에서 이미 해결된 항목은 GPU를 쓰지 않고 건너뜁니다.
         """
         intel = await self._intel_for([f for f in findings if not skip_reason(f)])
         run = self.blue if mode == "blue" else self.red_blue
-        return list(await asyncio.gather(*(self._safe(run, f, intel, environment) for f in findings)))
+        return list(await asyncio.gather(*(self._safe(run, f, intel) for f in findings)))
 
     async def _intel_for(self, findings: list[FindingInput]) -> dict[str, ThreatIntelRecord]:
         """요청 안의 CVE 를 한 번에 조회합니다 (EPSS 는 100개씩 묶어 조회)."""
@@ -128,11 +124,11 @@ class Explainer:
             return {}
         return await self.intel.lookup(cves)
 
-    async def _safe(self, run, finding, intel, environment) -> ExplainResult:
+    async def _safe(self, run, finding, intel) -> ExplainResult:
         if reason := skip_reason(finding):
             return ExplainResult(fingerprint=finding.fingerprint, status="skipped", reason=reason, covers=finding.covers)
         try:
-            explanation = await run(finding, intel, environment)
+            explanation = await run(finding, intel)
         except LLMError as exc:
             log.warning("LLM 해석 실패 %s: %s", finding.fingerprint, exc)
             code = (
@@ -155,7 +151,6 @@ class Explainer:
         self,
         finding: FindingInput,
         intel: dict[str, ThreatIntelRecord] | None = None,
-        environment: UserEnvironment | None = None,
     ) -> Briefing:
         """①~③: 문맥 분석, 위험도 결정, 대응 가이드."""
         signals = collect_signals(finding)
@@ -163,8 +158,8 @@ class Explainer:
         if intel is None:
             intel = await self._intel_for([finding])
         risk = assess(finding, analysis, signals, intel)
-        guide = build_guide(finding, environment)
-        return Briefing(signals, analysis, risk, environment, guide=guide, tokens=tokens)
+        guide = build_guide(finding)
+        return Briefing(signals, analysis, risk, guide=guide, tokens=tokens)
 
     async def _analyze(self, finding: FindingInput, signals: ContextSignals) -> tuple[ContextAnalysis, int]:
         if not self.analyze_context:
@@ -185,19 +180,17 @@ class Explainer:
             return analysis_from_signals(finding, signals), 0
         return result.data, result.completion_tokens
 
-    async def blue(self, finding: FindingInput, intel=None, environment: UserEnvironment | None = None) -> Explanation:
+    async def blue(self, finding: FindingInput, intel=None) -> Explanation:
         started = time.perf_counter()
-        briefing = await self.brief(finding, intel, environment)
+        briefing = await self.brief(finding, intel)
         extra = briefing.render()
         draft = await self._blue_draft(lambda scale: prompts.blue_messages(finding, scale, extra))
         tokens = briefing.tokens + draft.completion_tokens
         return self._explanation(finding, "C", draft.data, briefing, started, tokens)
 
-    async def red_blue(
-        self, finding: FindingInput, intel=None, environment: UserEnvironment | None = None
-    ) -> Explanation:
+    async def red_blue(self, finding: FindingInput, intel=None) -> Explanation:
         started = time.perf_counter()
-        briefing = await self.brief(finding, intel, environment)
+        briefing = await self.brief(finding, intel)
         extra = briefing.render()
         draft = await self._blue_draft(lambda scale: prompts.blue_messages(finding, scale, extra))
         tokens = briefing.tokens + draft.completion_tokens

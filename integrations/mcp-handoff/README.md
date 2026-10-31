@@ -9,6 +9,8 @@ Python·CMD·결과 파일 설치 없이 원격 HTTP MCP를 지원하는 클라�
 클라이언트 자체의 연결 승인·재접속은 필요할 수 있으며, stdio 전용 앱은 별도 브리지가 필요합니다.
 
 `create_workspace → start_scan → get_scan → start_analysis → get_analysis → get_fix_prompt`
+
+`start_analysis`는 workspace_token·scan_id·fingerprint만 받습니다. 해석 API는 사용자 OS·호스팅 입력 없이 세 OS 명령을 모두 생성하며 패키지 관리자는 자동 판별합니다.
 순으로 실제 서버 API를 호출합니다. 수정은 사용자 AI의 작업본에서 수행합니다.
 `rescan`은 같은 저장소의 **게시된 기본 브랜치**를 이전 결과와 비교합니다. 미게시 로컬 수정이나
 PR 브랜치를 확인하지 못하므로 커밋이 같으면 수정 검증 완료로 표시하면 안 됩니다.

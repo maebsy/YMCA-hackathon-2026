@@ -110,6 +110,7 @@ label { display:block; font-size:12px; font-weight:600; margin-bottom:8px; }
 .result-context { display:flex; align-items:center; flex-wrap:wrap; gap:9px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 18px; font-size:12px; }
 .result-context>p { flex-basis:100%; color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
 .result-context>p>span { color:var(--text); }
+.result-context[role="status"] { margin-block:18px; }
 .count-grid { display:grid; grid-template-columns:repeat(4,1fr); margin-block:23px; border:1px solid var(--border); border-radius:14px; background:var(--subtle); }
 .count-grid>div { padding:18px 24px; border-right:1px solid var(--border); }
 .count-grid>div:last-child { border-right:0; }
@@ -209,7 +210,6 @@ summary { cursor:pointer; font-size:12px; }
 .page-heading { margin-bottom:26px; }
 .page-heading h1 { font-size:32px; letter-spacing:-1px; margin:9px 0 12px; }
 .page-heading>p:last-child { color:var(--muted); font-size:14px; }
-.repository-input { margin-block:24px; }
 .repository-page>.notice { margin-block:24px; }
 .repository-page>.text-link { margin-top:26px; }
 .repository-markdown { background:var(--bg); padding:18px; border-radius:8px; margin-top:16px; font-size:12px; }

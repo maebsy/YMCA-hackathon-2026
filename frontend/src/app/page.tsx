@@ -13,7 +13,11 @@ export default function Home() {
   const [error, setError] = useState("");
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!repository.restored || repository.isScanning) return;
+    if (repository.isScanning) {
+      router.push("/repository");
+      return;
+    }
+    if (!repository.restored) return;
     const url = normalizeRepositoryUrl(repository.repoInput);
     if (!url) {
       setError("github.com/owner/repository 또는 owner.github.io 형식의 공개 GitHub 주소를 입력해 주세요.");
@@ -35,7 +39,7 @@ export default function Home() {
       <form onSubmit={submit} noValidate>
         <div className="url-form-row">
           <div className="url-field"><Code2 size={20}/><input ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="github.com/owner/repository" value={repository.repoInput} onChange={event => { repository.setRepoInput(event.target.value); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={error ? "repository-error repository-hint" : "repository-hint"}/></div>
-          <button className="button primary" type="submit" disabled={!repository.restored || repository.isScanning}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : null}{repository.isScanning ? "검사 진행 중" : "실제 검사 시작"}<ArrowRight size={16}/></button>
+          <button className="button primary" type="submit" disabled={!repository.restored}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : null}{repository.isScanning ? "진행 중인 검사 보기" : "실제 검사 시작"}<ArrowRight size={16}/></button>
         </div>
         {error && <p id="repository-error" className="form-error" role="alert">{error}</p>}
         <p id="repository-hint" className="field-hint">github.com/owner/repository 또는 owner.github.io를 입력하세요.<br/>GitHub Pages는 해당 저장소로 변환해 검사합니다.</p>

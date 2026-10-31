@@ -104,22 +104,22 @@ test("Simple defaults off for invalid preferences and works when storage is bloc
   ui.cleanup();
 });
 function entry(overrides = {}) {
-  const calls = [], navigation = [], errors = [];
+  const calls = [], navigation = [], errors = [], events = [];
   let focusCount = 0;
   const repository = { repoInput: "https://github.com/acme/app.git/", restored: true, isScanning: false,
     setRepoInput: value => { repository.repoInput = value; },
-    runScan: value => { calls.push(value); return Promise.resolve(); }, ...overrides };
+    runScan: value => { calls.push(value); events.push("scan"); return Promise.resolve(); }, ...overrides };
   const { default: Home } = load("../src/app/page.tsx", {
     react: { useState: () => ["", value => errors.push(value)], useRef: () => ({ current: { focus: () => focusCount++ } }) },
     "react/jsx-runtime": { jsx: element, jsxs: element },
     "next/link": { default: "a" },
-    "next/navigation": { useRouter: () => ({ push: path => navigation.push(path) }) },
+    "next/navigation": { useRouter: () => ({ push: path => { navigation.push(path); events.push("navigate"); } }) },
     "@/components/repository-provider": { useRepository: () => repository, normalizeRepositoryUrl },
   });
   const tree = nodes(Home());
   const form = tree.find(node => node.type === "form");
   const submit = () => form.props.onSubmit({ preventDefault() {} });
-  return { calls, navigation, errors, tree, submit, focused: () => focusCount };
+  return { calls, navigation, errors, events, tree, submit, focused: () => focusCount };
 }
 
 function repositoryView(overrides = {}) {
@@ -164,6 +164,7 @@ test("home submit starts the actual scan once with the normalized explicit URL",
   ui.submit();
   assert.deepEqual(ui.calls, ["https://github.com/acme/app"]);
   assert.deepEqual(ui.navigation, ["/repository"]);
+  assert.deepEqual(ui.events, ["scan", "navigate"]);
 });
 test("home submit prepends https:// when github.com URL is entered without scheme", () => {
   const ui = entry({ repoInput: "github.com/papawolf42/kdfakdff" });
@@ -245,12 +246,45 @@ test("Simple hides three home links and card descriptions while keeping icons, t
   });
   assert.equal(marked.some(node => nodes(node).some(child => child.type === "form")), false);
 });
-test("restoration and in-flight scans block home submissions", () => {
-  for (const state of [{ restored: false }, { isScanning: true }]) {
-    const ui = entry(state); ui.submit();
-    assert.equal(ui.calls.length, 0); assert.equal(ui.navigation.length, 0);
-    assert.equal(ui.tree.find(node => node.type === "button" && node.props.type === "submit").props.disabled, true);
+test("restoration blocks home submissions", () => {
+  const ui = entry({ restored: false }); ui.submit();
+  assert.equal(ui.calls.length, 0); assert.equal(ui.navigation.length, 0);
+  assert.equal(ui.tree.find(node => node.type === "button" && node.props.type === "submit").props.disabled, true);
+});
+test("home returns to the in-flight scan without validation or starting another request", () => {
+  const ui = entry({ isScanning: true, repoInput: "" }); ui.submit();
+  assert.equal(ui.calls.length, 0);
+  assert.deepEqual(ui.navigation, ["/repository"]);
+  assert.equal(ui.errors.length, 0);
+  assert.equal(ui.tree.find(node => node.type === "button" && node.props.type === "submit").props.disabled, false);
+});
+test("repository has no duplicate input, shows the active URL and preserves the rescan callback", () => {
+  const current = "https://github.com/alice/project", previous = "https://github.com/acme/old";
+  const calls = [];
+  for (const state of [{}, { isScanning: true, repoInput: current }, { result: {}, resultRepo: previous },
+    { isScanning: true, repoInput: current, result: {}, resultRepo: previous }]) {
+    const tree = repositoryView({ ...state, runScan: url => calls.push(url) });
+    assert.equal(tree.some(node => ["input", "form", "fieldset"].includes(node.type)), false);
+    assert.equal(calls.length, 0, "render never starts a scan");
+    const active = tree.find(node => node.props["aria-label"] === "진행 중인 저장소 검사");
+    assert.equal(!!active, !!state.isScanning);
+    if (active) assert.equal(nodes(active).find(node => node.type === "code").props.children, current);
+    if (state.result) assert.ok(tree.some(node => node.type === "code" && node.props.children === previous));
+    const workspace = tree.find(node => node.type === "workspace-tab");
+    assert.equal(workspace.props.compact, true);
+    assert.equal(workspace.props.hasRealScan, !!state.result);
+    assert.ok(tree.some(node => node.props.href === "/"));
   }
+  const tree = repositoryView({ result: {}, runScan: url => calls.push(url) });
+  tree.find(node => node.type === "workspace-tab").props.onRunScan(current);
+  assert.deepEqual(calls, [current]);
+});
+test("empty repository directs to home and failed scans still show their error", () => {
+  const empty = repositoryView();
+  assert.ok(empty.some(node => node.type === "p" && Array.isArray(node.props.children)
+    && node.props.children[0] === "홈에서 검사할 GitHub 주소를 입력하세요. "));
+  const failed = repositoryView({ error: "검사 요청 실패" });
+  assert.equal(failed.find(node => node.props.role === "alert").props.children, "검사 요청 실패");
 });
 test("former sample routes lead to the actual workspace without starting a scan", () => {
   for (const path of ["scan", "findings", "repair", "repair/[id]", "report"]) {

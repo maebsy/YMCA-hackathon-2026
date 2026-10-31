@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, ArrowRight, Clipboard, Code2, Download, FileText, FlaskConical, LoaderCircle, Play, ShieldAlert } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Clipboard, Download, FileText, FlaskConical, ShieldAlert } from "lucide-react";
 import { WorkspaceTab } from "@/components/tabs/WorkspaceTab";
-import { normalizeRepositoryUrl, useRepository } from "@/components/repository-provider";
+import { useRepository } from "@/components/repository-provider";
 import { Notice } from "@/components/ui/notice";
 import { useClipboard } from "@/components/ui/clipboard";
 import { plainReport } from "@/lib/api";
@@ -70,27 +70,17 @@ function ActualReport() {
 
 export default function RepositoryWorkspace() {
   const repository = useRepository();
-  const input = useRef<HTMLInputElement>(null);
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!normalizeRepositoryUrl(repository.repoInput)) input.current?.focus();
-    void repository.runScan();
-  }
   const verified = repository.findings.filter(finding => finding.fixed).length;
   const pending = repository.pendingIds.length;
   return <main id="main" className="workspace container repository-page" tabIndex={-1}>
     <div className="page-heading"><p className="eyebrow">REPOSITORY · ENGINE SCAN</p><h1>내 저장소를 실제로 점검하세요.</h1><p>공개 GitHub 저장소를 엔진으로 검사하고, 근거와 수정 안내를 확인합니다.</p></div>
     <Notice>실행하면 저장소 주소가 검사 서버로 전송됩니다. 서버의 로그인·저장소 접근 정책이 적용됩니다. 공개 저장소만 입력하세요. 웹사이트 주소만으로 서버 코드나 DB를 검사하지 않습니다.</Notice>
-    <section className="card form-card repository-input" aria-labelledby="repository-input-title">
-      <div className="panel-heading"><Code2 size={22}/><h2 id="repository-input-title">공개 GitHub 저장소</h2></div>
-      <form onSubmit={submit} noValidate>
-        <div className="form-field"><label htmlFor="repository-url">저장소 URL</label><div className="url-form-row"><div className="url-field"><Code2 size={19}/><input ref={input} id="repository-url" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="github.com/owner/repository" value={repository.repoInput} onChange={event => repository.setRepoInput(event.target.value)} disabled={repository.isScanning} aria-invalid={!!repository.error} aria-describedby="repository-hint repository-error"/></div><button className="button primary" type="submit" disabled={!repository.restored || repository.isScanning}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : <Play size={16}/>} {repository.isScanning ? "검사 진행 중" : "실제 검사 시작"}</button></div><p id="repository-hint" className="field-hint">github.com/owner/repository 또는 owner.github.io를 입력하세요.<br/>GitHub Pages는 해당 저장소로 변환해 검사합니다.</p></div>
-        {repository.error && <p id="repository-error" className="form-error" role="alert">{repository.error}</p>}
-      </form>
-    </section>
+    {repository.isScanning && <div className="result-context" role="status" aria-label="진행 중인 저장소 검사"><span className="status-label">검사 진행 중</span><code>{repository.repoInput}</code></div>}
+    {repository.restored && !repository.result && !repository.isScanning && <p className="field-hint">홈에서 검사할 GitHub 주소를 입력하세요. <Link className="text-link" href="/">홈으로 가기<ArrowRight size={14}/></Link></p>}
+    {repository.error && <p id="repository-error" className="form-error" role="alert">{repository.error}</p>}
     <p className="feedback" role="status">{repository.message}</p>
     {repository.result && <>
-      <div className="result-context"><span className="status-label">실제 엔진 결과 · 브라우저 보관</span><code>{repository.resultRepo}</code><p>아래 결과는 위 저장소의 마지막 검사입니다. 다른 저장소를 입력해도 새 검사가 완료되기 전에는 이 결과를 유지합니다.</p></div>
+      <div className="result-context"><span className="status-label">실제 엔진 결과 · 브라우저 보관</span><code>{repository.resultRepo}</code><p>아래 결과는 위 저장소의 마지막 검사입니다. 새 검사가 완료되기 전에는 이 결과를 유지합니다.</p></div>
       <dl className="count-grid"><div><dt>엔진 발견 항목</dt><dd>{repository.findings.length}<small>건</small></dd></div><div><dt>미해결 · 미조치</dt><dd>{repository.findings.length - verified - pending}<small>건</small></dd></div><div><dt>재검증 대기</dt><dd className="accent">{pending}<small>건</small></dd></div><div><dt>엔진 해결 확인</dt><dd>{verified}<small>건</small></dd></div></dl>
     </>}
     <div className="legacy-workspace"><WorkspaceTab compact hasRealScan={!!repository.result} hasResult={!!repository.result} pendingIds={repository.pendingIds} findings={repository.findings}

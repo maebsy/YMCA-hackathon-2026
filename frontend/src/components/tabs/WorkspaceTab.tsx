@@ -242,7 +242,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
 
       </>}
       {/* 2. 실시간 터미널 보안 엔진 로그 */}
-      <div className="bg-[#111113] border border-[#27272a] rounded-xl overflow-hidden">
+      {!compact && <div className="bg-[#111113] border border-[#27272a] rounded-xl overflow-hidden">
         <div className="chrome-bar justify-between">
           <div className="flex items-center gap-2">
             <div className="dots">
@@ -301,8 +301,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
             </div>
           ))}
         </div>
-      </div>
-
+      </div>}
       {/* 3. 취약점 목록 & 상세 2단 분할 뷰 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* 왼쪽: 취약점 목록 */}

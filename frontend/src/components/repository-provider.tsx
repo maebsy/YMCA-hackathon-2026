@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { explain, itemToFinding, LLM_PARALLEL, llmHealthy, loadLast, mergeExplanation, now, runLimited, saveLast, startScan } from "@/lib/api";
+import { explain, itemToFinding, LLM_PARALLEL, llmHealthy, loadLast, mergeExplanation, now, plainReport, runLimited, saveLast, startScan } from "@/lib/api";
 import type { Finding, LogItem, OS } from "@/types/security";
 
 type JsonRecord = Record<string, unknown>;
@@ -11,11 +11,21 @@ type RepositoryState = {
   repoInput: string; resultRepo: string; findings: Finding[]; result: JsonRecord | null;
   reportInput: ReportInput | null; logs: LogItem[]; pendingIds: string[]; selectedFindingId: string;
   isScanning: boolean; restored: boolean; error: string; message: string; os: OS;
+  phase: "idle" | "queued" | "running" | "explaining" | "reporting" | "done" | "failed";
+  reportHtml: string; reportMarkdown: string; reportError: string; resultReady: boolean;
+  startedAt?: number; explained?: { done: number; total: number };
 };
 const initialState: RepositoryState = {
   repoInput: "", resultRepo: "", findings: [], result: null, reportInput: null, logs: [], pendingIds: [],
   selectedFindingId: "", isScanning: false, restored: false, error: "", message: "", os: "windows",
+  phase: "idle", reportHtml: "", reportMarkdown: "", reportError: "", resultReady: false,
 };
+// 임시값: 결과 정리 단계를 인지할 수 있도록 최소 1.5초 표시합니다.
+const REPORT_MIN_MS = 1500;
+// 임시값: 이동 직전 완료 체크를 잠깐 표시합니다.
+const REPORT_DONE_MS = 350;
+const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
 function record(value: unknown): value is JsonRecord { return !!value && typeof value === "object" && !Array.isArray(value); }
 
 /** OS only selects which commands and MCP example paths to display. */
@@ -81,6 +91,8 @@ type RepositoryContextValue = RepositoryState & {
   setRepoInput: (value: string) => void; setOS: (os: OS) => void;
   selectFinding: (id: string) => void; togglePending: (id: string) => void; showMessage: (message: string) => void;
   runScan: (url?: string) => Promise<void>;
+  prepareReport: (autoNavigate?: boolean) => Promise<void>;
+  consumeResultReady: () => void;
 };
 const RepositoryContext = createContext<RepositoryContextValue | null>(null);
 
@@ -88,6 +100,7 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<RepositoryState>(initialState);
   const busy = useRef(false);
   const operation = useRef(0);
+  const reportBusy = useRef(false);
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => {
@@ -95,9 +108,8 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
     const saved = parseSavedRepository(loadLast<unknown>());
     const os = detectBrowserOS();
     // Browser storage is read after hydration; zero-finding results are valid too.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState(current => saved ? { ...current, os, repoInput: saved.repoUrl, resultRepo: saved.repoUrl, findings: saved.findings,
-      result: saved.result, reportInput: saved.reportInput, logs: saved.logs, pendingIds: saved.pendingIds,
+      result: saved.result, reportInput: saved.reportInput, logs: saved.logs, pendingIds: saved.pendingIds, phase: "done",
       selectedFindingId: saved.findings[0]?.id ?? "", restored: true, message: "이 브라우저에 저장된 마지막 검사 결과를 불러왔습니다." } : { ...current, os, restored: true });
     return () => { lifecycle.current++; };
   }, []);
@@ -112,8 +124,33 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }
+  async function generateReport(input: ReportInput, token: number, autoNavigate: boolean) {
+    const active = () => operation.current === token;
+    change(value => ({ ...value, phase: "reporting", isScanning: true, reportError: "", resultReady: false }));
+    try {
+      const [[html, markdown]] = await Promise.all([
+        Promise.all([plainReport(input, "html"), plainReport(input, "markdown")]), wait(REPORT_MIN_MS),
+      ]);
+      if (!active()) return;
+      if (!html.trim() || !markdown.trim()) throw new Error("리포트 응답이 비어 있습니다.");
+      change(value => ({ ...value, reportHtml: html, reportMarkdown: markdown, phase: "done" }));
+      if (autoNavigate) await wait(REPORT_DONE_MS);
+      if (active()) change(value => ({ ...value, isScanning: false, resultReady: autoNavigate }));
+    } catch (caught) {
+      if (active()) change(value => ({ ...value, phase: "failed", isScanning: false, resultReady: false,
+        reportError: caught instanceof Error ? caught.message : "리포트를 만들지 못했습니다." }));
+    }
+  }
+  async function prepareReport(autoNavigate = false) {
+    const current = stateRef.current;
+    if (busy.current || reportBusy.current || !current.reportInput) return;
+    reportBusy.current = true;
+    const token = ++operation.current;
+    try { await generateReport(current.reportInput, token, autoNavigate); }
+    finally { reportBusy.current = false; }
+  }
   async function runScan(input = stateRef.current.repoInput) {
-    if (busy.current || !stateRef.current.restored) return;
+    if (busy.current || reportBusy.current || !stateRef.current.restored) return;
     const normalized = normalizeRepositoryUrl(input);
     if (!normalized) {
       change(current => ({ ...current, error: "github.com/owner/repository 또는 owner.github.io 형식의 공개 GitHub 주소를 입력하세요." }));
@@ -131,10 +168,15 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
       collected.push({ time: now(), step, msg, status, type });
       change(value => ({ ...value, logs: [...collected] }));
     }
-    change(value => ({ ...value, repoInput: repoUrl, isScanning: true, error: "", message: "", logs: [] }));
+    change(value => ({ ...value, repoInput: repoUrl, isScanning: true, phase: "queued", startedAt: Date.now(), explained: undefined, reportError: "", resultReady: false, error: "", message: "", logs: [] }));
     log("engine", `${repoUrl} ${previous ? "재검사" : "검사"}를 요청합니다.`, "접수 중");
-    try {
-      const data: unknown = await startScan(repoUrl, previous, status => log("status", `엔진 상태: ${status}`, "진행 중"));
+    let finalReportInput: ReportInput | undefined;
+    async function scanEngine() {
+      const data: unknown = await startScan(repoUrl, previous, status => {
+        if (!active()) return;
+        if (status === "queued" || status === "running") change(value => ({ ...value, phase: status }));
+        log("status", `엔진 상태: ${status}`, "진행 중");
+      });
       if (!active()) return;
       if (!record(data) || !record(data.result) || !record(data.report_scan) || !Array.isArray(data.findings) || !record(data.llm_input) || !Array.isArray(data.llm_input.items))
         throw new Error("엔진 응답에 검사 결과나 리포트 정보가 없습니다. 기존 결과를 유지합니다.");
@@ -154,7 +196,8 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
       log("engine", `엔진 결과 ${mapped.length}건을 받았습니다. 검사 범위 밖의 안전을 보장하지 않습니다.`, "결과 수신");
       function publish(message: string) {
         if (!active()) return;
-        change(value => ({ ...value, resultRepo: repoUrl, result, findings: mapped, reportInput, logs: [...collected],
+        finalReportInput = reportInput;
+        change(value => ({ ...value, resultRepo: repoUrl, result, findings: mapped, reportInput, reportHtml: "", reportMarkdown: "", logs: [...collected],
           pendingIds: [], selectedFindingId: value.resultRepo.toLowerCase() === repoUrl.toLowerCase() && mapped.some(finding => finding.id === value.selectedFindingId)
             ? value.selectedFindingId : mapped[0]?.id ?? "", message }), true);
       }
@@ -171,6 +214,7 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
         const selected = open.slice(0, 5) as JsonRecord[];
         let explanations: JsonRecord[] = [];
         let finished = 0;
+        change(value => ({ ...value, phase: "explaining", explained: { done: 0, total: selected.length } }));
         // Request as many items as the backend runs at once (LLM_PARALLEL, #91) and publish each one as soon as it finishes.
         log("LLM", `Red–Blue 해석 ${selected.length}건 시작 (동시 ${Math.min(LLM_PARALLEL, selected.length)}건). 끝나기 전 항목은 엔진 결과입니다.`, "해석 중");
         await runLimited(selected, async finding => {
@@ -182,6 +226,7 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
           if (!active()) return;
           const finding = selected[index];
           finished += 1;
+          change(value => ({ ...value, explained: { done: finished, total: selected.length } }));
           if (outcome.ok) explanations = [...explanations, ...outcome.value];
           else {
             explanations = [...explanations, { fingerprint: finding.fingerprint ?? finding.id, covers: finding.covers,
@@ -204,11 +249,15 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
         log("LLM", `${error instanceof Error ? error.message : "추가 해석 실패"} · 엔진 결과를 유지합니다.`, "해석 실패", "warn");
         publish("추가 AI 해석에 실패했습니다. 엔진 검사 결과는 유지됩니다.");
       }
+    }
+    try {
+      await scanEngine();
+      if (active() && finalReportInput) await generateReport(finalReportInput, token, true);
     } catch (error) {
       if (!active()) return;
       const message = error instanceof Error ? error.message : "검사 요청을 완료하지 못했습니다.";
       log("error", message, "실패", "warn");
-      change(value => ({ ...value, error: message, message: value.result ? "이전 검사 결과를 유지합니다. 아래 결과의 저장소를 확인하세요." : "" }));
+      change(value => ({ ...value, phase: "failed", error: message, message: value.result ? "이전 검사 결과를 유지합니다. 아래 결과의 저장소를 확인하세요." : "" }));
     } finally {
       busy.current = false;
       if (active()) change(value => ({ ...value, isScanning: false }));
@@ -218,7 +267,8 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
     setRepoInput: repoInput => change(current => ({ ...current, repoInput, error: "" })),
     setOS: os => change(current => ({ ...current, os })),
     selectFinding: selectedFindingId => change(current => ({ ...current, selectedFindingId })),
-    showMessage: message => change(current => ({ ...current, message })), runScan,
+    showMessage: message => change(current => ({ ...current, message })), runScan, prepareReport,
+    consumeResultReady: () => change(current => ({ ...current, resultReady: false })),
     togglePending: id => change(current => {
       if (current.isScanning || !current.findings.some(f => f.id === id && !f.fixed)) return current;
       const pendingIds = current.pendingIds.includes(id) ? current.pendingIds.filter(value => value !== id) : [...current.pendingIds, id];

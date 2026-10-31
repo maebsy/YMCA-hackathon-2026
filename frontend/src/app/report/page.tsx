@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import RepositoryResult from "@/components/repository-result";
 
-export default function Page() {
-  redirect("/repository");
+export default function ReportPage() {
+  return <RepositoryResult/>;
 }

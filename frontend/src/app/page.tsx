@@ -155,16 +155,24 @@ export default function Home() {
         persist();
         return;
       }
-      log("gpu-llm ", "Red–Blue 해석 중 (상위 5건)...", "…");
-      const open = (data.findings as any[]).filter((f) => f.status !== "code_resolved");
-      explainResults = await explain(open.slice(0, 5), os);
-      const byFp = new Map<string, any>();
-      for (const r of explainResults) for (const fp of [r.fingerprint, ...(r.covers || [])]) byFp.set(fp, r);
-      mapped = mapped.map((f) => (byFp.has(f.id) ? mergeExplanation(f, byFp.get(f.id)) : f));
-      setFindings(mapped);
-      setReportInput({ ...rInput, explain_results: explainResults });
+      // 한 건씩 요청합니다: 5건을 한 번에 보내면 Red–Blue가 터널 응답 제한(Cloudflare 약 100초)을 넘길 수 있습니다 (#53)
+      const open = (data.findings as any[]).filter((f) => f.status !== "code_resolved").slice(0, 5);
+      for (const [i, finding] of open.entries()) {
+        log("gpu-llm ", `Red–Blue 해석 중 (${i + 1}/${open.length})...`, "…");
+        try {
+          explainResults = [...explainResults, ...(await explain([finding], os))];
+        } catch (e: any) {
+          log2("gpu-llm ", `${i + 1}번째 해석 실패: ${e?.message || e}`, "! 건너뜀", "warn");
+          continue;
+        }
+        const byFp = new Map<string, any>();
+        for (const r of explainResults) for (const fp of [r.fingerprint, ...(r.covers || [])]) byFp.set(fp, r);
+        mapped = mapped.map((f) => (byFp.has(f.id) ? mergeExplanation(f, byFp.get(f.id)) : f));
+        setFindings(mapped);
+        setReportInput({ ...rInput, explain_results: explainResults });
+        persist();
+      }
       log2("gpu-llm ", "Red–Blue 해석 완료", `✓ ${explainResults.filter((r) => r.status === "done").length}건`);
-      persist();
     } catch (e: any) {
       log("error   ", String(e?.message || e), "✗ 실패", "warn");
       showToast(`검사 실패: ${e?.message || e}`);

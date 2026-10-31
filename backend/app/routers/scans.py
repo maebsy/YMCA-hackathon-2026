@@ -4,31 +4,64 @@
 - GET  /api/scans/{id}   : 진행 상태(queued·running·done·failed)와, 끝났으면 결과를 돌려줍니다.
   검사가 1~3분 걸려도 프록시·터널의 응답 제한(Cloudflare 약 100초)에 걸리지 않게 하려는 구조입니다.
 - 결과는 서버 메모리에만 잠시 둡니다 (최근 50건, 재시작하면 사라짐). DB 저장은 추후 개발 예정입니다.
-- 동시에 도는 검사는 MAX_RUNNING건으로 제한합니다 (서버 보호).
+- 동시에 도는 검사는 MAX_RUNNING건, 기다리는 검사까지 합쳐 MAX_ACTIVE건으로 제한합니다 (넘으면 429).
+- SCAN_REQUIRE_AUTH=true 이면 Supabase 로그인(Bearer) 사용자만 검사를 걸고, 자기 검사만 조회합니다 (#53).
 보안엔진(security_engine/)은 저장소 루트에 있어서 경로를 한 번 추가합니다.
 """
 import asyncio
+import logging
 import sys
 import uuid
 from collections import OrderedDict
 from pathlib import Path
+from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
+from app.explain_jobs.auth import bearer, current_user
+from app.explain_jobs.config import job_settings
 from app.llm.engine_adapter import from_engine_payload
 
 _ROOT = Path(__file__).resolve().parents[3]
 if (_ROOT / "security_engine").is_dir() and str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/scans", tags=["scans"])
 
 MAX_RUNNING = 2
-MAX_KEPT = 50
+MAX_ACTIVE = 10  # 실행 중 + 대기 중. 넘으면 429로 거절해 대기열이 끝없이 쌓이지 않게 합니다
+MAX_KEPT = 50  # 끝난 검사 결과를 보관하는 건수. 진행 중인 검사는 밀어내지 않습니다
 _jobs: "OrderedDict[str, dict]" = OrderedDict()
 _slots = asyncio.Semaphore(MAX_RUNNING)
+_tasks: set[asyncio.Task] = set()  # 작업 참조를 보관해 실행 중에 가비지 컬렉션되지 않게 합니다
+
+
+def _active() -> int:
+    return sum(job["status"] in ("queued", "running") for job in _jobs.values())
+
+
+def _evict_finished() -> None:
+    finished = [k for k, job in _jobs.items() if job["status"] in ("done", "failed")]
+    for k in finished[: max(0, len(_jobs) - MAX_KEPT)]:
+        del _jobs[k]
+
+
+async def scan_user(
+    request: Request,
+    credential: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+) -> UUID | None:
+    """인증을 켰으면 로그인 사용자 ID, 껐으면(데모) None."""
+    if not job_settings.scan_require_auth:
+        return None
+    return await current_user(request, credential)
+
+
+ScanUserDep = Annotated[UUID | None, Depends(scan_user)]
 
 
 class ScanRequest(BaseModel):
@@ -60,8 +93,8 @@ def _report_scan(result: dict, llm_input: dict, repo_url: str) -> dict:
 async def _run_scan(body: "ScanRequest") -> dict:
     try:
         from security_engine import CloneError, build_llm_input, scan_repo
-    except ImportError as exc:  # 엔진 폴더가 없는 배포본
-        raise HTTPException(503, detail={"code": "ENGINE_UNAVAILABLE", "message": str(exc)}) from exc
+    except ImportError:  # 엔진 폴더가 없는 배포본
+        raise _engine_unavailable() from None
     repo_url = body.repo_url.strip()
     prev = body.previous
     if prev and (prev.get("target") or {}).get("repo_url") != repo_url:
@@ -97,29 +130,43 @@ async def _worker(job_id: str, body: "ScanRequest") -> None:
             job["status"] = "done"
         except HTTPException as exc:
             job["status"], job["error"] = "failed", exc.detail
-        except Exception as exc:  # 검사 하나가 터져도 서버는 계속
-            job["status"], job["error"] = "failed", {"code": "SCAN_ERROR", "message": f"{type(exc).__name__}: {exc}"}
+        except Exception:  # 검사 하나가 터져도 서버는 계속. 원문(경로 등)은 서버 로그에만 남깁니다
+            log.exception("scan %s failed", job_id)
+            job["status"], job["error"] = "failed", {"code": "SCAN_ERROR", "message": "검사 중 서버 오류가 났습니다. 잠시 뒤 다시 시도해 주세요."}
+    _evict_finished()
+
+
+def _engine_unavailable() -> HTTPException:
+    return HTTPException(503, detail={"code": "ENGINE_UNAVAILABLE", "message": "이 서버에는 보안엔진이 설치되어 있지 않습니다."})
 
 
 @router.post("", status_code=202)
-async def start_scan(body: ScanRequest):
+async def start_scan(body: ScanRequest, user: ScanUserDep):
     """검사를 접수합니다. 주소 형식은 바로 확인해서, 잘못된 주소는 기다리지 않고 400으로 돌려줍니다."""
-    from security_engine.git import _ALLOWED_URL  # github.com 공개 저장소 주소만
+    try:
+        from security_engine.git import _ALLOWED_URL  # github.com 공개 저장소 주소만
+    except ImportError:  # 엔진 폴더가 없는 배포본 (Compose 이미지)
+        raise _engine_unavailable() from None
 
     if not _ALLOWED_URL.match(body.repo_url.strip()):
         raise HTTPException(400, detail={"code": "CLONE_FAILED",
                                          "message": "https://github.com/<owner>/<repo> 형식의 공개 저장소 주소만 받을 수 있습니다."})
+    if _active() >= MAX_ACTIVE:
+        raise HTTPException(429, detail={"code": "SCAN_QUEUE_FULL", "message": "검사가 몰려 있습니다. 1~2분 뒤 다시 시도해 주세요."},
+                            headers={"Retry-After": "60"})
     job_id = uuid.uuid4().hex
-    _jobs[job_id] = {"job_id": job_id, "status": "queued", "repo_url": body.repo_url.strip(), "result": None, "error": None}
-    while len(_jobs) > MAX_KEPT:
-        _jobs.popitem(last=False)
-    asyncio.create_task(_worker(job_id, body))
+    _jobs[job_id] = {"job_id": job_id, "status": "queued", "repo_url": body.repo_url.strip(), "result": None, "error": None,
+                     "owner": user}
+    _evict_finished()
+    task = asyncio.create_task(_worker(job_id, body))
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/{job_id}")
-async def get_scan(job_id: str):
+async def get_scan(job_id: str, user: ScanUserDep):
     job = _jobs.get(job_id)
-    if not job:
+    if not job or job["owner"] != user:  # 남의 검사는 있는지조차 알려 주지 않습니다
         raise HTTPException(404, detail={"code": "JOB_NOT_FOUND", "message": "검사 작업을 찾을 수 없습니다 (서버 재시작 등)."})
-    return job
+    return {k: v for k, v in job.items() if k != "owner"}

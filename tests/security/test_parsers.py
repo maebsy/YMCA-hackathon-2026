@@ -1,6 +1,9 @@
 """스캐너 원본 JSON → 공통 형식 변환 (스캐너 설치 없이 돈다)."""
+import copy
 import json
 from pathlib import Path
+
+import pytest
 
 from conftest import fake_stripe_key
 
@@ -254,23 +257,46 @@ def test_clone_keeps_repository_line_endings(monkeypatch, tmp_path):
     assert args.index("core.autocrlf=false") < args.index("clone")
 
 
-# ── #92: 수정 버전 선택 ──
+# ── #92: 수정 버전 선택 (생태계별 비교, 비교 불가면 추천 보류) ──
 def test_pick_fix_version_never_suggests_a_downgrade():
     from security_engine.normalize import pick_fix_version as pick
 
-    assert pick("2.0.0", ["1.9.0"]) is None  # 이슈 재현: 예전에는 1.9.0
-    assert pick("2.0.0", ["1.9.0", "2.0.0"]) is None  # 같은 버전도 '올리기'가 아님
-    assert pick("2.0.0", ["1.9.0", "2.0.1"]) == "2.0.1"
-    assert pick(None, ["1.2.0", "1.10.0"]) == "1.10.0"  # 현재 버전을 모르면 가장 높은 후보
+    assert pick("2.0.0", ["1.9.0"], "npm") is None  # 이슈 재현: 예전에는 1.9.0
+    assert pick("2.0.0", ["1.9.0", "2.0.0"], "npm") is None  # 같은 버전도 '올리기'가 아님
+    assert pick("2.0.0", ["1.9.0", "2.0.1"], "npm") == "2.0.1"
+    assert pick(None, ["1.2.0", "1.10.0"], "npm") == "1.10.0"  # 현재 버전을 모르면 가장 높은 후보
 
 
-def test_pick_fix_version_handles_prereleases():
+def test_pick_fix_version_handles_semver_prereleases():
     from security_engine.normalize import pick_fix_version as pick
 
-    assert pick("1.2.3-beta.1", ["1.2.3", "1.2.4"]) == "1.2.3"  # 이슈 재현: 예전에는 1.2.4
-    assert pick("1.2.3", ["1.2.3-rc.1", "1.2.4"]) == "1.2.4"  # 사전 출시는 정식보다 낮음
-    assert pick("1.0.0-alpha", ["1.0.0-alpha.1", "1.0.0"]) == "1.0.0-alpha.1"
-    assert pick("v1.4.0", ["v1.4.1"]) == "v1.4.1"  # Go 모듈의 v 접두어
+    assert pick("1.2.3-beta.1", ["1.2.3", "1.2.4"], "npm") == "1.2.3"  # 이슈 재현: 예전에는 1.2.4
+    assert pick("1.2.3", ["1.2.3-rc.1", "1.2.4"], "npm") == "1.2.4"  # 사전 출시는 정식보다 낮음
+    assert pick("1.0.0-alpha", ["1.0.0-alpha.1", "1.0.0"], "npm") == "1.0.0-alpha.1"
+    assert pick("v1.4.0", ["v1.4.1"], "Go") == "v1.4.1"  # Go 모듈의 v 접두어
+
+
+def test_semver_post_suffix_and_alphanumeric_ids_are_not_upgrades():
+    """#101 리뷰 재현: SemVer에서 하이픈 꼬리표는 모두 사전 출시이고, 영숫자 식별자는 ASCII 순서로 비교한다."""
+    from security_engine.normalize import pick_fix_version as pick
+
+    assert pick("1.0.0", ["1.0.0-post1"], "npm") is None  # 1.0.0-post1 < 1.0.0 (SemVer §9)
+    assert pick("1.0.0-alpha2", ["1.0.0-alpha10"], "npm") is None  # 'alpha10' < 'alpha2' (SemVer §11)
+    assert pick("1.0.0-alpha10", ["1.0.0-alpha2"], "npm") == "1.0.0-alpha2"
+    assert pick("1.0.0-Beta", ["1.0.0-alpha"], "npm") == "1.0.0-alpha"  # 대소문자 구분: 'B'(66) < 'a'(97)
+
+
+def test_unparseable_versions_are_never_recommended():
+    from security_engine.normalize import pick_fix_version as pick
+
+    assert pick("1!1.0", ["2.0"], "PyPI") is None  # epoch 1이 더 높음: 2.0은 다운그레이드
+    assert pick("1!1.0", ["1!1.1"], "PyPI") == "1!1.1"
+    assert pick("not-a-version", ["1.2.3"], "npm") is None  # 현재 버전을 못 읽으면 보류
+    assert pick("1.2.3", ["a1b2c3d4e5f6", "1.2.4"], "npm") == "1.2.4"  # 커밋 해시 후보는 빼고 고름
+    assert pick("1.2.3", ["a1b2c3d4e5f6"], "npm") is None
+    assert pick("2.0", ["2.1-weird"], "Maven") is None  # 모르는 Maven 한정자는 비교하지 않음
+    assert pick("1.0.0", ["1.0.1.pre"], "RubyGems") is None  # 규칙을 모르는 꼬리표는 추측하지 않음
+    assert pick("1.0.0", ["1.0.1"], "RubyGems") == "1.0.1"  # 숫자만이면 비교 가능
 
 
 def test_version_key_follows_semver_precedence():
@@ -279,14 +305,52 @@ def test_version_key_follows_semver_precedence():
     # SemVer 2.0.0 명세 11번의 예시 순서
     chain = ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2",
              "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0"]
-    assert sorted(reversed(chain), key=version_key) == chain
-    assert version_key("1.0.0+build.5") == version_key("1.0.0")  # 빌드 정보는 순서에 영향 없음
-    assert version_key("1.2") == version_key("1.2.0") < version_key("1.2.1") < version_key("1.10")
+    assert sorted(reversed(chain), key=lambda v: version_key(v, "npm")) == chain
+    assert version_key("1.0.0+build.5", "npm") == version_key("1.0.0", "npm")  # 빌드 정보는 순서에 영향 없음
+    assert version_key("1.2", "npm") is None  # SemVer는 세 자리가 필요
+    assert version_key("1.2", None) == version_key("1.2.0", None) < version_key("1.10", None)
 
 
-def test_version_key_handles_common_pypi_and_maven_tags():
+def test_version_key_follows_pep440_and_maven():
     from security_engine.normalize import version_key
 
-    pypi = ["1.0.dev0", "1.0a1", "1.0b2", "1.0rc1", "1.0", "1.0.post1", "1.0.1"]
-    assert sorted(reversed(pypi), key=version_key) == pypi
-    assert version_key("2.0-SNAPSHOT") < version_key("2.0") < version_key("2.0-sp1") < version_key("2.0.1")
+    pypi = ["1.0.dev0", "1.0a1", "1.0b2", "1.0rc1", "1.0", "1.0.post1", "1.0.1", "1!0.1"]
+    assert sorted(reversed(pypi), key=lambda v: version_key(v, "PyPI")) == pypi
+    maven = ["2.0-alpha1", "2.0-beta-2", "2.0-RC1", "2.0-SNAPSHOT", "2.0", "2.0-sp1", "2.0.1"]
+    assert sorted(reversed(maven), key=lambda v: version_key(v, "Maven")) == maven
+
+
+def _osv_reintroduced(version: str, fixed: str, eco: str = "npm") -> dict:
+    """과거에 고쳐졌다가 현재 버전에서 다시 생긴 취약점 (introduced 0 → fixed → introduced 현재)."""
+    out = copy.deepcopy(OSV_OUTPUT)
+    pkg = out["results"][0]["packages"][0]
+    pkg["package"].update(version=version, ecosystem=eco)
+    pkg["groups"] = pkg["groups"][:1]
+    vuln = pkg["vulnerabilities"][0]
+    vuln["affected"][0]["package"]["ecosystem"] = eco
+    vuln["affected"][0]["ranges"] = [{"type": "SEMVER", "events": [
+        {"introduced": "0"}, {"fixed": fixed}, {"introduced": version}]}]
+    pkg["vulnerabilities"] = [vuln]
+    return out
+
+
+@pytest.mark.parametrize(("version", "fixed"), [("1.0.0", "1.0.0-post1"), ("1.0.0-alpha2", "1.0.0-alpha10")])
+def test_osv_parse_does_not_turn_lower_fixed_into_upgrade(version, fixed):
+    [f] = osv.parse(_osv_reintroduced(version, fixed), Path("/abs/site"))
+
+    assert f["package"]["fixed_versions"] == [fixed]  # 원본 정보는 그대로 남김
+    assert f["remediation"] == {"kind": "no_fix_available", "target_version": None, "autofix": None}
+
+
+def test_dependency_plan_ignores_targets_it_cannot_compare():
+    from security_engine.engine import _dependency_upgrades
+
+    def dep(fp, target):
+        return {"tool": "osv", "status": "code_issue", "fingerprint": fp, "severity": "high",
+                "package": {"ecosystem": "npm", "name": "lib", "version": "1.0.0"},
+                "location": {"file": "package-lock.json"},
+                "remediation": {"target_version": target}}
+
+    [plan] = _dependency_upgrades([dep("a", "1.0.1"), dep("b", "1.0.0-rc.9"), dep("c", "not-semver")])
+    assert plan["target_version"] == "1.0.1"  # 1.0.0-rc.9는 더 낮고, not-semver는 비교하지 않음
+    assert plan["fixes"] == ["a", "b"] and plan["unfixable"] == ["c"]

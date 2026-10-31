@@ -65,6 +65,7 @@ python -m security_engine llm-input outputs\scan2.json --text
 | `--with-registry p/default` | **내부 비교용**으로 Semgrep 레지스트리 규칙 추가 (기본은 우리 규칙만, 서비스 결과에는 쓰지 말 것). 접속 실패 시 `coverage.semgrep.registry_used=false`가 되고, 지난번 레지스트리 규칙 결과는 재검사에서 '해결'이 아니라 '확인 불가'로 남습니다 |
 | `--semgrep-config 경로` | 규칙 파일/폴더 추가 |
 | `--osv-offline` | 미리 받아둔 OSV DB만 사용 (인터넷 없을 때. 처음 한 번 `osv-scanner scan source --offline-vulnerabilities --download-offline-databases -r .`) |
+| `--no-osv-recheck` | 추천 업그레이드 버전을 OSV(`querybatch`)에 다시 조회하지 않음. 기본은 조회하며 최대 200개·15초·같은 버전 6시간 캐시. `--osv-offline`이면 자동으로 생략 |
 | `--include-raw` | 스캐너 원본을 `finding.raw`에 포함 (비밀값은 가림) |
 | `--fail-on high` | high 이상 열린 문제가 있으면 종료 코드 1 (CI용) |
 
@@ -114,7 +115,9 @@ result4 = scan("C:/code/my-site", options=opts)
   "comparison": null,                    // 재검사면 {"base_scan_id", "new", "persisting", "resolved", "unverifiable", …}
   "dependency_upgrades": [               // "lodash를 4.17.21로 올리면 2개 해결"
     {"ecosystem": "npm", "name": "lodash", "current_version": "4.17.15", "target_version": "4.17.21",
-     "lockfile": "package-lock.json", "fixes": ["osv:…", "osv:…"], "unfixable": [], "max_severity": "high"}
+     "lockfile": "package-lock.json", "fixes": ["osv:…", "osv:…"], "unfixable": [], "max_severity": "high",
+     // 추천 버전을 OSV에 다시 조회한 결과 (#109). clean / vulnerable(남은 ID·건수) / unknown(조회 실패·오프라인, 안전 단정 안 함)
+     "target_check": {"status": "clean", "remaining": [], "remaining_count": 0, "reason": null}}
   ],
   "findings": [ /* 아래 */ ]
 }

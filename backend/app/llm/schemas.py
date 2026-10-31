@@ -48,6 +48,8 @@ class FixHint(BaseModel):
     target_version: str | None = Field(default=None, max_length=100)
     lockfile: str | None = Field(default=None, max_length=500)
     command: str | None = Field(default=None, max_length=300)
+    # 추천 버전을 OSV에 다시 조회한 결과 (#109). clean=알려진 취약점 없음, vulnerable=남아 있음, unknown=확인 못 함
+    target_check: Literal["clean", "vulnerable", "unknown"] | None = None
     autofix: str | None = Field(default=None, max_length=2000)
 
 

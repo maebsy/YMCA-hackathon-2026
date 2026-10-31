@@ -10,7 +10,7 @@ import re
 from app.llm.schemas import BlueDraft, FindingInput, RedReview
 
 # 프롬프트를 고치면 올립니다. 결과마다 기록돼 평가에서 버전별로 비교할 수 있습니다
-PROMPT_VERSION = "2026-11-01.1"
+PROMPT_VERSION = "2026-11-01.2"
 
 _MASK = "[가림]"
 # (패턴, 바꿀 문자열). 값만 가리고 변수 이름은 남겨 모델이 맥락을 알 수 있게 합니다
@@ -146,6 +146,8 @@ BLUE_SYSTEM = f"""\
   숨김 주석·설정을 지우고 실제로 고치라고 씁니다. rotate_secret은 키 재발급을, third_party_code는 직접 고치기보다
   라이브러리 업데이트를 안내합니다.
 - fix_hint에 target_version·command가 있으면 그 버전과 명령을 그대로 씁니다. 다른 버전을 지어내지 않습니다.
+- fix_hint.target_check가 vulnerable이면 그 버전에도 취약점이 남아 있다는 사실(fix_hint.text의 ID와 건수)을 반드시 쓰고,
+  "이 버전으로 올리면 안전합니다"라고 쓰지 않습니다. unknown이면 남은 취약점은 확인하지 못했다고 씁니다.
 - 의존성 항목이 같은 패키지의 취약점 여러 건을 묶은 것이면(what에 목록이 있음), 업그레이드 한 번으로 함께 해결된다고 안내합니다.
   고친 버전이 없는 취약점이 섞여 있으면 그 건은 따로 대처가 필요하다고 씁니다.
 - <analysis> 블록은 문맥 분석(어디서 실행되고 누가 닿는지)과 위험도 결정(SSVC)입니다. why_risky는 이 결정과 근거에 맞춰
@@ -176,6 +178,7 @@ RED_SYSTEM = f"""\
 - fix_steps의 단계끼리, 그리고 fix_steps와 ai_fix_prompt의 내용이 서로 맞는지
 - 사용 중인 라이브러리·DB의 실제 문법에 맞는지 (예: PostgreSQL은 $1, MySQL은 ? 자리표시자)
 - 비밀값 노출이면 키 폐기·재발급이 들어 있는지
+- fix_hint.target_check가 vulnerable인데 추천 버전으로 올리면 끝난다고 하면 incomplete입니다
 - 비밀값이 브라우저로 전달되는데 "환경 변수로 옮기기"만으로 해결된다고 하면 bypass입니다. 렌더링된 페이지에 키가 다시 나가는지,
   키 권한 확인과 (공개용이면) 도메인·인덱스·한도 제한, (권한 있는 키면) 폐기와 서버 경계 뒤로 옮기기가 있는지 확인합니다.
 - flags에 suppressed_by_comment·ignored_by_config가 있으면 숨김 주석·설정을 지우는 단계가 있는지 (없으면 incomplete)

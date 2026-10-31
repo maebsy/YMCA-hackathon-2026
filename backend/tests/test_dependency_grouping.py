@@ -182,3 +182,36 @@ def test_short_titles_are_listed_as_before(payload):
 
     assert lodash.what.count("\n- CVE-") == 15
     assert lodash.what.endswith("\n- 외 5건")
+
+
+# ── #109: 추천 버전에도 남은 취약점 ──
+
+
+@pytest.mark.parametrize(
+    ("check", "expected", "status"),
+    [
+        ({"status": "vulnerable", "remaining": ["GHSA-left"], "remaining_count": 3, "reason": None},
+         "4.17.21에도 알려진 취약점 3건(GHSA-left)이 남아 있습니다", "vulnerable"),
+        ({"status": "unknown", "remaining": [], "remaining_count": None, "reason": "OSV에 추천 버전을 다시 조회하지 못했습니다"},
+         "확인하지 못했습니다(OSV에 추천 버전을 다시 조회하지 못했습니다)", "unknown"),
+        ({"status": "clean", "remaining": [], "remaining_count": 0, "reason": None}, None, "clean"),
+        (None, None, None),
+    ],
+)
+def test_package_note_reflects_target_recheck(payload, check, expected, status):
+    payload["dependency_upgrades"][0]["target_check"] = check
+    lodash = from_engine_payload(payload)[0]
+
+    assert lodash.fix_hint.target_check == status
+    if expected:
+        assert expected in lodash.fix_hint.text
+    else:
+        assert "남아 있" not in lodash.fix_hint.text and "확인하지 못했" not in lodash.fix_hint.text
+    assert lodash.fix_hint.target_version == "4.17.21"  # 목표 버전은 바꾸지 않습니다
+
+
+def test_prompt_forbids_calling_vulnerable_target_safe():
+    from app.llm import prompts
+
+    assert "target_check가 vulnerable이면" in prompts.BLUE_SYSTEM
+    assert "target_check가 vulnerable인데" in prompts.RED_SYSTEM

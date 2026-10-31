@@ -124,6 +124,20 @@ def _group_what(members: list[FindingInput]) -> str:
     return _clip("\n".join([head, *lines]), _WHAT_LIMIT)
 
 
+def _target_check_note(check: dict | None, target: str | None) -> str | None:
+    """추천 버전 재조회 결과(#109). 엔진 llm_input.target_check_note 와 같은 뜻으로 씁니다."""
+    if not isinstance(check, dict) or not target:
+        return None
+    if check.get("status") == "vulnerable":
+        ids = ", ".join(str(i) for i in (check.get("remaining") or [])[:20])
+        n = check.get("remaining_count") or len(check.get("remaining") or [])
+        return (f"주의: OSV 조회 결과 {target}에도 알려진 취약점 {n}건({ids})이 남아 있습니다. "
+                "이 버전만으로 끝나지 않으니 더 높은 버전이나 해당 취약점 대처를 함께 확인해야 합니다")
+    if check.get("status") == "unknown":
+        return f"{target}에 다른 취약점이 남아 있는지는 확인하지 못했습니다({check.get('reason') or '조회 실패'})"
+    return None
+
+
 def _package_finding(members: list[FindingInput], upgrade: dict | None) -> FindingInput:
     first = members[0]
     if len(members) == 1:
@@ -134,6 +148,9 @@ def _package_finding(members: list[FindingInput], upgrade: dict | None) -> Findi
     hint = first.fix_hint or FixHint()
     fixed_count = (upgrade or {}).get("fix_count", len(members) - len(unfixable))
     note = f"{first.package_name}을(를) {first.installed_version} → {target} 이상으로 올리면 {fixed_count}건이 함께 해결됩니다"
+    check = (upgrade or {}).get("target_check")
+    if check_note := _target_check_note(check, target):
+        note += f". {check_note}"
     if unfixable:
         note += f". 고친 버전이 없는 {len(unfixable)}건은 다른 패키지로 바꾸거나 취약한 기능을 쓰지 않도록 따로 대처해야 합니다"
 
@@ -157,7 +174,10 @@ def _package_finding(members: list[FindingInput], upgrade: dict | None) -> Findi
         snippet=first.snippet,
         what=_group_what(members),
         flags=list({f.flag: f for m in members for f in m.flags}.values())[:10],
-        fix_hint=hint.model_copy(update={"target_version": target, "text": note, "command": _command(hint, target)}),
+        fix_hint=hint.model_copy(update={
+            "target_version": target, "text": note[:1000], "command": _command(hint, target),
+            "target_check": check.get("status") if isinstance(check, dict) else None,
+        }),
         status=min((m.status for m in members if m.status), key=_STATUS_ORDER.index, default=None),
         change=min((m.change for m in members if m.change), key=_CHANGE_ORDER.index, default=None),
         covers=[m.fingerprint for m in members],

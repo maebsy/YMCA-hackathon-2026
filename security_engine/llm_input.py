@@ -97,7 +97,21 @@ def _code_block(f: dict, max_lines: int) -> str:
     return _redact("\n".join(out))
 
 
-def _fix_hint(f: dict, pkg_targets: dict | None = None) -> dict:
+def target_check_note(check: dict | None, version: str) -> str | None:
+    """추천 버전 재조회 결과(#109)를 한 문장으로. 확인하지 못했으면 안전하다고 말하지 않게 적는다."""
+    if not check:
+        return None
+    if check.get("status") == "vulnerable":
+        ids = ", ".join(check.get("remaining") or [])
+        n = check.get("remaining_count") or len(check.get("remaining") or [])
+        return (f"주의: OSV 조회 결과 {version}에도 알려진 취약점 {n}건({ids})이 남아 있음. "
+                "이 버전만으로 끝나지 않으니 더 높은 버전이나 해당 취약점 대처를 함께 확인 필요")
+    if check.get("status") == "unknown":
+        return f"{version}에 다른 취약점이 남아 있는지는 확인하지 못함({check.get('reason') or '조회 실패'})"
+    return None
+
+
+def _fix_hint(f: dict, pkg_targets: dict | None = None, pkg_checks: dict | None = None) -> dict:
     rem = f.get("remediation") or {}
     kind = rem.get("kind")
     hint = {"kind": kind}
@@ -115,6 +129,11 @@ def _fix_hint(f: dict, pkg_targets: dict | None = None) -> dict:
             tmpl = _UPGRADE_CMD.get(p["ecosystem"])
             hint["command"] = tmpl.format(name=p["name"], version=tv) if tmpl else None
             hint["text"] = f"{p['name']}을(를) {p['version']} → {tv} 이상으로 올리고 lockfile도 함께 커밋"
+            check = (pkg_checks or {}).get(key) if key in (pkg_targets or {}) else rem.get("target_check")
+            if note := target_check_note(check, tv):
+                hint["text"] += ". " + note
+            if check:
+                hint["target_check"] = check["status"]
         elif p.get("fixed_versions"):
             listed = ", ".join(p["fixed_versions"][:5])
             now = version_key(p["version"], p["ecosystem"])
@@ -152,7 +171,8 @@ def _priority(f: dict) -> tuple:
             0 if f.get("change") == "new" else 1, _where(f))
 
 
-def _item(f: dict, max_code_lines: int, pkg_targets: dict | None = None, max_what: int = 400) -> dict:
+def _item(f: dict, max_code_lines: int, pkg_targets: dict | None = None, max_what: int = 400,
+          pkg_checks: dict | None = None) -> dict:
     return {
         "id": f["fingerprint"],
         "kind": f["category"],                       # dependency | code | secret
@@ -166,7 +186,7 @@ def _item(f: dict, max_code_lines: int, pkg_targets: dict | None = None, max_wha
         "code": _code_block(f, max_code_lines),
         "rule_id": f["rule_id"],
         "cwe": f.get("cwe", []),
-        "fix_hint": _fix_hint(f, pkg_targets),
+        "fix_hint": _fix_hint(f, pkg_targets, pkg_checks),
         "flags": [{"flag": x, "note": FLAG_NOTE_KO.get(x, "")} for x in f.get("flags", [])],
         "references": f.get("references", [])[:3],
     }
@@ -185,7 +205,9 @@ def build_llm_input(result: dict, *, max_items: int = 30, include_resolved: bool
     upgrades = result.get("dependency_upgrades", [])
     pkg_targets = {(u["ecosystem"], u["name"], u["lockfile"]): u["target_version"]
                    for u in upgrades if u.get("target_version")}
-    items = [_item(f, max_code_lines, pkg_targets, max_what) for f in findings[:max_items]]
+    pkg_checks = {(u["ecosystem"], u["name"], u["lockfile"]): u.get("target_check")
+                  for u in upgrades if u.get("target_version")}
+    items = [_item(f, max_code_lines, pkg_targets, max_what, pkg_checks) for f in findings[:max_items]]
 
     not_checked = []
     for tool, c in (result.get("coverage") or {}).items():
@@ -206,7 +228,8 @@ def build_llm_input(result: dict, *, max_items: int = 30, include_resolved: bool
         "suppressions": result.get("suppressions", []),
         "dependency_upgrades": [
             {k: u[k] for k in ("ecosystem", "name", "current_version", "target_version", "lockfile", "max_severity")}
-            | {"fix_count": len(u["fixes"]), "unfixable_count": len(u["unfixable"])}
+            | {"fix_count": len(u["fixes"]), "unfixable_count": len(u["unfixable"]),
+               "target_check": u.get("target_check")}
             for u in upgrades[:max_upgrades]
         ],
         "dependency_upgrades_total": len(upgrades),   # 위 목록은 위험도 순 상위 max_upgrades개만

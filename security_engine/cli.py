@@ -88,6 +88,7 @@ def _options(a) -> ScanOptions:
         semgrep_registry=registry,
         semgrep_extra_configs=tuple(a.semgrep_config or ()),
         osv_offline=a.osv_offline,
+        osv_recheck=not getattr(a, "no_osv_recheck", False),
         timeout_sec=a.timeout,
         include_raw=a.include_raw,
     )
@@ -118,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--no-registry", action="store_true", help="(기본값과 같음, 예전 명령 호환용)")
     s.add_argument("--semgrep-config", action="append", help="추가 Semgrep 규칙 파일/폴더")
     s.add_argument("--osv-offline", action="store_true", help="미리 받은 OSV DB만 사용 (인터넷 없이)")
+    s.add_argument("--no-osv-recheck", action="store_true", help="추천 업그레이드 버전의 남은 취약점 재조회를 끔")
     s.add_argument("--timeout", type=int, default=600, help="도구당 제한 시간(초), 기본 600")
     s.add_argument("--include-raw", action="store_true", help="스캐너 원본을 finding.raw에 포함")
     s.add_argument("--compact", action="store_true", help="JSON 한 줄로")

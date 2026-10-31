@@ -156,6 +156,46 @@ def test_http_query_rejects_partial_answers(monkeypatch, payload):
         osv_recheck._http_query([("npm", "lib", "1.2.0")])
 
 
+@pytest.mark.parametrize("result", [
+    None, False, [], "invalid", {"vulns":None}, {"vulns":{}}, {"vulns":"invalid"},
+    {"vulns":[None]}, {"vulns":[{}]}, {"vulns":[{"id":None}]}, {"vulns":[{"id":123}]},
+    {"vulns":[{"id":""}]}, {"vulns":[{"id":"  "}]}, {"next_page_token":False},
+])
+def test_malformed_response_is_unknown_and_not_cached(monkeypatch, result):
+    monkeypatch.setattr(osv_recheck.urllib.request, "urlopen", _fake_urlopen({"results":[result]}))
+    finding = dep("a", "1.2.0")
+    osv_recheck.recheck([finding])
+    assert finding["remediation"]["target_check"]["status"] == "unknown"
+    calls = []
+
+    def valid_query(keys):
+        calls.append(keys)
+        return [["GHSA-left"]]
+
+    osv_recheck.recheck([finding], query=valid_query)
+    assert len(calls) == 1  # The malformed result must not enter the six-hour cache.
+    assert finding["remediation"]["target_check"]["status"] == "vulnerable"
+
+
+@pytest.mark.parametrize("result", [{}, {"vulns":[]}, {"vulns":[], "next_page_token":""}])
+def test_valid_empty_response_remains_clean(monkeypatch, result):
+    monkeypatch.setattr(osv_recheck.urllib.request, "urlopen", _fake_urlopen({"results":[result]}))
+    finding = dep("a", "1.2.0")
+    osv_recheck.recheck([finding])
+    assert finding["remediation"]["target_check"]["status"] == "clean"
+
+
+def test_malformed_batch_does_not_cache_partial_success(monkeypatch):
+    payload = {"results":[{"vulns":[{"id":"GHSA-left"}]}, None]}
+    monkeypatch.setattr(osv_recheck.urllib.request, "urlopen", _fake_urlopen(payload))
+    findings = [dep("a", "1.2.0"), dep("b", "2.0.0")]
+    osv_recheck.recheck(findings)
+    assert all(f["remediation"]["target_check"]["status"] == "unknown" for f in findings)
+    query = FakeOSV({})
+    osv_recheck.recheck(findings, query=query)
+    assert len(query.calls[0]) == 2
+
+
 def _scan_result(findings):
     return {"scan_id": "s", "scanned_at": "2026-11-01T00:00:00Z", "target": {}, "status": "complete",
             "comparison": None, "summary": {}, "coverage": {}, "suppressions": [],

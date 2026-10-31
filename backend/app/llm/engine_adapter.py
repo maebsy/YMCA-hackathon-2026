@@ -149,8 +149,22 @@ def _package_finding(members: list[FindingInput], upgrade: dict | None) -> Findi
     fixed_count = (upgrade or {}).get("fix_count", len(members) - len(unfixable))
     note = f"{first.package_name}을(를) {first.installed_version} → {target} 이상으로 올리면 {fixed_count}건이 함께 해결됩니다"
     check = (upgrade or {}).get("target_check")
+    check_status = check.get("status") if isinstance(check, dict) else None
     if check_note := _target_check_note(check, target):
         note += f". {check_note}"
+    elif check_status is None:
+        # upgrades 요약은 상위 10개뿐이어도 각 item에는 묶음 목표의 조회 결과가 남아 있습니다.
+        # 다른 버전의 판정을 가져오지 않고, 같은 목표에 대한 가장 보수적인 상태를 유지합니다.
+        order = {"vulnerable": 0, "unknown": 1, "clean": 2}
+        fallback = min((m.fix_hint for m in members if m.fix_hint
+                        and m.fix_hint.target_version == target and m.fix_hint.target_check),
+                       key=lambda h: (order[h.target_check], not h.text), default=None)
+        if fallback:
+            check_status = fallback.target_check
+            if check_status != "clean":
+                warning = fallback.text or (f"{target}에도 알려진 취약점이 남아 있습니다" if check_status == "vulnerable"
+                                            else f"{target}에 다른 취약점이 남아 있는지는 확인하지 못했습니다")
+                note = f"{warning}. {note}"  # 길이 제한으로 잘려도 경고를 먼저 보존합니다.
     if unfixable:
         note += f". 고친 버전이 없는 {len(unfixable)}건은 다른 패키지로 바꾸거나 취약한 기능을 쓰지 않도록 따로 대처해야 합니다"
 
@@ -176,7 +190,7 @@ def _package_finding(members: list[FindingInput], upgrade: dict | None) -> Findi
         flags=list({f.flag: f for m in members for f in m.flags}.values())[:10],
         fix_hint=hint.model_copy(update={
             "target_version": target, "text": note[:1000], "command": _command(hint, target),
-            "target_check": check.get("status") if isinstance(check, dict) else None,
+            "target_check": check_status,
         }),
         status=min((m.status for m in members if m.status), key=_STATUS_ORDER.index, default=None),
         change=min((m.change for m in members if m.change), key=_CHANGE_ORDER.index, default=None),

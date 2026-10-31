@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, CircleHelp, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, CircleHelp } from "lucide-react";
 import IncidentWorkspace from "./incident-workspace";
 
 type View = "incident" | "help";
@@ -10,8 +10,7 @@ const titles: Record<View, [string, string, string]> = {
   help: ["HELP & SCOPE", "시작하기 전에 알아두세요.", "GitHub 저장소 검사부터 수정 안내와 결과 전달까지 안내합니다."],
 };
 function Help() {
-  return <div className="help-layout">
-    <section className="help-content">
+  return <section className="help-content">
       <article className="card">
         <CircleHelp size={24} className="accent"/><h2>GitHub 주소로 시작하고, 한 단계씩.</h2>
         <ol className="repair-steps">
@@ -34,14 +33,7 @@ function Help() {
           <div><dt>신고·통지와 기한</dt><dd>기관 신고와 정보주체 통지는 별도입니다. 통지 의무와 유출 가능성 통지는 현재 자동 판정 범위에 포함되지 않습니다. 초안의 법령·제재 안내와 최신 서식은 공식 기관에서 확인하세요. 문서 생성·다운로드는 기관 접수나 통지 완료를 뜻하지 않습니다. 신고 기한은 사고 인지 시각 기준이며 검사 후 수정에 걸린 시간과 구분합니다.</dd></div>
         </dl>
       </article>
-    </section>
-    <aside className="card help-aside">
-      <ShieldAlert size={25} className="accent"/><h3>조치 표시와 검증은 달라요.</h3>
-      <p className="muted">수동 조치는 재검증 대기입니다. 엔진이 반환한 코드 해결 상태만 ‘해결 확인’으로 집계합니다. 실제 코드와 배포 환경에서 정상 기능도 함께 확인하세요.</p>
-      <Link className="button primary" href="/">저장소 검사 시작하기 <ArrowRight size={16}/></Link>
-      <Link className="text-link" href="/incident">검사 없이 사고 신고 준비 <ArrowRight size={15}/></Link>
-    </aside>
-  </div>;
+  </section>;
 }
 
 export default function Workspace({ view }: { view: View }) {

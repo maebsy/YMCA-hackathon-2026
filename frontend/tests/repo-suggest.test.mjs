@@ -37,6 +37,8 @@ const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, s
 test("repository prefix accepts GitHub and Pages forms with optional HTTPS", () => {
   const { parseRepoPrefix } = loadSuggestions();
   for (const [value, owner, partial] of [
+    ["alice/", "alice", ""],
+    ["Alice/Function_face-1.0", "Alice", "Function_face-1.0"],
     ["github.com/alice/", "alice", ""],
     ["https://github.com/alice/f", "alice", "f"],
     ["alice.github.io/", "alice", ""],
@@ -549,4 +551,26 @@ test("empty public repository response closes the menu without an error announce
   assert.equal(hook.output.announcement, "");
   assert.equal(hook.value, "github.com/alice/");
   hook.unmount();
+});
+
+
+test("short owner prefetch and completion preserve the short input", async () => {
+  const calls = [];
+  const hook = mountAutocomplete(async owner => { calls.push(owner); return ["function-face", "future"]; });
+  hook.change("alice"); hook.advance(349); assert.deepEqual(calls, []);
+  hook.advance(1); assert.deepEqual(calls, ["alice"]);
+  hook.change("alice/"); assert.equal(hook.output.open, true); assert.equal(hook.output.loading, true);
+  await hook.settle(); assert.equal(hook.output.suggestions.length, 2);
+  hook.change("alice/f"); await hook.settle();
+  assert.equal(hook.value, "alice/function-face");
+  assert.equal(hook.input.selectionStart, "alice/f".length);
+  hook.output.select("future"); assert.equal(hook.value, "alice/future");
+  hook.unmount();
+});
+
+test("fixed prefix hides for addresses and Pages and rejects short domain lookalikes", () => {
+  const { showGithubPrefix, parseRepoPrefix } = loadSuggestions();
+  for (const value of ["", "alice", "alice/repo"]) assert.equal(showGithubPrefix(value), true);
+  for (const value of ["HTTP://example.com", "https://github.com/x/y", "GitHub.COM/x/y", "Alice.GITHUB.IO"]) assert.equal(showGithubPrefix(value), false);
+  for (const value of ["example.com/repo", "alice.github.io.evil/repo", "-alice/repo", "a--b/repo"]) assert.equal(parseRepoPrefix(value), null);
 });

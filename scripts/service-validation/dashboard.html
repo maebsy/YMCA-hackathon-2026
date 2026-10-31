@@ -1,0 +1,35 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>72hours · 실서비스 검증</title><style>
+:root{color-scheme:dark}body{margin:0;background:#0c1220;color:#e6edf8;font:15px/1.65 system-ui}main{max-width:1160px;margin:40px auto;padding:24px}h1{font-size:38px;letter-spacing:-1px}h2{font-size:22px}h3{font-size:17px}section,article{border:1px solid #34415c;background:#151e30;border-radius:14px;padding:22px;margin:20px 0}p{overflow-wrap:anywhere}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}.metric{background:#1e2b43;padding:16px;border-radius:8px}.metric b{font-size:26px;display:block}.pass{color:#6de0b2}.fail{color:#ff9292}.warn,.review_required{color:#f6cb75}.running{color:#a1bfff}.skipped{color:#adb6ca}small,.muted{color:#adb6ca}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;border-bottom:1px solid #34415c;vertical-align:top}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1220;padding:15px;border-radius:8px}details{margin:12px 0}summary{cursor:pointer}a{color:#a9c9ff}img{max-width:100%;border:1px solid #34415c}button{background:#8bb6ff;color:#0c1220;border:0;border-radius:6px;padding:10px;cursor:pointer}.scroll{overflow-x:auto}.badge{padding:3px 9px;border:1px solid currentColor;border-radius:16px;margin-right:8px}
+</style><main><p class="muted">72HOURS / LIVE SERVICE VALIDATION</p><h1>실제 검사, 근거로 확인하기</h1>
+<p>공개 GitHub → 보안엔진 → GPU Blue·Red → 리포트 → 재검사·MCP</p>
+<p id="updated"></p><p id="notice"></p><button id="refresh">지금 새로고침</button><div id="overview" class="grid"></div>
+<section><h2>서비스·브라우저·MCP 확인</h2><div id="global"></div></section><div id="cases"></div>
+<section><h2>운영 스냅샷 (선택)</h2><div id="operations">SSH 조회를 설정하지 않았거나 아직 수집 전입니다.</div></section>
+<section><h2>진행 기록</h2><div id="events"></div></section>
+<p class="muted">통과는 이 실행에서 확인한 통신·계약·일치 검사의 통과입니다. 취약점 정확도 100%, 실제 공격 방어, 미분석 코드의 안전을 의미하지 않습니다. 최종 설명의 의미와 수정 적합성은 코드 리뷰가 필요합니다.</p></main>
+<script id="initial" type="application/json">__INITIAL_DATA__</script><script>
+'use strict';
+const labels={pass:'통과',fail:'실패',warn:'검토 필요',skipped:'미실행',running:'진행 중',passed:'검증 통과',failed:'실패 발견',review_required:'검토 필요',interrupted:'중단',done:'완료',incomplete:'미완료'};
+function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=typeof text==='string'?text:JSON.stringify(text,null,2);if(cls)n.className=cls;return n;}
+function badge(status){return node('span',labels[status]||status,'badge '+status);}
+function checks(parent,items){for(const c of items||[]){const d=node('details');const s=node('summary');s.append(badge(c.status),document.createTextNode(c.name));d.append(s,node('pre',c.detail));parent.append(d);}}
+function link(parent,path,title){if(!/^[a-z0-9-]+\.(html|png)$/.test(path||''))return;const a=node('a',title);a.href=path;a.target='_blank';a.rel='noopener';parent.append(a,document.createElement('br'));}
+function render(data){
+ document.getElementById('updated').textContent='최근 기록 '+data.updated_at+' · '+(labels[data.status]||data.status);
+ document.getElementById('notice').textContent=data.notice;
+ const all=[...(data.checks||[]),...(data.cases||[]).flatMap(c=>c.checks||[]),...(data.browser?.checks||[])];
+ const overview=document.getElementById('overview');overview.replaceChildren();
+ for(const [label,value,cls] of [['저장소 실행',(data.cases||[]).length,''],['통과',all.filter(c=>c.status==='pass').length,'pass'],['실패',all.filter(c=>c.status==='fail').length,'fail'],['검토 필요',all.filter(c=>c.status==='warn').length,'warn'],['미실행',all.filter(c=>c.status==='skipped').length,'skipped']]){const d=node('div',undefined,'metric');d.append(node('b',String(value),cls),node('span',label));overview.append(d);}
+ const global=document.getElementById('global');global.replaceChildren();checks(global,data.checks);if(data.browser){checks(global,data.browser.checks);for(const p of data.browser.screenshots||[])link(global,p,'브라우저 실제 화면 보기');}
+ const cases=document.getElementById('cases');cases.replaceChildren();
+ for(const c of data.cases||[]){const card=node('article');const heading=node('h2',c.repository+' · 실행 '+c.cycle);card.append(heading,badge(c.status),node('p',c.source||c.scan_job||'검사 정보 없음','muted'));
+ const grid=node('div',undefined,'grid');for(const [k,v] of [['엔진 탐지',c.engine_finding_count],['LLM 입력 묶음',c.llm_input_groups],['실제 LLM 분석',(c.analyses||[]).length],['미분석 묶음',c.unanalysed_groups]]){const d=node('div',undefined,'metric');d.append(node('b',v===undefined?'—':String(v)),node('span',k));grid.append(d);}card.append(grid);
+ const table=node('table');const header=node('tr');for(const t of ['보안엔진','실제 상태','탐지 수','시간(초)'])header.append(node('th',t));table.append(header);for(const e of c.engines||[]){const row=node('tr');for(const t of [e.engine||e.tool,e.status,e.count,e.duration_sec])row.append(node('td',String(t??'—')));table.append(row);}const wrap=node('div',undefined,'scroll');wrap.append(table);card.append(wrap);
+ for(const a of c.analyses||[]){const d=node('details');d.append(node('summary','Blue / Red · '+a.fingerprint));d.append(node('p',a.input),node('p','모델 '+a.model+' · '+a.prompt_version+' · '+a.completion_tokens+' tokens · '+a.latency_ms+' ms'),node('h3','Blue 결과'),node('p',a.summary),node('p',a.why_risky),node('h3','실제 Red 라운드'),node('pre',a.red_rounds),node('h3','수정 제안 (실행하지 않음)'),node('pre',a.ai_fix_prompt));card.append(d);}
+ for(const r of c.reports||[])link(card,r.path,r.label);const detail=node('details');detail.append(node('summary','단계별 검증 근거'));checks(detail,c.checks);card.append(detail);cases.append(card);}
+ const events=document.getElementById('events');events.replaceChildren();for(const e of (data.events||[]).slice(-30).reverse())events.append(node('p',e.at+' · '+e.stage+' · '+e.message));
+}
+async function refresh(){if(location.protocol==='file:')return;try{const r=await fetch('results.json',{cache:'no-store'});if(!r.ok)throw Error();render(await r.json());}catch{document.getElementById('updated').textContent+=' · 갱신 실패: 마지막 기록을 표시합니다.';}try{const r=await fetch('operations.json',{cache:'no-store'});if(r.ok){const d=await r.json();const v=document.getElementById('operations');v.replaceChildren(node('p',d.notice),node('pre',d.samples.slice(-1)[0]));const peak=Math.max(0,...d.samples.flatMap(s=>(s.gpu?.devices||[]).map(g=>g.utilization_percent)));v.append(node('p','이 실행에서 관측한 GPU 최대 사용률: '+peak+'%'));}}catch{/* optional operational evidence */}}
+render(JSON.parse(document.getElementById('initial').textContent));document.getElementById('refresh').addEventListener('click',refresh);if(location.protocol!=='file:')setInterval(refresh,5000);
+</script></html>

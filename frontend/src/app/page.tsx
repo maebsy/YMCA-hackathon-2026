@@ -9,8 +9,6 @@ import {
   ShieldAlert,
   Sparkles,
   Clock,
-  ShieldCheck,
-  Layers,
   Cpu,
   ChevronLeft,
   ChevronRight,
@@ -203,6 +201,25 @@ export default function Home() {
   const [remainingSeconds, setRemainingSeconds] = useState(
     61 * 3600 + 12 * 60 + 40
   );
+  // 히어로 3대 인텔리전스 렌즈 (AI Spera CTI · VibeAppScanner 등급 · AhnLab Agentic AI)
+  const [heroLens, setHeroLens] = useState<"cti" | "vibe" | "agentic">("cti");
+
+  const openFindings = findings.filter((f) => !f.fixed);
+  const actOpenCount = openFindings.filter((f) => f.decision === "act").length;
+  const ctiRiskScore =
+    openFindings.length === 0
+      ? 12
+      : Math.min(98, 32 + actOpenCount * 35 + openFindings.length * 7);
+  const ctiRiskLabel =
+    ctiRiskScore >= 80
+      ? "CRITICAL"
+      : ctiRiskScore >= 55
+        ? "HIGH"
+        : ctiRiskScore >= 30
+          ? "MEDIUM"
+          : "SAFE";
+  const vibeGrade =
+    openFindings.length === 0 ? "A+" : actOpenCount > 0 ? "D-" : "B+";
 
   useEffect(() => {
     const scan = reportInput?.scan;
@@ -583,100 +600,239 @@ export default function Home() {
           </div>
         </header>
 
-        {/* 히어로: 미니멀 1줄 카피 + 120fps 중앙 물결 검색창 + 툴팁 KPI 칩 */}
+        {/* =========================================================
+            히어로: AI Spera(CTI 검색·위험도) × VibeAppScanner(바이브코딩 등급·스택) × AhnLab(에이전틱 AI 위협 브리핑) 결합
+        ========================================================= */}
         <section id="top" className="space-y-4">
-          <div className="text-center space-y-1.5">
+          {/* 1) AhnLab AI PLUS 스타일 상단 실시간 위협 인텔리전스 티커 & 3대 렌즈 스위처 */}
+          <div className="max-w-4xl mx-auto px-3.5 py-2 rounded-2xl bg-white/90 border border-sky-200/80 shadow-2xs flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-[#0284C7] to-[#0D9488] text-white font-mono text-[10px] font-extrabold">
+                ● LIVE CTI
+              </span>
+              <span className="truncate">
+                {heroLens === "cti" &&
+                  "AI Spera형 위협 헌팅: 노출된 비밀키 · 미인증 API · CVE 실시간 매핑"}
+                {heroLens === "vibe" &&
+                  "VibeScanner형 진단: AI 코딩툴이 놓친 RLS·결제 변조 즉시 등급 산출"}
+                {heroLens === "agentic" &&
+                  "AhnLab AI PLUS형 방어: 로컬 L4 GPU Blue(패치)–Red(모의해킹) 자율 검증"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              {(
+                [
+                  { id: "cti", label: "🔍 CTI 헌팅" },
+                  { id: "vibe", label: "⚡ 바이브 등급" },
+                  { id: "agentic", label: "🛡️ 에이전틱 AI" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setHeroLens(tab.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                    heroLens === tab.id
+                      ? "bg-[#E0F2FE] text-[#0284C7] border border-sky-300"
+                      : "text-slate-500 hover:bg-slate-100"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 2) 히어로 메인 타이틀 & VibeAppScanner 스타일 바이브코딩 생태계 호환 배지 */}
+          <div className="text-center space-y-2.5">
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-slate-900">
               찾고, 고치고,{" "}
               <span className="bg-gradient-to-r from-[#0284C7] to-[#0D9488] bg-clip-text text-transparent">
                 72시간 안에 끝냅니다.
               </span>
             </h1>
-            <p className="text-xs sm:text-sm text-slate-500">
-              4대 보안 엔진 스캔 후 로컬 GPU Red–Blue 검증을 통과한 수정 프롬프트만
-              코딩툴(MCP)로 전달합니다.
-            </p>
+
+            {/* VibeAppScanner 스타일: AI 코딩 스택 & 4대 사각지대 레이더 칩 (호버 시 툴팁) */}
+            <div className="flex items-center justify-center gap-1.5 flex-wrap max-w-3xl mx-auto">
+              <span className="text-[11px] font-mono font-bold text-slate-400 mr-1">
+                Built for Vibe Stack:
+              </span>
+              {[
+                {
+                  name: "Cursor · Claude Code",
+                  tip: "MCP(list_findings / get_fix_prompt)로 검증된 패치 프롬프트를 에이전트에 즉시 주입합니다.",
+                },
+                {
+                  name: "Lovable · Bolt · v0",
+                  tip: "AI 앱 생성기가 자주 누락하는 클라이언트 비밀키 노출 및 인증 우회를 집중 탐지합니다.",
+                },
+                {
+                  name: "Supabase RLS",
+                  tip: "service_role 관리자 키 브라우저 노출 및 테이블 RLS 미설정 사각지대를 잡아냅니다.",
+                },
+                {
+                  name: "Next.js · FastAPI",
+                  tip: "Route Handler 금액 변조·권한 누락 및 package-lock.json 신규 CVE를 매일 대조합니다.",
+                },
+              ].map((stack) => (
+                <div
+                  key={stack.name}
+                  className="group relative inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/90 border border-sky-200/80 text-[11px] font-mono font-bold text-slate-600 hover:border-[#0284C7] hover:text-[#0284C7] cursor-help transition"
+                >
+                  <span>{stack.name}</span>
+                  <div className="SmartTooltip">{stack.tip}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* 120fps 고프레임 중앙 물결 검색창 & 하단 0%~100% 카운트업 */}
+          {/* 3) 120fps 고프레임 중앙 물결 검색창 & 하단 0%~100% 카운트업 (AI Spera Quick Query 포함) */}
           <LiquidSearchBox
             ref={heroSearchRef}
             repoInput={repoInput}
             onChangeRepoInput={setRepoInput}
-            onTriggerScan={() => handleRunScan(repoInput)}
+            onTriggerScan={(customTarget) =>
+              handleRunScan(customTarget || repoInput)
+            }
             mode="hero"
           />
 
-          {/* 4대 핵심 KPI 미니 칩 (마우스 호버 시 툴팁으로 상세 설명 표시) */}
+          {/* 4) 3사 결합 히어로 인텔리전스 보드 (Vibe 등급 + Criminal IP 5단계 위험도 + AhnLab Agentic + 72H 타이머) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-w-4xl mx-auto">
-            <div className="group relative p-3 rounded-xl bg-white border border-sky-100 shadow-2xs flex items-center justify-between cursor-help">
+            {/* 카드 1: VibeAppScanner 스타일 실시간 보안 등급 (D- -> A+) */}
+            <div
+              onClick={() => {
+                const topFinding = openFindings[0] || findings[0];
+                if (topFinding) setDrawerFinding(topFinding);
+              }}
+              className="group relative p-3 rounded-xl bg-white border border-sky-200/80 shadow-2xs flex items-center justify-between cursor-pointer hover:border-[#0284C7] transition"
+            >
               <div>
                 <span className="text-[10.5px] font-mono font-bold text-[#0284C7] block">
-                  72H 골든타임
+                  VIBE SECURITY GRADE
+                </span>
+                <div className="flex items-baseline gap-2">
+                  <strong
+                    className={`font-mono text-xl font-black ${
+                      vibeGrade === "A+"
+                        ? "text-[#0D9488]"
+                        : vibeGrade === "B+"
+                          ? "text-amber-500"
+                          : "text-[#EF4444]"
+                    }`}
+                  >
+                    {vibeGrade}
+                  </strong>
+                  <span className="text-[11px] font-bold text-slate-500">
+                    미해결 {openFindings.length}건
+                  </span>
+                </div>
+              </div>
+              <span className="px-2 py-1 rounded-lg bg-sky-50 text-[#0284C7] font-mono text-[10px] font-extrabold">
+                상세 ▶
+              </span>
+              <div className="SmartTooltip">
+                VibeAppScanner 방식의 실시간 보안 등급입니다. 카드를 클릭하면 최우선
+                취약점의 AI 수정 프롬프트 슬라이드가 열립니다.
+              </div>
+            </div>
+
+            {/* 카드 2: AI Spera (Criminal IP) 스타일 5단계 CTI 위험도 점수 */}
+            <div className="group relative p-3 rounded-xl bg-[#F0F9FF] border border-sky-200/80 flex flex-col justify-between cursor-help">
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] font-mono font-bold text-[#0284C7]">
+                  CTI RISK SCORE
+                </span>
+                <span
+                  className={`font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                    ctiRiskScore >= 80
+                      ? "bg-red-100 text-red-600"
+                      : ctiRiskScore >= 55
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-teal-100 text-teal-700"
+                  }`}
+                >
+                  {ctiRiskLabel}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between mt-0.5">
+                <strong className="font-mono text-base font-black text-slate-900">
+                  {ctiRiskScore}
+                  <span className="text-xs text-slate-400 font-normal">
+                    /100
+                  </span>
+                </strong>
+                <span className="text-[11px] font-bold text-[#EF4444]">
+                  act {actOpenCount}건
+                </span>
+              </div>
+              {/* 5단계 미니 게이지 바 */}
+              <div className="grid grid-cols-5 gap-1 mt-1.5">
+                {[20, 40, 60, 80, 95].map((lv, i) => (
+                  <span
+                    key={lv}
+                    className={`h-1.5 rounded-full ${
+                      ctiRiskScore >= lv
+                        ? i >= 3
+                          ? "bg-[#EF4444]"
+                          : i === 2
+                            ? "bg-amber-400"
+                            : "bg-[#0284C7]"
+                        : "bg-sky-200/60"
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="SmartTooltip">
+                AI Spera(Criminal IP)의 5단계 위험도 지표와 CISA SSVC(act·attend·track*)를
+                결합한 노출 위험 점수입니다.
+              </div>
+            </div>
+
+            {/* 카드 3: AhnLab AI PLUS 스타일 에이전틱 Red–Blue 검증 */}
+            <div
+              onClick={() => setSlideIndex(1)}
+              className="group relative p-3 rounded-xl bg-[#F0FDFA] border border-teal-200/80 flex items-center justify-between cursor-pointer hover:border-[#0D9488] transition"
+            >
+              <div>
+                <span className="text-[10.5px] font-mono font-bold text-[#0D9488] block">
+                  AGENTIC RED–BLUE
+                </span>
+                <strong className="text-base font-black text-[#0D9488]">
+                  검증 성공 96%
+                </strong>
+                <span className="block text-[10.5px] text-slate-500 font-semibold">
+                  L4 GPU 자율 공방
+                </span>
+              </div>
+              <Cpu className="w-4 h-4 text-[#0D9488]" />
+              <div className="SmartTooltip">
+                AhnLab AI PLUS 스타일의 에이전틱 방어: 로컬 GPU에서 Blue(패치)와
+                Red(공격)가 자율 공방을 거쳐 검증된 조치만 전달합니다. (클릭 시 비교표 이동)
+              </div>
+            </div>
+
+            {/* 카드 4: 72H 골든타임 SLA & Zero-Retention */}
+            <div
+              onClick={() => setSlideIndex(2)}
+              className="group relative p-3 rounded-xl bg-white border border-teal-200/80 shadow-2xs flex items-center justify-between cursor-pointer hover:border-[#0D9488] transition"
+            >
+              <div>
+                <span className="text-[10.5px] font-mono font-bold text-[#0D9488] block">
+                  72H GOLDEN TIME
                 </span>
                 <strong className="font-mono text-base font-black text-slate-900">
                   {formatCountdown()}
                 </strong>
+                <span className="block text-[10.5px] text-[#0284C7] font-bold">
+                  원본 즉시 파기 100%
+                </span>
               </div>
               <Clock className="w-4 h-4 text-[#0284C7]" />
               <div className="SmartTooltip">
-                취약점 최초 탐지 후 72시간 이내에 패치·재검사를 완료하도록 돕는
-                실시간 타이머입니다.
-              </div>
-            </div>
-
-            <div className="group relative p-3 rounded-xl bg-[#F0F9FF] border border-sky-200/70 flex items-center justify-between cursor-help">
-              <div>
-                <span className="text-[10.5px] font-mono font-bold text-[#0284C7] block">
-                  SSVC 우선순위
-                </span>
-                <strong className="text-base font-black text-slate-900">
-                  즉시 조치{" "}
-                  <span className="text-[#EF4444]">
-                    {
-                      findings.filter((f) => f.decision === "act" && !f.fixed)
-                        .length
-                    }
-                    건
-                  </span>
-                </strong>
-              </div>
-              <ShieldCheck className="w-4 h-4 text-[#0284C7]" />
-              <div className="SmartTooltip">
-                CISA SSVC 기준으로 act(지금 바로), attend(이번 주), track*(지켜보기)
-                순으로 분류합니다.
-              </div>
-            </div>
-
-            <div className="group relative p-3 rounded-xl bg-[#F0FDFA] border border-teal-200/70 flex items-center justify-between cursor-help">
-              <div>
-                <span className="text-[10.5px] font-mono font-bold text-[#0D9488] block">
-                  GPU Red–Blue
-                </span>
-                <strong className="text-base font-black text-[#0D9488]">
-                  성공률 96%
-                </strong>
-              </div>
-              <Cpu className="w-4 h-4 text-[#0D9488]" />
-              <div className="SmartTooltip">
-                로컬 L4 GPU에서 Blue(수정안)와 Red(우회 공격)가 최대 2회 검증하여
-                기능 파괴 없이 패치합니다.
-              </div>
-            </div>
-
-            <div className="group relative p-3 rounded-xl bg-white border border-teal-100 shadow-2xs flex items-center justify-between cursor-help">
-              <div>
-                <span className="text-[10.5px] font-mono font-bold text-[#0D9488] block">
-                  Zero-Retention
-                </span>
-                <strong className="text-base font-black text-slate-900">
-                  즉시 파기 100%
-                </strong>
-              </div>
-              <Layers className="w-4 h-4 text-[#0D9488]" />
-              <div className="SmartTooltip">
-                검사 직후 수집된 원본 소스코드를 서버에서 즉시 삭제하고 정규화 JSON만
-                남깁니다.
+                법정 24h(KISA)·72h(개보위) 골든타임 타이머입니다. 검사 직후 원본 코드는
+                즉시 파기(Zero-Retention)됩니다. (클릭 시 신고 코파일럿 이동)
               </div>
             </div>
           </div>

@@ -265,11 +265,33 @@
       </div>
     </header>
 
-    <!-- Hero & 120fps Liquid Search Box -->
+    <!-- Hero: AI Spera (Criminal IP) × VibeAppScanner × AhnLab AI PLUS Mix-and-Match -->
     <section class="hero">
-      <div class="hero-badge">● 120FPS LIQUID SCAN · 찾고, 고치고, 72시간 안에 끝냅니다</div>
-      <h1>맑은 물결로 채우는 <span>0% → 100% 스마트 보안</span></h1>
+      <!-- 1) AhnLab AI PLUS 스타일 상단 LIVE CTI 티커 & 3대 인텔리전스 렌즈 -->
+      <div style="max-width:820px;margin:0 auto 14px;padding:8px 14px;border-radius:14px;background:rgba(255,255,255,0.92);border:1px solid rgba(56,189,248,0.3);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;text-align:left;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:#1e293b;">
+          <span class="mono" style="padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,#0284c7,#0d9488);color:#fff;font-size:10px;">● LIVE CTI</span>
+          <span id="heroLensText">AI Spera형 위협 헌팅: 노출된 비밀키 · 미인증 API · CVE 실시간 매핑</span>
+        </div>
+        <div style="display:flex;gap:4px;">
+          <button class="nav-btn active" style="padding:4px 9px;font-size:11px;" onclick="setHeroLens('cti', this)">🔍 CTI 헌팅</button>
+          <button class="nav-btn" style="padding:4px 9px;font-size:11px;" onclick="setHeroLens('vibe', this)">⚡ 바이브 등급</button>
+          <button class="nav-btn" style="padding:4px 9px;font-size:11px;" onclick="setHeroLens('agentic', this)">🛡️ 에이전틱 AI</button>
+        </div>
+      </div>
 
+      <h1>찾고, 고치고, <span>72시간 안에 끝냅니다.</span></h1>
+
+      <!-- 2) VibeAppScanner 스타일 바이브코딩 생태계 호환 칩 -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;margin:-6px auto 16px;max-width:780px;">
+        <span class="mono" style="font-size:11px;font-weight:700;color:#64748b;">Built for Vibe Stack:</span>
+        <span class="mono" style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:#fff;border:1px solid rgba(56,189,248,0.35);color:#334155;">Cursor · Claude Code (MCP)</span>
+        <span class="mono" style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:#fff;border:1px solid rgba(56,189,248,0.35);color:#334155;">Lovable · Bolt · v0</span>
+        <span class="mono" style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:#fff;border:1px solid rgba(56,189,248,0.35);color:#334155;">Supabase RLS</span>
+        <span class="mono" style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:#fff;border:1px solid rgba(56,189,248,0.35);color:#334155;">Next.js · FastAPI</span>
+      </div>
+
+      <!-- 3) 120fps 중앙 물결 검색창 + AI Spera Quick Query 태그 + 하단 0%~100% 카운트업 -->
       <div class="liquid-wrap">
         <div class="liquid-shell">
           <div id="liquidFill" class="liquid-fill" style="width:100%;">
@@ -279,60 +301,69 @@
             <div class="liquid-input-box">
               <div class="liquid-icon">🔍</div>
               <div style="flex:1;">
-                <div class="mono" id="liquidTopBadge" style="font-size:10.5px;font-weight:800;color:#0369a1;">REPOSITORY SCAN · 100% COMPLETE</div>
+                <div class="mono" id="liquidTopBadge" style="font-size:10.5px;font-weight:800;color:#0369a1;">CTI &amp; VIBE CODE OMNI-SCANNER · 100% COMPLETE</div>
                 <input id="repoInput" class="liquid-input mono" value="https://github.com/minji-cafe/order-site" />
               </div>
             </div>
-            <button class="btn-primary" onclick="playLiquidScan()" id="scanBtn">✨ 스캔 시작</button>
+            <button class="btn-primary" onclick="playLiquidScan()" id="scanBtn">✨ 물결 스캔</button>
           </div>
+        </div>
+
+        <!-- AI Spera (Criminal IP) 스타일 원클릭 위협 쿼리 태그 -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;padding:0 4px;">
+          <span class="mono" style="font-size:11px;font-weight:800;color:#0284c7;">Quick Query:</span>
+          <button class="slide-arrow" style="padding:4px 9px;font-size:11px;" onclick="runQuickQuery('https://github.com/minji-cafe/order-site')">repo:minji-cafe/order-site</button>
+          <button class="slide-arrow" style="padding:4px 9px;font-size:11px;" onclick="runQuickQuery('https://github.com/minji-cafe/order-site#supabase-service-role')">secret:supabase-service-role</button>
+          <button class="slide-arrow" style="padding:4px 9px;font-size:11px;" onclick="runQuickQuery('https://github.com/minji-cafe/order-site#orders-route')">rule:payment-price-tamper</button>
+          <button class="slide-arrow" style="padding:4px 9px;font-size:11px;" onclick="runQuickQuery('https://github.com/minji-cafe/order-site#next-cve')">cve:CVE-2025-29927</button>
         </div>
 
         <div class="countup-card">
           <div class="countup-top">
-            <span id="stageLabel" style="font-size:12.5px;font-weight:800;color:#0f172a;">✓ 100% 스마트 물결 스캔 완료 (취약점 5건 정규화)</span>
+            <span id="stageLabel" style="font-size:12.5px;font-weight:800;color:#0f172a;">✓ 100% 스마트 물결 스캔 &amp; Red–Blue 검증 완료</span>
             <span class="mono countup-num" id="countText">100%</span>
           </div>
           <div class="track">
             <div id="syncFill" class="track-fill" style="width:100%;"></div>
           </div>
           <div class="steps-grid">
-            <div class="step-chip done" id="st0">① 추출 ✓</div>
+            <div class="step-chip done" id="st0">① 소스 추출 ✓</div>
             <div class="step-chip done" id="st1">② 4대 엔진 ✓</div>
-            <div class="step-chip done" id="st2">③ GPU 검증 ✓</div>
-            <div class="step-chip done" id="st3">④ 완료 ✓</div>
+            <div class="step-chip done" id="st2">③ GPU Red–Blue ✓</div>
+            <div class="step-chip done" id="st3">④ MCP 패치 ✓</div>
           </div>
         </div>
       </div>
 
-      <!-- 4 Minimal KPI Chips with Hover Tooltips -->
+      <!-- 4) 3사 결합 히어로 인텔리전스 보드 (Vibe 등급 + CTI 위험도 점수 + Agentic Red–Blue + 72H 타이머) -->
       <div class="kpi-grid">
+        <div class="kpi-card" style="cursor:pointer;" onclick="openDrawer('f1')">
+          <div class="kpi-head">
+            <span>VIBE SECURITY GRADE</span>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">VibeAppScanner 방식의 실시간 보안 등급입니다. 클릭 시 최우선 취약점 AI 패치 슬라이드가 열립니다.</span></span>
+          </div>
+          <div class="kpi-val mono"><span style="color:#ef4444;" id="vibeGradeLabel">D-</span> <span style="font-size:12px;color:#64748b;">미해결 <span id="openCount">4</span>건</span></div>
+        </div>
         <div class="kpi-card">
           <div class="kpi-head">
-            <span>72H 타이머</span>
-            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">취약점 최초 발견(0h)부터 패치 재검사 통과(72h)까지 남은 법정 골든타임입니다.</span></span>
+            <span>CTI RISK SCORE</span>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">AI Spera(Criminal IP)의 5단계 위험도 지표와 CISA SSVC(act·attend·track*)를 결합한 위험 점수입니다.</span></span>
+          </div>
+          <div class="kpi-val mono"><span id="ctiScoreVal">92</span><span style="font-size:12px;color:#64748b;">/100</span> <span style="font-size:12px;color:#ef4444;" id="actCount">act 1건</span></div>
+        </div>
+        <div class="kpi-card" style="cursor:pointer;" onclick="setSlide(1)">
+          <div class="kpi-head">
+            <span style="color:#0d9488;">AGENTIC RED–BLUE</span>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">AhnLab AI PLUS 스타일 에이전틱 방어: 로컬 L4 GPU vLLM(Qwen3.8-27B) 자율 공방 검증 성공률입니다.</span></span>
+          </div>
+          <div class="kpi-val" style="color:#0d9488;">성공률 96%</div>
+        </div>
+        <div class="kpi-card" style="cursor:pointer;" onclick="setSlide(2)">
+          <div class="kpi-head">
+            <span style="color:#0d9488;">72H GOLDEN TIME</span>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">법정 골든타임 실시간 타이머이며, 검사 직후 원본 소스코드는 100% 즉시 파기(Zero-Retention)됩니다.</span></span>
           </div>
           <div class="kpi-val mono" id="timerDisplay">61:12:40</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-head">
-            <span>즉시 조치 (act)</span>
-            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">CISA SSVC 기준 act(지금 바로), attend(이번 주), track*(추후 관리)로 우선순위를 분류합니다.</span></span>
-          </div>
-          <div class="kpi-val"><span style="color:#ef4444;" id="actCount">1건</span> <span style="font-size:13px;color:#64748b;">/ 미해결 <span id="openCount">5</span>건</span></div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-head">
-            <span>GPU 성공률</span>
-            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">로컬 L4 GPU vLLM(Qwen3.8-27B) Red–Blue 검증 루프로 조치 성공률 96%를 달성했습니다.</span></span>
-          </div>
-          <div class="kpi-val" style="color:#0d9488;">96%</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-head">
-            <span>원본 즉시 파기</span>
-            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">Zero-Retention 원칙에 따라 스캔 직후 원본 소스코드는 즉시 삭제하고 정규화 결과만 남깁니다.</span></span>
-          </div>
-          <div class="kpi-val" style="color:#0284c7;">100%</div>
         </div>
       </div>
     </section>
@@ -561,8 +592,34 @@
 
       const openItems = FINDINGS.filter(f => !f.done);
       const actItems = openItems.filter(f => f.ssvc === "act");
-      document.getElementById("actCount").textContent = actItems.length + "건";
+      document.getElementById("actCount").textContent = "act " + actItems.length + "건";
       document.getElementById("openCount").textContent = openItems.length;
+      const gradeEl = document.getElementById("vibeGradeLabel");
+      if (gradeEl) {
+        const grade = openItems.length === 0 ? "A+" : actItems.length > 0 ? "D-" : "B+";
+        gradeEl.textContent = grade;
+        gradeEl.style.color = grade === "A+" ? "#0d9488" : grade === "B+" ? "#d97706" : "#ef4444";
+      }
+      const scoreEl = document.getElementById("ctiScoreVal");
+      if (scoreEl) {
+        scoreEl.textContent = openItems.length === 0 ? "12" : Math.min(98, 32 + actItems.length * 35 + openItems.length * 6);
+      }
+    }
+
+    function setHeroLens(mode, btn) {
+      const textMap = {
+        cti: "AI Spera형 위협 헌팅: 노출된 비밀키 · 미인증 API · CVE 실시간 매핑",
+        vibe: "VibeScanner형 진단: AI 코딩툴이 놓친 RLS·결제 변조 즉시 등급 산출",
+        agentic: "AhnLab AI PLUS형 방어: 로컬 L4 GPU Blue(패치)–Red(모의해킹) 자율 검증"
+      };
+      document.getElementById("heroLensText").textContent = textMap[mode] || textMap.cti;
+      btn.parentElement.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    }
+
+    function runQuickQuery(q) {
+      document.getElementById("repoInput").value = q;
+      playLiquidScan();
     }
 
     function playLiquidScan() {
@@ -668,3 +725,4 @@
   </script>
 </body>
 </html>
+

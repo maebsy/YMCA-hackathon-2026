@@ -33,6 +33,11 @@
 | HTTPX | 0.28.1 | LLM 서버(vLLM) 호출 | BSD-3-Clause | https://github.com/encode/httpx |
 | pytest | 9.2.0 | 백엔드·보안엔진 테스트 (개발용) | MIT | https://github.com/pytest-dev/pytest |
 | Ruff | CI 실행 시점 최신 (`pipx run ruff`) | CI `lint`: 파이썬 문법 오류·정의되지 않은 이름 검사 (개발용) | MIT | https://github.com/astral-sh/ruff |
+| Playwright for Python | 1.64.1 | 실제 공개 웹의 저장소 입력·검사·리포트 UI 자동 검증 (독립 개발용 환경) | Apache-2.0 | https://github.com/microsoft/playwright-python |
+| Playwright Chromium | 156.0.8078.4 (build 1248) | 사용자 프로필과 분리된 브라우저 검증, 영상 녹화 없음 | BSD 및 포함 구성요소별 라이선스 | https://github.com/microsoft/playwright |
+| Start Bootstrap Clean Blog / Freelancer Jekyll | 검사 시 커밋을 산출물에 기록 | 공개 웹 소스의 실제 서비스 반복 검사 대상, 앱 실행 없음 | MIT | https://github.com/StartBootstrap/startbootstrap-clean-blog / https://github.com/StartBootstrap/freelancer-jekyll |
+| octocat/Spoon-Knife | d0dd1f61b33d64e29d8bc1372a94ef6a2fee76a9 (실제 검사 커밋 별도 기록) | 공개 HTML 소스 주소를 입력하는 브라우저 검증 대상, 소스 재배포 없음 | 저장소에 명시된 라이선스 없음 | https://github.com/octocat/Spoon-Knife |
+| geekan/HowToLiveLonger | 실제 검사 커밋을 산출물에 기록 | GitHub API로 찾은 공개 Pages HTML 소스의 서비스 검사 대상, 문서 내용의 검증·앱 실행 없음 | Unlicense (GitHub API 메타데이터 기준) | https://github.com/geekan/HowToLiveLonger |
 | vLLM | 0.32.0 | GPU 서버 LLM 서빙 (OpenAI 호환 API) | Apache-2.0 | https://github.com/vllm-project/vllm |
 | Qwen3.8-27B (모델) | 2026-08 공개본 | Blue·Red 해석 LLM의 원본 모델 | Apache-2.0 | https://huggingface.co/Qwen/Qwen3.8-27B |
 | Qwen3.8-27B AWQ INT4 (양자화 체크포인트) | 커밋 5a2ee524cbc9 | L4 24GB에 올리기 위한 4비트 모델 | Apache-2.0 | https://huggingface.co/avyukth/Qwen3.8-27B-AWQ-INT4 |
@@ -63,8 +68,10 @@
 | Google OAuth (Google Identity) | Google 계정으로 가입·로그인 | Google APIs Terms of Service | https://developers.google.com/identity |
 | GitHub OAuth Apps | GitHub 계정으로 가입·로그인 | GitHub Terms of Service | https://docs.github.com/apps/oauth-apps |
 | OSV.dev API (api.osv.dev) | OSV-Scanner가 취약점 DB 조회 (무료, 키 없음) | OSV.dev 이용약관, 데이터는 출처(GitHub Advisory 등)별 라이선스 — 제출 전 확인 | https://osv.dev |
+| OSV GHSA-35jh-r3h4-6jhm / CVE-2021-23337 | 합성 lodash 4.17.15→4.17.21 정답 사례의 탐지·수정 경계 검증 근거 | GitHub Advisory Database CC-BY-4.0, OSV 이용약관 | https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm |
 | Semgrep Registry (semgrep.dev) | 내부 비교용 `p/default` 룰셋 다운로드 (기본 꺼짐) | Semgrep Rules License v1.0 | https://docs.semgrep.dev/licensing |
 | GitHub (공개 저장소 clone) | 검사 대상 사이트 소스 코드 받기 (공개 저장소만, 소스 분석만) | GitHub 이용약관 | https://github.com |
+| GitHub REST API (Search / Contents) | 검증할 공개 웹 소스 저장소 후보의 한도 내 검색 및 파일 표식 확인 | GitHub 이용약관·API 사용 제한 | https://docs.github.com/rest/search/search |
 | CISA KEV 카탈로그 | 실제 공격에 쓰인 취약점 목록 조회 (위험도 해석) | 미국 정부 공개 자료 | https://www.cisa.gov/known-exploited-vulnerabilities-catalog |
 | FIRST EPSS API | CVE별 30일 내 악용 확률 조회 (위험도 해석) | 무료 공개, 등록 불필요 | https://www.first.org/epss/api |
 

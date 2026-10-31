@@ -244,7 +244,11 @@ export default function Home() {
         {activeTab === "architecture" && <ArchitectureTab />}
 
         <div hidden={activeTab !== "incident"}>
-          <IncidentTab onShowToast={showToast} />
+          <IncidentTab
+            findings={findings}
+            repoUrl={repoInput}
+            onShowToast={showToast}
+          />
         </div>
 
         {activeTab === "report" && (

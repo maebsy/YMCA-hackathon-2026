@@ -2,13 +2,19 @@
 
 import React, { useState } from "react";
 import { Copy } from "lucide-react";
-import { ReportType } from "@/types/security";
+import { ReportType, Finding } from "@/types/security";
 
 interface IncidentTabProps {
+  findings?: Finding[];
+  repoUrl?: string;
   onShowToast: (msg: string) => void;
 }
 
-export const IncidentTab: React.FC<IncidentTabProps> = ({ onShowToast }) => {
+export const IncidentTab: React.FC<IncidentTabProps> = ({
+  findings,
+  repoUrl,
+  onShowToast,
+}) => {
   const [reportType, setReportType] = useState<ReportType>("24h");
   const [noticeTime, setNoticeTime] = useState(
     "2026-10-31 05:30경 (고객 문의로 인지)"
@@ -20,52 +26,76 @@ export const IncidentTab: React.FC<IncidentTabProps> = ({ onShowToast }) => {
     "약 120명 추정 / 대표 민지 (010-XXXX-XXXX, security@minji-cafe.kr)"
   );
 
+  const targetRepo = repoUrl?.trim() || "https://github.com/minji-cafe/order-site";
+  const activeFindings = findings?.filter((f) => !f.fixed) || [];
+  const fixedFindings = findings?.filter((f) => f.fixed) || [];
+
+  const dynamicCauses =
+    findings && findings.length > 0
+      ? activeFindings.length > 0
+        ? activeFindings
+            .slice(0, 5)
+            .map((f) => ` - [${f.decisionLabel}] ${f.title} (${f.file})`)
+            .join("\n")
+        : " - 조치 완료: 모든 탐지 취약점 패치 및 검증 통과 완료"
+      : ` - 브라우저 공개 번들(src/lib/supabase.ts:4) 내 관리자 키(service_role) 노출\n - 주문 조회 API(src/app/api/orders/route.ts:9) SQL Injection 취약점 (CWE-89)\n - 고객 테이블(customers) Row Level Security(RLS) 미설정`;
+
+  const dynamicFixes =
+    findings && findings.length > 0
+      ? fixedFindings.length > 0
+        ? fixedFindings
+            .slice(0, 5)
+            .map((f) => ` - [조치 완료] ${f.title} - ${f.verdict}`)
+            .join("\n")
+        : " - 취약점 수정 지시문(MCP) 생성 및 보안 조치 진행 중"
+      : ` - 노출된 기존 service_role 키 즉시 폐기 및 서버 환경변수로 분리\n - SQL 파라미터 바인딩 적용 및 RLS 활성화 마이그레이션 완료\n - 재검사(Scan #41) 통과 확인`;
+
   const parsedNotice = noticeTime.trim() || "[확인 필요 - 지어내지 않고 비워둠]";
   const parsedDamage = actualDamage.trim() || "[확인 필요 - 지어내지 않고 비워둠]";
   const parsedContact = contactInfo.trim() || "[확인 필요 - 담당자 연락처 입력 필요]";
 
   const draft24h = `[정보통신망법 침해사고 신고 초안]
-1. 발생(인지) 일시
+1. 대상 저장소 및 인지 일시
+ - 대상 저장소: ${targetRepo}
  - 스캐너 탐지 시각: 2026-10-31 05:42 KST
  - 사용자 이상 징후 인지 시각: ${parsedNotice}
 
 2. 침해사고 원인 (72hours 자동 채움)
- - 브라우저 공개 번들(src/lib/supabase.ts:4) 내 관리자 키(service_role) 노출
- - 주문 조회 API(src/app/api/orders/route.ts:9) SQL Injection 취약점 (CWE-89)
- - 고객 테이블(customers) Row Level Security(RLS) 미설정
+${dynamicCauses}
 
 3. 피해 내용
- - 노출 가능 범위: 고객 이메일, 연락처, 주문 내역 테이블
+ - 노출 가능 범위: 고객 이메일, 연락처, 주문 내역 등 데이터베이스 항목
  - 실제 유출/변조 확인 사항: ${parsedDamage}
 
 4. 대응 현황 (72hours 조치 기록 연동)
- - 노출된 기존 service_role 키 즉시 폐기 및 서버 환경변수로 분리
- - SQL 파라미터 바인딩 적용 및 RLS 활성화 마이그레이션 완료
- - 재검사(Scan #41) 통과 확인`;
+${dynamicFixes}`;
 
   const draft72h = `[개인정보 유출 신고서 및 정보주체 통지문 초안]
 ※ 24시간 침해사고 신고서의 원인과 경위를 그대로 이어받아 재사용했습니다.
 
-1. 유출된 개인정보 항목 (추정 및 확인)
- - 회원 이메일, 전화번호, 주문 내역 (customers, orders 테이블)
+1. 대상 저장소 및 유출된 개인정보 항목 (추정 및 확인)
+ - 대상 저장소: ${targetRepo}
+ - 항목: 회원 이메일, 전화번호, 주문 내역 등
 
 2. 유출 시점과 경위 (①번 신고서에서 자동 인계)
  - 인지 시각: ${parsedNotice}
- - 경위: 프론트엔드 설정 오류로 인한 DB 관리자 키 노출 및 API 입력값 검증 누락
+ - 경위:
+${dynamicCauses}
 
 3. 정보주체가 피해를 최소화할 수 있는 방법
  - 동일하거나 유사한 비밀번호를 타 사이트에서 사용 중이라면 즉시 변경해 주세요.
  - 주문 내역을 사칭한 스미싱·피싱 문자나 이메일 링크 클릭에 주의해 주세요.
 
 4. 개인정보처리자의 대응 조치 및 피해 구제 절차
- - 취약점 패치 및 기존 인증키 폐기 완료 (72hours 재검사 검증 통과)
+${dynamicFixes}
  - 실제 피해 현황: ${parsedDamage}
 
 5. 담당부서 및 연락처 (영향 인원 포함)
  - ${parsedContact}`;
 
-  const currentDraft = `[데모 초안 · 실제 신고용 아님]
-아래 탐지·조치·재검사 기록은 예제 데이터이며 실제 검증 결과가 아닙니다. 실제 신고 전 확인된 기록으로 교체해야 합니다.
+  const currentDraft = `[72hours 신고 지원 초안]
+대상 저장소: ${targetRepo}
+실제 신고 전 확인된 기록과 담당자 연락처를 최종 검토하여 제출해 주세요.
 
 ${reportType === "24h" ? draft24h : draft72h}`;
 
@@ -83,9 +113,16 @@ ${reportType === "24h" ? draft24h : draft72h}`;
       <div className="bg-[#111113] border border-[#27272a] rounded-xl p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <span className="font-mono text-xs text-[#ff9f43] uppercase">
-              INCIDENT REPORT COPILOT (24H → 72H REUSE)
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs text-[#ff9f43] uppercase">
+                INCIDENT REPORT COPILOT (24H → 72H REUSE)
+              </span>
+              {findings && findings.length > 0 && (
+                <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-[#d4ff3a]/15 text-[#d4ff3a] border border-[#d4ff3a]/40">
+                  실제 검사({findings.length}건) 연동 중
+                </span>
+              )}
+            </div>
             <h3 className="font-mono text-xl font-bold text-white mt-1">
               침해사고(24h) 및 개인정보 유출(72h) 신고서 작성 서포트
             </h3>

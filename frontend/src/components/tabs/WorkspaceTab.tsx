@@ -158,6 +158,11 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                   onChangeRepoInput(e.target.value);
                   setRepoError(false);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isScanning) {
+                    handleScanSubmit();
+                  }
+                }}
                 className="flex-1 font-mono text-sm px-4 py-3 rounded-lg bg-[#0a0a0a] border border-[#27272a] text-white focus:outline-none focus:border-[#d4ff3a] transition"
                 placeholder="https://github.com/owner/repo"
               />
@@ -177,6 +182,31 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                 https://github.com/minji-cafe/order-site)
               </p>
             )}
+
+            {/* 빠른 추천/데모 저장소 선택 칩 */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="font-mono text-[11px] text-[#a1a1aa]">데모 프리셋:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onChangeRepoInput("https://github.com/minji-cafe/order-site");
+                  setRepoError(false);
+                }}
+                className="font-mono text-[11px] px-2 py-0.5 rounded bg-[#18181b] hover:bg-[#27272a] border border-[#27272a] text-[#d4ff3a] transition cursor-pointer"
+              >
+                minji-cafe/order-site (기본)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onChangeRepoInput("https://github.com/maebsy/YMCA-hackathon-2026");
+                  setRepoError(false);
+                }}
+                className="font-mono text-[11px] px-2 py-0.5 rounded bg-[#18181b] hover:bg-[#27272a] border border-[#27272a] text-[#a1a1aa] hover:text-white transition cursor-pointer"
+              >
+                YMCA-hackathon-2026 (현재 리포)
+              </button>
+            </div>
 
             {/* 환경 선택 칩 */}
             <div className="pt-2 flex flex-wrap items-center gap-y-3 gap-x-6 font-mono text-xs border-t border-[#27272a]/60">
@@ -350,65 +380,79 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
             </span>
           </div>
           <div className="divide-y divide-[#27272a]">
-            {findings.map((item) => {
-              const isSel = item.id === selectedFindingId;
-              let pillClass = "pill-attend";
-              let pillText: string = item.decision;
-
-              if (item.fixed) {
-                pillClass = "pill-ok";
-                pillText = "해결됨";
-              } else if (item.decision === "act") {
-                pillClass = "pill-act";
-              } else if (item.decision === "trackstar") {
-                pillClass = "pill-trackstar";
-                pillText = "track*";
-              }
-
-              const verdictColor = item.fixed
-                ? "border-[#d4ff3a]/50 text-[#d4ff3a]"
-                : item.verdictType === "warn"
-                ? "border-[#ff5f56]/50 text-[#ff5f56]"
-                : "border-[#27272a] text-[#a1a1aa]";
-
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => onSelectFindingId(item.id)}
-                  className={`finding-row p-4 flex items-center justify-between gap-3 ${
-                    isSel ? "selected" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className={`${pillClass} w-16 text-center shrink-0`}>
-                      {pillText}
-                    </span>
-                    <div className="min-w-0">
-                      <div
-                        className={`text-sm font-medium text-white truncate ${
-                          item.fixed ? "line-through text-[#a1a1aa]" : ""
-                        }`}
-                      >
-                        {item.title}
-                      </div>
-                      <small className="font-mono text-xs text-[#a1a1aa] block truncate">
-                        {item.file}
-                      </small>
-                    </div>
-                  </div>
-                  <span
-                    className={`font-mono text-[11px] px-2 py-0.5 rounded border shrink-0 ${verdictColor}`}
-                  >
-                    {item.fixed ? "검증 통과" : item.verdict}
-                  </span>
+            {findings.length === 0 ? (
+              <div className="p-8 text-center space-y-3">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#d4ff3a]/10 border border-[#d4ff3a]/30 text-[#d4ff3a]">
+                  <Check className="w-6 h-6" />
                 </div>
-              );
-            })}
+                <div className="font-mono text-sm font-bold text-white">
+                  탐지된 보안 취약점이 없습니다
+                </div>
+                <p className="text-xs text-[#a1a1aa] max-w-xs mx-auto">
+                  새로운 저장소 URL을 입력하고 검사를 시작하거나 이전 검사 결과를 확인해 주세요.
+                </p>
+              </div>
+            ) : (
+              findings.map((item) => {
+                const isSel = item.id === selectedFindingId;
+                let pillClass = "pill-attend";
+                let pillText: string = item.decision;
+
+                if (item.fixed) {
+                  pillClass = "pill-ok";
+                  pillText = "해결됨";
+                } else if (item.decision === "act") {
+                  pillClass = "pill-act";
+                } else if (item.decision === "trackstar") {
+                  pillClass = "pill-trackstar";
+                  pillText = "track*";
+                }
+
+                const verdictColor = item.fixed
+                  ? "border-[#d4ff3a]/50 text-[#d4ff3a]"
+                  : item.verdictType === "warn"
+                  ? "border-[#ff5f56]/50 text-[#ff5f56]"
+                  : "border-[#27272a] text-[#a1a1aa]";
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => onSelectFindingId(item.id)}
+                    className={`finding-row p-4 flex items-center justify-between gap-3 ${
+                      isSel ? "selected" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`${pillClass} w-16 text-center shrink-0`}>
+                        {pillText}
+                      </span>
+                      <div className="min-w-0">
+                        <div
+                          className={`text-sm font-medium text-white truncate ${
+                            item.fixed ? "line-through text-[#a1a1aa]" : ""
+                          }`}
+                        >
+                          {item.title}
+                        </div>
+                        <small className="font-mono text-xs text-[#a1a1aa] block truncate">
+                          {item.file}
+                        </small>
+                      </div>
+                    </div>
+                    <span
+                      className={`font-mono text-[11px] px-2 py-0.5 rounded border shrink-0 ${verdictColor}`}
+                    >
+                      {item.fixed ? "검증 통과" : item.verdict}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
         {/* 오른쪽: 선택한 취약점 상세 가이드 */}
-        {selectedFinding && (
+        {selectedFinding ? (
           <div className="lg:col-span-7 bg-[#111113] border border-[#27272a] rounded-xl overflow-hidden sticky top-20">
             <div className="chrome-bar justify-between">
               <div className="flex items-center gap-2">
@@ -612,6 +656,16 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+        ) : (
+          <div className="lg:col-span-7 bg-[#111113] border border-[#27272a] rounded-xl p-12 text-center flex flex-col items-center justify-center space-y-3">
+            <span className="text-4xl">🛡️</span>
+            <div className="font-mono text-sm font-bold text-white">
+              선택된 취약점 상세 정보가 없습니다
+            </div>
+            <p className="text-xs text-[#a1a1aa]">
+              왼쪽 목록에서 취약점을 선택하거나 새로운 검사를 실행해 주세요.
+            </p>
           </div>
         )}
       </div>

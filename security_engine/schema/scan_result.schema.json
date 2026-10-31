@@ -266,6 +266,9 @@
           },
           "max_severity": {
             "$ref": "#/$defs/severity"
+          },
+          "target_check": {
+            "$ref": "#/$defs/target_check"
           }
         }
       }
@@ -605,11 +608,54 @@
                 "string",
                 "null"
               ]
+            },
+            "target_check": {
+              "$ref": "#/$defs/target_check"
             }
           }
         },
         "raw": {
           "description": "--include-raw일 때만. 스캐너 원본 (비밀값은 가려짐)"
+        }
+      }
+    },
+    "target_check": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "추천 버전을 OSV에 다시 조회한 결과 (#109). clean=알려진 취약점 없음(안전 보장 아님), vulnerable=남아 있음, unknown=조회 실패·생략",
+      "required": [
+        "status",
+        "remaining",
+        "remaining_count",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "clean",
+            "vulnerable",
+            "unknown"
+          ]
+        },
+        "remaining": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "remaining_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     }

@@ -88,6 +88,7 @@ class ScanOptions:
     semgrep_registry: tuple[str, ...] = ()
     semgrep_extra_configs: tuple[str, ...] = ()  # 추가 규칙 파일·폴더 경로
     osv_offline: bool = False  # True면 미리 받아둔 OSV DB만 사용 (--offline-vulnerabilities)
+    osv_recheck: bool = True   # 추천 업그레이드 버전을 OSV에 다시 조회해 남은 취약점 확인 (#109, 오프라인이면 생략)
     timeout_sec: int = 600     # 도구 하나당 최대 실행 시간
     context_lines: int = 3     # 증거 코드 앞뒤로 몇 줄 보여줄지
     include_raw: bool = False  # True면 각 finding에 스캐너 원본(raw)을 붙임 (비밀값은 가림)

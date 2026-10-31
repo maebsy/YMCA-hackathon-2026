@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import fingerprint as fp
-from . import suppression
+from . import osv_recheck, suppression
 from .compare import compare
 from .git import clone_repo, head_sha, remove_tree
 from .models import (
@@ -89,8 +89,8 @@ def _dependency_upgrades(findings: list[dict]) -> list[dict]:
         key = (p["ecosystem"], p["name"], f["location"]["file"])
         plan = plans.setdefault(key, {
             "ecosystem": p["ecosystem"], "name": p["name"], "current_version": p["version"],
-            "lockfile": f["location"]["file"], "target_version": None, "fixes": [], "unfixable": [],
-            "max_severity": "unknown",
+            "lockfile": f["location"]["file"], "target_version": None, "target_check": None,
+            "fixes": [], "unfixable": [], "max_severity": "unknown",
         })
         tv = (f.get("remediation") or {}).get("target_version")
         # 같은 생태계 규칙으로 읽을 수 있는 목표만 비교한다. 읽을 수 없으면 추측해서 고르지 않는다 (#92)
@@ -100,6 +100,8 @@ def _dependency_upgrades(findings: list[dict]) -> list[dict]:
             old_key = version_key(plan["target_version"], p["ecosystem"]) if plan["target_version"] else None
             if old_key is None or new_key > old_key:
                 plan["target_version"] = tv
+                # 추천 버전을 OSV에 다시 조회한 결과 (#109). 묶음 목표 버전의 결과를 쓴다
+                plan["target_check"] = (f.get("remediation") or {}).get("target_check")
         else:
             plan["unfixable"].append(f["fingerprint"])
         if SEVERITY_RANK[f["severity"]] < SEVERITY_RANK[plan["max_severity"]]:
@@ -199,6 +201,9 @@ def scan(target: str | Path, previous: dict | None = None, *, options: ScanOptio
         "findings": findings,
     }
     compare(result, previous, root)
+    # 추천 버전에 다른 취약점이 남았는지 (#109). status(code_issue)는 compare()가 정하므로 그 뒤에 조회합니다
+    if runs["osv"].status == TOOL_OK:
+        osv_recheck.recheck(result["findings"], opts)
     _finalize(result)
     result["duration_sec"] = round(time.monotonic() - started, 2)
     return result

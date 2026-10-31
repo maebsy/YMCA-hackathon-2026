@@ -40,4 +40,4 @@ jobs:
           LLM_JOBS_ENABLED: 'false'
         run: |
           pip install -r requirements-dev.txt
-          pytest -q tests/test_job_auth.py tests/test_explain_jobs.py
+          pytest -q tests/test_job_auth.py tests/test_explain_jobs.py tests/test_scan_persistence.py

@@ -17,7 +17,7 @@ cp .env.example .env
 | `backend/` | FastAPI API 서버. DB는 SQLModel, 모든 API는 `/api` 아래 |
 | `frontend/` | Next.js 16 대시보드, `/api/*`를 FastAPI로 프록시 |
 
-DB는 `.env`의 `DATABASE_URL`로 정합니다. Docker 없이 실행할 때 비워 두면 SQLite, Compose에서는 로컬 PostgreSQL을 씁니다. Supabase 연결 문자열을 넣으면 팀 공용 DB를 사용합니다. 기본 모드의 Item 예제만 자동 생성하며, 실제 서비스 스키마·인증·비동기 큐는 [DB 설계](docs/db-erd.md)와 [활성화 절차](docs/async-llm.md)를 따릅니다.
+DB는 `.env`의 `DATABASE_URL`로 정합니다. Docker 없이 실행할 때 비워 두면 SQLite, Compose에서는 로컬 PostgreSQL을 씁니다. Supabase 연결 문자열을 넣으면 팀 공용 DB를 사용합니다. SQLite는 Item 예제와 검사 응답 테이블을 자동 생성합니다. PostgreSQL의 검사 결과 저장에는 [저장 migration 적용](docs/scan-persistence.md)이 필요하며, 서비스 스키마·인증·비동기 큐는 [DB 설계](docs/db-erd.md)와 [활성화 절차](docs/async-llm.md)를 따릅니다.
 
 ## Docker로 실행 (권장)
 

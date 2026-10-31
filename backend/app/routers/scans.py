@@ -3,21 +3,26 @@
 - POST /api/scans        : 검사를 접수하고 바로 job_id를 돌려줍니다 (202). 검사는 서버에서 계속 돕니다.
 - GET  /api/scans/{id}   : 진행 상태(queued·running·done·failed)와, 끝났으면 결과를 돌려줍니다.
   검사가 1~3분 걸려도 프록시·터널의 응답 제한(Cloudflare 약 100초)에 걸리지 않게 하려는 구조입니다.
-- 결과는 서버 메모리에만 잠시 둡니다 (최근 50건, 재시작하면 사라짐). DB 저장은 추후 개발 예정입니다.
+- 결과를 DB에 저장하므로 API 재시작 후에도 같은 job_id로 조회할 수 있습니다.
 - 동시에 도는 검사는 MAX_RUNNING건으로 제한합니다 (서버 보호).
 보안엔진(security_engine/)은 저장소 루트에 있어서 경로를 한 번 추가합니다.
 """
 import asyncio
+import logging
 import sys
 import uuid
-from collections import OrderedDict
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from app.llm.engine_adapter import from_engine_payload
+from app.llm.engine_adapter import from_engine_item, from_engine_payload
+from app.explain_jobs.auth import bearer, current_user
+from app.explain_jobs.config import job_settings
+from app.scan_store import ScanStore
 
 _ROOT = Path(__file__).resolve().parents[3]
 if (_ROOT / "security_engine").is_dir() and str(_ROOT) not in sys.path:
@@ -26,9 +31,28 @@ if (_ROOT / "security_engine").is_dir() and str(_ROOT) not in sys.path:
 router = APIRouter(prefix="/scans", tags=["scans"])
 
 MAX_RUNNING = 2
-MAX_KEPT = 50
-_jobs: "OrderedDict[str, dict]" = OrderedDict()
 _slots = asyncio.Semaphore(MAX_RUNNING)
+_tasks: set[asyncio.Task] = set()
+logger = logging.getLogger(__name__)
+
+
+def get_scan_store(request: Request) -> ScanStore:
+    if request.app.state.scan_store is None:
+        try:
+            request.app.state.scan_store = ScanStore(request.app.state.scan_engine)
+        except RuntimeError:
+            raise HTTPException(503, "SCAN_SCHEMA_REQUIRED: apply db-schema.sql and migrations/052-scan-persistence.sql") from None
+    return request.app.state.scan_store
+
+
+async def scan_user(request: Request, credential: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
+    if job_settings.llm_jobs_enabled:
+        return await current_user(request, credential)
+    return None
+
+
+StoreDep = Annotated[ScanStore, Depends(get_scan_store)]
+ActorDep = Annotated[object, Depends(scan_user)]
 
 
 class ScanRequest(BaseModel):
@@ -71,7 +95,21 @@ async def _run_scan(body: "ScanRequest") -> dict:
     except CloneError as exc:
         raise HTTPException(400, detail={"code": "CLONE_FAILED", "message": str(exc)}) from exc
     llm_input = build_llm_input(result, max_items=50)
-    findings = [f.model_dump(mode="json") for f in from_engine_payload(llm_input)]
+    valid_items, validated, preview_errors = [], [], []
+    for item in llm_input["items"]:
+        try:
+            finding = from_engine_item(item)
+        except ValidationError:
+            preview_errors.append({"fingerprint": item["id"], "code": "LLM_INPUT_INVALID"})
+        else:
+            valid_items.append(item)
+            validated.append(finding)
+    try:
+        preview = from_engine_payload({**llm_input, "items": valid_items})
+    except ValidationError:
+        # A package group can exceed limits even when every member is valid.
+        preview = validated
+    findings = [f.model_dump(mode="json") for f in preview]
     return {
         "scan_id": result["scan_id"],
         "status": result["status"],
@@ -85,24 +123,62 @@ async def _run_scan(body: "ScanRequest") -> dict:
         "result": result,
         "llm_input": llm_input,
         "findings": findings[:50],
+        "preview_errors": preview_errors,
     }
 
 
-async def _worker(job_id: str, body: "ScanRequest") -> None:
-    job = _jobs[job_id]
-    async with _slots:
-        job["status"] = "running"
+async def _fail_job(store, job_id, error):
+    try:
+        await run_in_threadpool(store.fail, job_id, error)
+    except Exception:
+        # No exception text: SQL connection details may include credentials.
+        # The lease expires durably even when the failure cannot be written now.
+        logger.error("Unable to persist scan failure for job %s; lease recovery will apply", job_id)
+
+
+async def _heartbeat(store, job_id):
+    while True:
+        await asyncio.sleep(30)
         try:
-            job["result"] = await _run_scan(body)
-            job["status"] = "done"
-        except HTTPException as exc:
-            job["status"], job["error"] = "failed", exc.detail
-        except Exception as exc:  # 검사 하나가 터져도 서버는 계속
-            job["status"], job["error"] = "failed", {"code": "SCAN_ERROR", "message": f"{type(exc).__name__}: {exc}"}
+            if not await run_in_threadpool(store.heartbeat, job_id):
+                return
+        except Exception:
+            logger.error("Unable to renew scan lease for job %s", job_id)
+
+
+async def drain_tasks():
+    pending = set(_tasks)
+    if not pending:
+        return
+    _, pending = await asyncio.wait(pending, timeout=10)
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
+async def _worker(job_id: str, body: "ScanRequest", store: ScanStore) -> None:
+    heartbeat = asyncio.create_task(_heartbeat(store, job_id))
+    try:
+        async with _slots:
+            if not await run_in_threadpool(store.running, job_id):
+                return
+            result = await _run_scan(body)
+            await run_in_threadpool(store.complete, job_id, result)
+    except asyncio.CancelledError:
+        await _fail_job(store, job_id, {"code": "SCAN_INTERRUPTED", "message": "검사 서버가 중단되었습니다. 다시 검사해 주세요."})
+        raise
+    except HTTPException as exc:
+        await _fail_job(store, job_id, exc.detail)
+    except Exception:  # Provider/SQL errors may contain credentials; expose only a stable code.
+        await _fail_job(store, job_id, {"code": "SCAN_ERROR", "message": "검사 결과 처리 또는 저장에 실패했습니다."})
+    finally:
+        heartbeat.cancel()
+        await asyncio.gather(heartbeat, return_exceptions=True)
 
 
 @router.post("", status_code=202)
-async def start_scan(body: ScanRequest):
+async def start_scan(body: ScanRequest, response: Response, store: StoreDep, user: ActorDep):
     """검사를 접수합니다. 주소 형식은 바로 확인해서, 잘못된 주소는 기다리지 않고 400으로 돌려줍니다."""
     from security_engine.git import _ALLOWED_URL  # github.com 공개 저장소 주소만
 
@@ -110,16 +186,24 @@ async def start_scan(body: ScanRequest):
         raise HTTPException(400, detail={"code": "CLONE_FAILED",
                                          "message": "https://github.com/<owner>/<repo> 형식의 공개 저장소 주소만 받을 수 있습니다."})
     job_id = uuid.uuid4().hex
-    _jobs[job_id] = {"job_id": job_id, "status": "queued", "repo_url": body.repo_url.strip(), "result": None, "error": None}
-    while len(_jobs) > MAX_KEPT:
-        _jobs.popitem(last=False)
-    asyncio.create_task(_worker(job_id, body))
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        await run_in_threadpool(store.create, job_id, body.repo_url.strip(), user)
+    except Exception:
+        raise HTTPException(503, "SCAN_STORAGE_UNAVAILABLE") from None
+    task = asyncio.create_task(_worker(job_id, body, store))
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/{job_id}")
-async def get_scan(job_id: str):
-    job = _jobs.get(job_id)
+async def get_scan(job_id: str, response: Response, store: StoreDep, user: ActorDep):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        job = await run_in_threadpool(store.get, job_id, user)
+    except Exception:
+        raise HTTPException(503, "SCAN_STORAGE_UNAVAILABLE") from None
     if not job:
-        raise HTTPException(404, detail={"code": "JOB_NOT_FOUND", "message": "검사 작업을 찾을 수 없습니다 (서버 재시작 등)."})
+        raise HTTPException(404, detail={"code": "JOB_NOT_FOUND", "message": "검사 작업을 찾을 수 없습니다."})
     return job

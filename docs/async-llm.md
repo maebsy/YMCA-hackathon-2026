@@ -63,7 +63,7 @@ const response = await fetch(`/api/scans/${scanId}/explanations`, {
 2. 정규 컬럼 밖의 LLM 입력은 `finding.llm_context` JSON 객체에 넣습니다: `status`, `change`, `flags`, `fix_hint`, `what`, `context` 등. DB 컬럼에 있는 fingerprint·파일 위치·패키지 정보는 context가 덮어쓸 수 없습니다.
 3. 해당 scan의 결과 저장이 모두 끝나면 `scan.status='explaining'`으로 바꿉니다. 그 이후 finding 입력은 불변으로 취급하고 재검사는 새 scan을 만듭니다.
 
-worker가 커밋된 `explaining` scan 중 owner가 있는 항목을 자동 발견해 큐에 넣습니다. HTTP 요청이 없어도 처리됩니다. **현재 main에는 스캐너 저장 API가 없으므로 #15/#7 오케스트레이터가 이 계약을 연결해야 합니다.** 빈 scan은 엔진이 직접 done으로 마감합니다. 모든 finding이 terminal이면 worker는 explaining scan을 done으로 마감하며, 개별 failed가 없다는 의미로 사용해서는 안 됩니다.
+worker가 커밋된 `explaining` scan 중 owner가 있는 항목을 자동 발견해 큐에 넣습니다. HTTP 요청이 없어도 처리됩니다. [`POST /api/scans`의 저장 경로](scan-persistence.md)는 #52 migration 적용 후 이 계약을 수행합니다. 인증 모드에서는 검사 접수·조회에도 Bearer 토큰을 보내며, 완료 응답의 `db_scan_id`를 설명 API의 scan ID로 사용합니다. 빈 scan은 엔진이 직접 done으로 마감합니다. 모든 finding이 terminal이면 worker는 explaining scan을 done으로 마감하며, 개별 failed가 없다는 의미로 사용해서는 안 됩니다.
 
 작업은 PostgreSQL의 [FOR UPDATE SKIP LOCKED](https://docs.sqlalchemy.org/en/20/core/selectable.html#sqlalchemy.sql.expression.GenerativeSelect.with_for_update)로 claim합니다. CPU/GPU를 사용하는 동안 DB transaction을 열어 두지 않습니다. lease heartbeat와 매 claim의 새 토큰을 사용해 만료된 worker가 새 결과를 덮어쓰지 못하게 합니다. job/result/explanation/finding 상태 저장은 하나의 transaction입니다.
 

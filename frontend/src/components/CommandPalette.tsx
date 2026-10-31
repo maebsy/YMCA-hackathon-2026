@@ -22,12 +22,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   if (!isOpen) return null;
 
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  };
+
   const items = [
     {
       id: "repo-cafe",
       label: "[저장소 스캔] minji-cafe/order-site (Next.js + Supabase)",
       action: () => {
         onSwitchTab("workspace");
+        scrollToSection("sim-sec");
         onSelectRepo("https://github.com/minji-cafe/order-site");
         onClose();
       },
@@ -35,54 +41,57 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       highlight: true,
     },
     {
-      id: "repo-vibe",
-      label: "[저장소 스캔] vibe-coder/ai-saas-starter (Express + Prisma)",
+      id: "repo-ymca",
+      label: "[저장소 스캔] maebsy/YMCA-hackathon-2026 (현재 깃 저장소)",
       action: () => {
         onSwitchTab("workspace");
-        onSelectRepo("https://github.com/vibe-coder/ai-saas-starter");
+        scrollToSection("sim-sec");
+        onSelectRepo("https://github.com/maebsy/YMCA-hackathon-2026");
         onClose();
       },
       tag: "Enter ⏎",
       highlight: true,
     },
     {
-      id: "tab-report",
-      label: "[화면 이동] ⑤ 72시간 완료 리포트 & OWASP ZAP 재현 보기",
+      id: "sec-flow",
+      label: "[화면 이동] 一 여백 속을 흐르는 5단계 보안 점검 흐름",
       action: () => {
-        onSwitchTab("report");
+        scrollToSection("flow-sec");
         onClose();
       },
-      tag: "View",
+      tag: "一 절차",
       highlight: false,
     },
     {
-      id: "tab-incident",
-      label: "[화면 이동] 24시간(KISA) · 72시간(개보위) 사고 신고서 초안 작성",
-      action: () => {
-        onSwitchTab("incident");
-        onClose();
-      },
-      tag: "View",
-      highlight: false,
-    },
-    {
-      id: "tab-architecture",
-      label: "[화면 이동] 시스템 아키텍처 & Red-Blue 검증 루프",
+      id: "sec-eval",
+      label: "[화면 이동] 三 GPU & Red–Blue 효과 평가 설계 보드",
       action: () => {
         onSwitchTab("architecture");
+        scrollToSection("eval-sec");
         onClose();
       },
-      tag: "View",
+      tag: "三 평가",
+      highlight: false,
+    },
+    {
+      id: "sec-report",
+      label: "[화면 이동] 四 24h(KISA)·72h(개보위) 신고 서포트 & 완료 리포트",
+      action: () => {
+        onSwitchTab("report");
+        scrollToSection("report-sec");
+        onClose();
+      },
+      tag: "四 보고",
       highlight: false,
     },
     {
       id: "toggle-theme",
-      label: "[테마 전환] 다크 모드(#0a0a0a) ↔ 라이트 모드(#fafafa) 토글",
+      label: "[농담 전환] 화선지 주간(晝 #F5F2EB) ↔ 묵향 야간(夜 #141618) 전환",
       action: () => {
         onToggleTheme();
         onClose();
       },
-      tag: "Theme",
+      tag: "晝/夜",
       highlight: false,
     },
   ];
@@ -92,41 +101,47 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start justify-center pt-24 p-4">
-      <div className="w-full max-w-xl bg-[#111113] border border-[#27272a] rounded-xl overflow-hidden shadow-2xl">
-        <div className="p-3.5 border-b border-[#27272a] flex items-center gap-3">
-          <span className="font-mono text-sm text-[#d4ff3a]">$</span>
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-24 p-4">
+      <div className="w-full max-w-xl bg-[var(--paper-solid)] border-2 border-[var(--ink-line)] rounded-[28px_10px_30px_12px] overflow-hidden shadow-2xl">
+        <div className="p-4 border-b border-[var(--ink-line)] flex items-center gap-3">
+          <span className="seal-mark small">尋</span>
           <input
             type="text"
-            placeholder="명령어 입력 또는 데모 저장소 선택... (ESC로 닫기)"
+            placeholder="명령어 입력 또는 검사할 저장소 선택... (ESC로 닫기)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             autoFocus
-            className="flex-1 bg-transparent font-mono text-sm text-white focus:outline-none placeholder:text-[#a1a1aa]"
+            className="flex-1 bg-transparent font-mono text-sm text-[var(--ink-nong)] focus:outline-none placeholder:text-[var(--ink-dam)]"
           />
           <kbd
             onClick={onClose}
-            className="px-1.5 py-0.5 text-[10px] font-mono bg-[#18181b] text-[#a1a1aa] rounded border border-[#27272a] cursor-pointer"
+            className="px-2 py-0.5 text-[11px] font-mono bg-[var(--paper-bg)] text-[var(--ink-jung)] rounded border border-[var(--ink-line)] cursor-pointer"
           >
             ESC
           </kbd>
         </div>
 
-        <div className="p-2 max-h-80 overflow-y-auto divide-y divide-[#27272a]/50 font-mono text-xs">
+        <div className="p-2 max-h-80 overflow-y-auto divide-y divide-[var(--ink-line)] font-mono text-xs">
           {filteredItems.map((item) => (
             <button
               key={item.id}
               onClick={item.action}
-              className="w-full text-left p-3 rounded hover:bg-[#18181b] flex items-center justify-between cursor-pointer transition"
+              className="w-full text-left p-3.5 rounded-xl hover:bg-[var(--jade-soft)] flex items-center justify-between cursor-pointer transition"
             >
-              <span className={item.highlight ? "text-[#d4ff3a]" : "text-white"}>
+              <span
+                className={
+                  item.highlight
+                    ? "text-[var(--jade-deep)] font-bold"
+                    : "text-[var(--ink-nong)]"
+                }
+              >
                 {item.label}
               </span>
-              <span className="text-[#a1a1aa]">{item.tag}</span>
+              <span className="text-[var(--ink-dam)]">{item.tag}</span>
             </button>
           ))}
           {filteredItems.length === 0 && (
-            <div className="p-4 text-center text-[#a1a1aa]">
+            <div className="p-4 text-center text-[var(--ink-dam)]">
               일치하는 명령어가 없습니다.
             </div>
           )}

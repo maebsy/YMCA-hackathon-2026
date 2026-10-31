@@ -15,7 +15,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from .sandbox import SandboxError, pick_sandbox
-from .schemas import AttackOutcome, TestOutcome, VerifyRequest, VerifyResult
+from .schemas import AttackOutcome, Isolation, TestOutcome, VerifyRequest, VerifyResult
 
 
 def _attack_cfg(attacks) -> list[dict]:
@@ -88,16 +88,24 @@ def verify(req: VerifyRequest, *, trusted: bool = False) -> VerifyResult:
     elapsed = lambda: round(time.monotonic() - started, 2)  # noqa: E731
     before_tests = TestOutcome(**before.get("tests", {}))
     after_tests = TestOutcome(**after.get("tests", {}))
+    isolation = _merge_isolation(before.get("isolation"), after.get("isolation"))
+    iso = {"isolation": isolation, "isolation_confirmed": isolation.confirmed}
+    # 사용자 저장소는 '격리돼 있다'를 실행 결과로 확인해야만 판정을 내놓습니다 (코드상 옵션만으로는 부족).
+    if not trusted and not isolation.confirmed:
+        return VerifyResult(status="error", sandbox=sandbox.name,
+                            message="샌드박스 격리를 확인하지 못해 실검증 결과를 내지 않습니다: "
+                                    + ", ".join(k for k, val in isolation.model_dump().items() if val is not True),
+                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed(), **iso)
 
     if not before.get("reachable"):
         return VerifyResult(status="error", sandbox=sandbox.name,
                             message=f"수정 전 앱이 뜨지 않았습니다: {before.get('appError', '')[:200]}",
-                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed())
+                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed(), **iso)
     # 수정본이 앱 시작을 깨뜨리면 공격 결과가 비어 '차단'처럼 보입니다. 이건 차단이 아니라 수정 실패입니다.
     if not after.get("reachable"):
         return VerifyResult(status="fix_failed", sandbox=sandbox.name,
                             message=f"수정 후 앱이 뜨지 않았습니다: {after.get('appError', '')[:200]}",
-                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed())
+                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed(), **iso)
 
     b_map = {r["id"]: r for r in before.get("attacks", [])}
     a_map = {r["id"]: r for r in after.get("attacks", [])}
@@ -106,7 +114,7 @@ def verify(req: VerifyRequest, *, trusted: bool = False) -> VerifyResult:
     if missing:
         return VerifyResult(status="error", sandbox=sandbox.name,
                             message=f"공격 결과가 비어 판정할 수 없습니다: {', '.join(missing)}",
-                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed())
+                            before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed(), **iso)
 
     outcomes: list[AttackOutcome] = []
     for a in runtime_attacks:
@@ -135,5 +143,15 @@ def verify(req: VerifyRequest, *, trusted: bool = False) -> VerifyResult:
 
     return VerifyResult(
         status=status, message=msg, sandbox=sandbox.name, attacks=outcomes,
-        before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed(),
+        before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed(), **iso,
     )
+
+
+def _merge_isolation(before: dict | None, after: dict | None) -> Isolation:
+    """수정 전·후 두 번의 실행에서 모두 True인 항목만 True. 어느 한쪽이라도 모르면(None) None."""
+    keys = ("network_isolated", "non_root", "caps_dropped", "no_new_privs")
+    out = {}
+    for k in keys:
+        vals = [(d or {}).get(k) for d in (before, after)]
+        out[k] = False if False in vals else (True if all(x is True for x in vals) else None)
+    return Isolation(**out)

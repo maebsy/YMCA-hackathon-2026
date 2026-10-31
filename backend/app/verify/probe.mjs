@@ -7,6 +7,8 @@
 // 입력(stdin, JSON): { attacks, port?, startCmd?, testCmd?, startTimeoutMs?, runTests? }
 // 출력(stdout, JSON): { reachable, attacks:[{id, succeeded, status, evidence}], tests:{ok, passed, failed} }
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { networkInterfaces } from "node:os";
 
 function readStdin() {
   return new Promise((resolve) => {
@@ -83,6 +85,35 @@ function parseTapCounts(out) {
   return { passed: pass ? Number(pass[1]) : null, failed: fail ? Number(fail[1]) : null };
 }
 
+// 격리 자체 점검: 외부로 아무 요청도 보내지 않고, 지금 이 프로세스가 놓인 환경만 읽습니다.
+//  - network_isolated: 루프백(lo) 말고 네트워크 장치가 없음 (Docker --network none 이면 true)
+//  - non_root: root(uid 0)가 아님
+//  - caps_dropped: 리눅스 특수 권한(CapEff)이 0
+//  - no_new_privs: 권한 상승 금지(no-new-privileges)가 켜짐
+function isolationCheck() {
+  const ifaces = Object.entries(networkInterfaces())
+    .filter(([, addrs]) => (addrs || []).some((a) => !a.internal))
+    .map(([name]) => name);
+  let capEff = null, noNewPrivs = null;
+  try {
+    const st = readFileSync("/proc/self/status", "utf8");
+    const cap = /^CapEff:\s*([0-9a-f]+)/m.exec(st);
+    const nnp = /^NoNewPrivs:\s*(\d)/m.exec(st);
+    capEff = cap ? cap[1] : null;
+    noNewPrivs = nnp ? nnp[1] === "1" : null;
+  } catch {
+    /* 리눅스가 아님 */
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  return {
+    network_isolated: ifaces.length === 0,
+    external_interfaces: ifaces,
+    non_root: uid === null ? null : uid !== 0,
+    caps_dropped: capEff === null ? null : /^0+$/.test(capEff),
+    no_new_privs: noNewPrivs,
+  };
+}
+
 async function main() {
   const cfg = JSON.parse((await readStdin()) || "{}");
   // 워치독: 어떤 경우에도 probe가 영원히 멈추지 않게 (기본 90초)
@@ -145,7 +176,7 @@ async function main() {
   }
 
   clearTimeout(watchdog);
-  process.stdout.write(JSON.stringify({ reachable, appError: reachable ? "" : appErr.slice(0, 300), attacks: results, tests }));
+  process.stdout.write(JSON.stringify({ reachable, appError: reachable ? "" : appErr.slice(0, 300), attacks: results, tests, isolation: isolationCheck() }));
 }
 
 main();

@@ -209,6 +209,23 @@ prompt_context = render_llm_text(payload)          # 프롬프트에 붙일 한�
   무시하고 검사하고, 있었다는 사실은 `suppressions`·`flags`로 알려줍니다.
 - 남의 사이트는 **소스 코드만** 분석합니다. 운영 중인 사이트에 요청을 보내지 않습니다.
 
+### 남의 저장소를 받을 때 우리 서버 지키기 (웹셸 방지)
+
+공격자가 웹셸이나 설치 스크립트를 넣은 저장소 주소를 보내도 우리 서버에서 실행되거나 서버 비밀값이 새지 않게 합니다.
+
+| 막는 것 | 방법 | 위치 |
+|---|---|---|
+| 주소에 명령 끼워 넣기 | `https://github.com/<owner>/<repo>`만 받고(끝 줄바꿈도 거절), 주소 앞에 `--`를 붙여 git 옵션으로 읽히지 않게 합니다. `file://`은 막습니다 | `git.py` `_ALLOWED_URL`, `clone_repo` |
+| 받은 코드 실행 | 실행·설치(`npm install`의 `postinstall` 포함)·빌드·웹 서빙을 하지 않고 검사 도구로 읽기만 합니다. git hook은 clone으로 따라오지 않고, submodule과 LFS 파일은 받지 않습니다 | `engine.py` |
+| 서버 파일 읽기 | 심볼릭 링크는 링크 대상 경로를 적은 일반 파일로 받습니다 | `core.symlinks=false` |
+| 서버 비밀값 유출 | 검사 도구와 git에는 실행에 필요한 환경 변수(PATH, HOME, 언어, 임시 폴더, 프록시, 인증서)만 넘깁니다. DB 주소, API 키, `SECURITY_ENGINE_FP_SALT`는 넘기지 않습니다. 도구에 꼭 더 넘길 값은 `ScanOptions.extra_env`로 줍니다 | `runners/base.py` `safe_env` |
+| 디스크·검사 시간 고갈 | 받는 데 180초 제한, 받은 직후 `.git`을 뺀 크기가 한도를 넘으면 지우고 멈춥니다. 한도는 `SECURITY_ENGINE_MAX_REPO_MB`(기본 200), `SECURITY_ENGINE_MAX_REPO_FILES`(기본 20000)로 바꿉니다. 기본값은 임시값입니다(결정 필요) | `git.py` `_check_size` |
+| 남는 파일 | 검사가 끝나거나 받기가 실패하면 임시 폴더를 지웁니다. Windows에서 git이 읽기 전용으로 만든 `.git` 파일도 지웁니다 | `git.py` `remove_tree` |
+
+시험: `tests/security/test_repo_safety.py`가 공격용 저장소를 만들어 실제 git으로 받고 검사합니다. 저장소에는 실행되면 표시 파일을 만드는 PHP·Node 코드와 `postinstall` 스크립트, 서버 비밀 파일을 가리키는 심볼릭 링크가 들어 있습니다. 검사 뒤 표시 파일이 없고, 비밀 파일 내용이 결과에 없고, 임시 폴더가 지워졌는지 확인합니다.
+
+아직 못 막는 것: 크기는 다 받은 뒤에 재므로 받는 180초 동안은 디스크를 쓸 수 있습니다. 검사 도구 자체를 컨테이너 같은 별도 공간에 가두지는 않았습니다.
+
 ## 5. 코드 검사 규칙 (Opengrep + 우리 규칙)
 
 2026-10-31 팀 차트 기준: 코드 검사는 **Opengrep + 우리 규칙만** 기본으로 씁니다 → 유료 서비스 가능 구성.
@@ -269,7 +286,7 @@ prompt_context = render_llm_text(payload)          # 프롬프트에 붙일 한�
 | `fingerprint.py` | 같은 문제 지문 |
 | `compare.py` | 이전 결과와 비교 → change, 4가지 상태 |
 | `suppression.py` | 저장소의 예외 설정 파일 찾기 |
-| `git.py` | 고객 저장소 clone |
+| `git.py` | 고객 저장소 clone, 크기 제한, 임시 폴더 지우기 |
 | `llm_input.py` | 결과 → LLM 입력 꾸러미 (`build_llm_input`, `render_llm_text`) |
 | `cli.py` | 명령줄 |
 | `models.py` | 상태 이름·옵션 등 상수 |

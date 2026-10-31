@@ -56,9 +56,33 @@ def engine_name(binary: str | None) -> str | None:
     return os.path.splitext(base)[0]
 
 
+# 검사 도구와 git에 넘기는 환경 변수는 실행에 필요한 것만 고른다. 여기 없는 값(DB 주소, API 키,
+# SECURITY_ENGINE_FP_SALT 같은 서버 비밀값)은 넘기지 않는다 → 남의 저장소를 읽다가 도구에 구멍이 나도 비밀값은 안 샌다.
+# 도구에 꼭 더 넘겨야 하는 값은 ScanOptions.extra_env로 준다.
+SAFE_ENV_KEYS = frozenset({
+    "PATH", "HOME", "USER", "LOGNAME", "LANG", "LANGUAGE", "TZ", "TMPDIR", "TEMP", "TMP",
+    "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR",
+    # Windows에서 프로그램이 뜨고 사용자 폴더를 찾는 데 필요한 값
+    "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "USERPROFILE", "USERNAME",
+    "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES",
+    "PROGRAMFILES(X86)", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+    # 프록시·인증서 (OSV 온라인 조회, git clone)
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
+})
+
+
+def safe_env(extra: dict | None = None) -> dict[str, str]:
+    """os.environ에서 SAFE_ENV_KEYS와 LC_*만 골라 담는다. 이름의 대소문자는 가리지 않는다 (http_proxy도 통과)."""
+    env = {k: v for k, v in os.environ.items() if k.upper() in SAFE_ENV_KEYS or k.upper().startswith("LC_")}
+    if extra:
+        env.update(extra)
+    return env
+
+
 def run_cmd(cmd: list[str], timeout: int, cwd: str | None = None,
             extra_env: dict | None = None) -> subprocess.CompletedProcess:
-    env = os.environ.copy()
+    env = safe_env()
     env.update({
         "PYTHONUTF8": "1",        # Windows에서 Semgrep이 한글 경로·출력 때문에 죽지 않게
         "NO_COLOR": "1",

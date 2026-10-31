@@ -22,7 +22,7 @@ from pathlib import Path
 from . import fingerprint as fp
 from . import suppression
 from .compare import compare
-from .git import clone_repo, head_sha
+from .git import clone_repo, head_sha, remove_tree
 from .models import (
     CATEGORY_BY_TOOL,
     CHANGES,
@@ -230,7 +230,7 @@ def scan_repo(repo_url: str, previous: dict | None = None, *, options: ScanOptio
         return scan(path, previous, options=options, repo_url=repo_url, commit_sha=sha)
     finally:
         if keep_dir is None:
-            shutil.rmtree(path.parent, ignore_errors=True)
+            remove_tree(path.parent)
 
 
 def doctor() -> dict:

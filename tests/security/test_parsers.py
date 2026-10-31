@@ -299,25 +299,36 @@ def test_unparseable_versions_are_never_recommended():
     assert pick("1.0.0", ["1.0.1"], "RubyGems") == "1.0.1"  # 숫자만이면 비교 가능
 
 
+def _key(ecosystem):
+    """정렬용 키. 비교 불가(None)면 테스트가 바로 실패하게 해 Optional을 좁힌다."""
+    from security_engine.normalize import version_key
+
+    def key(v: str) -> tuple:
+        k = version_key(v, ecosystem)
+        assert k is not None, (v, ecosystem)
+        return k
+    return key
+
+
 def test_version_key_follows_semver_precedence():
     from security_engine.normalize import version_key
 
     # SemVer 2.0.0 명세 11번의 예시 순서
     chain = ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2",
              "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0"]
-    assert sorted(reversed(chain), key=lambda v: version_key(v, "npm")) == chain
+    assert sorted(reversed(chain), key=_key("npm")) == chain
     assert version_key("1.0.0+build.5", "npm") == version_key("1.0.0", "npm")  # 빌드 정보는 순서에 영향 없음
     assert version_key("1.2", "npm") is None  # SemVer는 세 자리가 필요
-    assert version_key("1.2", None) == version_key("1.2.0", None) < version_key("1.10", None)
+    assert _key(None)("1.2") == _key(None)("1.2.0") < _key(None)("1.10")
 
 
 def test_version_key_follows_pep440_and_maven():
     from security_engine.normalize import version_key
 
     pypi = ["1.0.dev0", "1.0a1", "1.0b2", "1.0rc1", "1.0", "1.0.post1", "1.0.1", "1!0.1"]
-    assert sorted(reversed(pypi), key=lambda v: version_key(v, "PyPI")) == pypi
+    assert sorted(reversed(pypi), key=_key("PyPI")) == pypi
     maven = ["2.0-alpha1", "2.0-beta-2", "2.0-RC1", "2.0-SNAPSHOT", "2.0", "2.0-sp1", "2.0.1"]
-    assert sorted(reversed(maven), key=lambda v: version_key(v, "Maven")) == maven
+    assert sorted(reversed(maven), key=_key("Maven")) == maven
 
 
 def _osv_reintroduced(version: str, fixed: str, eco: str = "npm") -> dict:
@@ -386,3 +397,51 @@ def test_osv_parse_keeps_upgrades_for_numbered_maven_short_qualifiers():
         [finding] = osv.parse(_osv_reintroduced("1.0-" + qualifier + "1", "1.0", "Maven"), Path("/abs/site"))
         assert finding["remediation"]["kind"] == "upgrade_dependency"
         assert finding["remediation"]["target_version"] == "1.0"
+
+
+# ── #101 재리뷰: Maven 정식 별칭 뒤 숫자·점 구분은 (순위, 정수)로 비교할 수 없어 보류 ──
+MAVEN_UNSAFE = [("1.0-final1", "1.0-sp1"), ("1.0-ga1", "1.0-sp1"), ("1.0-release1", "1.0-sp1"),
+                ("1.0-alpha.1", "1.0-alpha2")]
+
+
+@pytest.mark.parametrize(("current", "fixed"), MAVEN_UNSAFE)
+def test_maven_forms_we_cannot_order_are_not_recommended(current, fixed):
+    from security_engine.normalize import version_key
+
+    # Apache Maven ComparableVersion 기준으로는 모두 current > fixed (낮은 후보)
+    assert version_key(current, "Maven") is None
+    assert pick_fix_version(current, [fixed], "Maven") is None
+    assert pick_fix_version(fixed, [current], "Maven") is None  # 역방향도 추측하지 않음
+
+
+@pytest.mark.parametrize(("current", "fixed"), MAVEN_UNSAFE)
+def test_osv_parse_and_package_plan_do_not_downgrade_maven(current, fixed):
+    from security_engine.engine import _dependency_upgrades
+
+    [f] = osv.parse(_osv_reintroduced(current, fixed, "Maven"), Path("/abs/site"))
+    assert f["remediation"]["kind"] == "no_fix_available" and f["remediation"]["target_version"] is None
+    f["status"] = "code_issue"
+    [plan] = _dependency_upgrades([f])
+    assert plan["target_version"] is None
+
+
+def test_maven_supported_forms_still_compare():
+    from security_engine.normalize import pick_fix_version as pick
+
+    assert pick("1.0-alpha2", ["1.0-alpha10"], "Maven") == "1.0-alpha10"  # 숫자가 바로 붙으면 정수 비교
+    assert pick("1.0-rc1", ["1.0", "1.0-sp1"], "Maven") == "1.0"
+    assert pick("1.0-final", ["1.0-sp1"], "Maven") == "1.0-sp1"  # 숫자 없는 정식 별칭은 정식과 같음
+
+
+def test_upgrade_hint_tells_lower_fix_apart_from_uncomparable():
+    from security_engine.llm_input import _fix_hint
+
+    def hint(version, fixed, eco):
+        f = {"tool": "osv", "package": {"name": "lib", "ecosystem": eco, "version": version, "fixed_versions": fixed},
+             "location": {"file": "package-lock.json"},
+             "remediation": {"kind": "no_fix_available", "target_version": None}}
+        return _fix_hint(f)["text"]
+
+    assert "다시 생긴" in hint("2.0.0", ["1.9.0"], "npm")  # 모두 비교됐고 전부 낮음
+    assert "비교하지 못해" in hint("1.0-final1", ["1.0-sp1"], "Maven")  # 비교 불가
+    assert "아직 고친 버전이 없음" in hint("1.0.0", [], "npm")  # 후보 자체가 없음

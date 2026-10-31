@@ -14,7 +14,7 @@ from starlette.routing import Route
 import uvicorn
 import httpx
 
-from handoff import HandoffError, _unique_keys
+from handoff import _unique_keys
 from http_server import public_origin
 from live_store import LinkStore, MAX_BODY, normalize
 from server import create_server

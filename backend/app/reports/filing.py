@@ -149,10 +149,36 @@ def status_badge(missing: list[str], overdue: bool) -> Badge:
 
 def base_fields(incident: IncidentInput) -> list[FormField]:
     org = incident.organization
-    return [
+    fields = [
         FormField(label="신고 구분", value="보완 신고" if incident.is_supplement else "최초 신고"),
         FormField(label="회사(기관) 이름", value=org.name, required=True),
         FormField(label="서비스", value=join_or_none([org.service_name or "", org.service_url or ""], " · ")),
+    ]
+    if incident.is_supplement:
+        # 보완 신고는 최초 신고와 이어져야 합니다. 접수번호는 제출처에서 받은 값을 사람이 적습니다
+        fields.insert(1, FormField(label="최초 신고 접수번호·일시", value=None,
+                                   hint="보완 신고임을 밝히고 최초 신고 때 받은 접수번호나 신고 일시를 적으세요"))
+    return fields
+
+
+def boho_type(incident: IncidentInput) -> str:
+    """보호나라 신고 화면의 유형(랜섬웨어·디도스·그 밖의 해킹) 중 고를 것."""
+    picked = [legal.BOHO_TYPE_LABEL[t] for t in incident.incident_types if t in legal.BOHO_TYPE_LABEL]
+    return " · ".join(dict.fromkeys(picked)) or legal.BOHO_TYPE_DEFAULT
+
+
+def user_notice(incident: IncidentInput, cause: str | None) -> list[str]:
+    """이용자 통지 5개 항목(시행령 제58조의9). 모르는 칸은 '확인 중'으로 두고 확인되는 대로 다시 알립니다."""
+    org = incident.organization
+    contact = join_or_none([org.department or "", org.contact_phone or "", org.contact_email or ""], " · ")
+    when = fmt_time(incident.occurred_at) or "확인 중"
+    return [
+        f"① 발생 일시·원인·피해 내용: {when} / 원인 {cause or '확인 중'} / {incident.damage or '피해 내용 확인 중'}",
+        f"② 대응 현황: {(actions_text(incident) or '조치 중').replace(chr(10), ' / ')}",
+        "③ 이렇게 해 주세요: 저희 서비스와 같은 비밀번호를 쓰는 곳이 있다면 바꾸고, 저희를 사칭한 문자·이메일의 링크를 열지 마세요.",
+        "④ 피해 구제: 피해가 생기셨다면 아래 담당 부서로 알려 주세요. 확인 후 구제 방법을 안내해 드립니다.",
+        f"⑤ 문의·피해 구제 담당: {contact or '(담당 부서·연락처 작성 필요)'}",
+        "추가로 확인되는 내용은 바로 다시 알려 드리겠습니다. 불편을 드려 죄송합니다.",
     ]
 
 
@@ -181,6 +207,8 @@ def build_incident_report(req: FilingRequest, now: datetime) -> Report:
             label="사고 유형",
             value=join_or_none([legal.INCIDENT_TYPE_LABEL[t] for t in incident.incident_types]),
         ),
+        FormField(label="보호나라 신고 유형", value=boho_type(incident), auto=True,
+                  hint="보호나라 신고하기 화면에서 고를 유형입니다(랜섬웨어 / 디도스 / 그 밖의 해킹)"),
         FormField(label="사고 개요", value=incident.summary),
         FormField(
             label="원인",
@@ -221,6 +249,15 @@ def build_incident_report(req: FilingRequest, now: datetime) -> Report:
         Section(heading="② 대응 현황", fields=response),
         Section(heading="③ 대응 담당 부서 · 연락처", fields=contact),
         Section(
+            heading="이용자 통지문 초안",
+            paragraphs=[
+                "이용자 정보가 유출·변조·훼손됐거나 그럴 가능성이 있거나 서비스가 2시간 이상 멈췄다면 이용자에게 지체 없이 알립니다"
+                "(정보통신망법 제48조의3 제4항 · 시행령 제58조의9, 2026-10-01 시행). 원인을 아직 모르면 아는 항목부터 먼저 알리세요.",
+            ],
+            cards=[Card(title=f"[{incident.organization.name or '저희 서비스'}] 보안 사고를 알려 드립니다",
+                        paragraphs=user_notice(incident, cause))],
+        ),
+        Section(
             heading="신고 전후로 꼭 할 일",
             bullets=[
                 "의심되는 서버·계정은 네트워크에서 분리하거나 접속을 막아 피해가 번지지 않게 하세요.",
@@ -228,6 +265,8 @@ def build_incident_report(req: FilingRequest, now: datetime) -> Report:
                 "노출된 비밀번호·API 키는 새로 발급하고 이전 값은 폐기하세요.",
                 "개인정보가 빠져나갔거나 위조·변조·훼손(랜섬웨어 등)됐다면 개인정보 유출 신고(72시간)도 따로 확인하세요.",
                 legal.INCIDENT_USER_NOTICE_NOTE + ".",
+                legal.INCIDENT_RELIEF_REPORT_NOTE + ".",
+                legal.INCIDENT_SCAN_NOTE + ".",
                 legal.INCIDENT_FINE_NOTE + ".",
             ],
         ),
@@ -294,7 +333,9 @@ def build_privacy_report(req: FilingRequest, now: datetime) -> Report:
     basic = base_fields(incident)
     form = [
         FormField(label="정보주체 통지 여부", value=notified, required=True),
-        FormField(label="유출된 개인정보 항목", value=join_or_none(pi.items), required=True),
+        FormField(label="유출된 개인정보 항목", value=join_or_none(pi.items), required=True,
+                  hint=("'등'으로 묶지 말고 항목을 하나씩 적으세요(예: 이름, 이메일, 휴대전화번호). 뭉뚱그린 기재는 위반 사례로 지적됩니다"
+                        if any(x.strip().endswith("등") or x.strip() == "등" for x in pi.items) else None)),
         FormField(label="유출 규모", value=scale_text(pi), required=True),
         FormField(
             label="유출 시점과 경위",

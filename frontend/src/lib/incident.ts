@@ -120,12 +120,35 @@ function isFinding(value: unknown): value is FilingFinding {
     && ["critical", "high", "medium", "low", "info", "unknown"].includes(String(item.severity));
 }
 
-export function buildFilingRequest(form: IncidentForm, selectedFindings: unknown[]): FilingRequest {
+export function buildFilingRequest(form: IncidentForm, selectedFindings: unknown[], repos: string[] = []): FilingRequest {
   if (selectedFindings.length > 50) throw new Error("관련 검사 발견은 50개까지 선택할 수 있습니다.");
   if (!selectedFindings.every(isFinding)) throw new Error("선택한 검사 발견의 형식이 올바르지 않습니다. 검사 결과를 다시 확인해 주세요.");
   const fingerprints = selectedFindings.map(finding => finding.fingerprint);
   if (new Set(fingerprints).size !== fingerprints.length) throw new Error("관련 검사 발견에 중복된 항목이 있습니다.");
-  return { incident: { ...buildIncidentInput(form), related_fingerprints: fingerprints }, findings: [...selectedFindings] };
+  // 원인 후보로 고른 발견이 나온 저장소를 '피해 시스템' 후보로 보냅니다 (서버 신고서의 피해 시스템 칸)
+  const affected = [...new Set(repos.filter(repo => typeof repo === "string" && repo.trim()).map(repo => repo.trim().slice(0, 200)))].slice(0, 20);
+  return { incident: { ...buildIncidentInput(form), related_fingerprints: fingerprints, ...(affected.length ? { affected_systems: affected } : {}) },
+    findings: [...selectedFindings] };
+}
+
+const CATEGORY_NAMES: Record<string, string> = { code: "코드", secret: "비밀키 노출", dependency: "외부 부품", config: "설정" };
+/**
+ * 검사 결과로 '확인한 사실' 첫 문장을 만듭니다. 취약점은 침해 사실이 아니므로 '침해 여부 확인 중'을 함께 적습니다.
+ * 엔진이 준 숫자만 쓰고 추측을 더하지 않습니다.
+ */
+export function scanSummary(repo: string, findings: unknown[], scannedAt?: string): string {
+  const name = repo.replace(/^https:\/\/github\.com\//, "").slice(0, 200);
+  const records = findings.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
+  const counts = new Map<string, number>();
+  for (const item of records) {
+    const label = CATEGORY_NAMES[String(item.category)] ?? "기타";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const urgent = records.filter(item => ["critical", "high"].includes(String(item.severity))).length;
+  const date = scannedAt && /^\d{4}-\d{2}-\d{2}/.test(scannedAt) ? `${scannedAt.slice(0, 10)} ` : "";
+  const breakdown = [...counts].map(([label, count]) => `${label} ${count}`).join(", ");
+  return `${date}보안 점검에서 ${name} 저장소의 보안 문제 ${records.length}건을 확인했습니다${breakdown ? `(${breakdown}` : ""}${breakdown && urgent ? `, 위험도 높음 ${urgent}건)` : breakdown ? ")" : ""}. `
+    + "실제 무단 접근·변조·유출이 있었는지는 확인 중입니다.";
 }
 
 // ── Server-driven flow ──

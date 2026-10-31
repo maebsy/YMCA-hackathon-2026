@@ -10,6 +10,11 @@ import { mountReportDocument, reportDocumentHtml } from "@/lib/report-document";
 import ReportScorecard from "@/components/report-scorecard";
 import { scoreRows } from "@/lib/report-scorecard";
 import { REPOSITORY_PROGRESS_PATH } from "@/lib/repository-routes";
+
+// 진행 화면(scan-progress의 explainedText)과 같은 문구. 해석 1건이 몇 분 걸려 완료 수만 보면 멈춘 것처럼 보입니다
+function explainedText(e: { done: number; total: number; running?: number; queued?: number }): string {
+  return [`완료 ${e.done}/${e.total}건`, e.running ? `해석 중 ${e.running}` : "", e.queued && e.done < e.total ? `대기 ${e.queued}` : ""].filter(Boolean).join(" · ");
+}
 import "./repository-result.css";
 
 export function RepositoryReport() {
@@ -74,7 +79,7 @@ export default function RepositoryResult() {
   return <main id="main" className="workspace container repository-page" tabIndex={-1}>
     <ReportScorecard key={`${repository.resultRepo}:${repository.startedAt ?? "restored"}`} rows={scoreRows(repository.reportInput?.findings ?? [], repository.findings, repository.pendingIds)}
       identity={`${repository.resultRepo}:${repository.startedAt ?? "restored"}`} fresh={repository.startedAt !== undefined && repository.phase === "done"}><RepositoryReport/></ReportScorecard>
-    {repository.llmPending && <p className="field-hint" role="status">언어모델 쉬운 설명을 이어서 만드는 중입니다{repository.explained ? ` (${repository.explained.done}/${repository.explained.total}건)` : ""}. 끝나면 리포트와 취약점 상세에 자동으로 반영됩니다.</p>}
+    {repository.llmPending && <p className="field-hint" role="status">언어모델 쉬운 설명을 이어서 만드는 중입니다{repository.explained ? ` (${explainedText(repository.explained)})` : ""}. 끝나면 리포트와 취약점 상세에 자동으로 반영됩니다.</p>}
     <div className="repository-result-heading"><h1 className="repository-small-title">취약점 상세</h1><button className="button secondary" type="button" disabled={repository.isScanning} onClick={() => rescan()}>재검사</button></div>
     {/* The document does not include manual pending counts, so retain this breakdown below it. */}
     <dl className="count-grid"><div><dt>엔진 발견 항목</dt><dd>{repository.findings.length}<small>건</small></dd></div><div><dt>미해결 · 미조치</dt><dd>{repository.findings.length - verified - pending}<small>건</small></dd></div><div><dt>재검증 대기</dt><dd className="accent">{pending}<small>건</small></dd></div><div><dt>엔진 해결 확인</dt><dd>{verified}<small>건</small></dd></div></dl>

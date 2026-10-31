@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CircleCheck, CircleQuestionMark, CircleX, FlaskConical, LoaderCircle, Play, RotateCcw, Sparkles } from "lucide-react";
-import { attackVerdictLabels, isolationLabels, requestLine, runVerify, testsLabel, verdictLabels, type AttackDefinition, type AttackOutcome, type VerifyJob, type VerifyMode } from "@/lib/verify";
+import { attackVerdictLabels, isolationLabels, requestLine, runVerify, testsLabel, verdictHelp, verdictLabels, type AttackDefinition, type AttackOutcome, type VerifyJob, type VerifyMode } from "@/lib/verify";
 
 type Phase = "idle" | "queued" | "running" | "done" | "error";
 const phaseText: Partial<Record<Phase, string>> = {
@@ -50,6 +50,7 @@ function Result({ job }: { job: VerifyJob }) {
     <div className="vp-verdict" data-tone={verdict.tone} role="status">
       <p className="vp-verdict-label">판정 · {verdict.label}</p>
       <p>{result.message}</p>
+      {verdictHelp(job).map(line => <p key={line} className="vp-help">{line}</p>)}
       <p className="vp-muted">실행 환경: {result.sandbox === "docker" ? "Docker 격리 컨테이너" : "이 서버에서 바로 실행 (데모 과녁 전용)"} · {result.duration_sec}초</p>
       <p className="vp-muted">수정본: {job.mode === "ai" ? "GPU Red·Blue가 만든 공격과 수정본 (사람이 최종 확인 필요)" : "사람이 쓴 기준 수정본"}</p>
       {job.mode === "ai" && job.ai && Object.values(job.ai.patch_summaries).map((s, i) => <p key={i} className="vp-note"><span className="vp-muted">Blue 수정 요약 · </span>{s}</p>)}

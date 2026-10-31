@@ -161,3 +161,16 @@ test('findings without a model explanation get a plain Korean explanation and a 
   assert.match(secret.aiPrompt, /문제: 서비스에 들어가는 열쇠/);
   assert.match(secret.redScenario, /커밋 기록에 남습니다/);
 });
+
+test('explain reports queued and running so the screen can show live progress', async t => {
+  const original = global.fetch; let calls = 0;
+  const statuses = ['running', 'running', 'done'];
+  global.fetch = async () => ({ok:true, json:async()=>++calls === 1 ? {job_id:'job'}
+    : statuses[calls - 2] === 'done' ? {status:'done', result:{results:[]}} : {status:statuses[calls - 2]}});
+  t.mock.method(global, 'setTimeout', (fn) => { fn(); return 0; });
+  const seen = [];
+  try {
+    await explain([{}], status => seen.push(status));
+    assert.deepEqual(seen, ['queued', 'running', 'running']);
+  } finally { global.fetch = original; }
+});

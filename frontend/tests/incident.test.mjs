@@ -294,3 +294,19 @@ test('a scan alone gives an action line and urgent findings to link as cause can
   assert.equal(domain.urgentEvidence(Array.from({length:20}, () => ({finding:{severity:'high'}}))).length, 10);
   assert.doesNotThrow(() => domain.buildIncidentInput(form({actions:domain.mergeActions('', [domain.scanCheckLine('https://github.com/a/b', [])])})));
 });
+
+test('scan results fill the draft: a factual summary that does not claim a breach, and repos as affected systems', () => {
+  const findings = [
+    {category:'code', severity:'critical'}, {category:'code', severity:'high'}, {category:'secret', severity:'high'},
+    {category:'dependency', severity:'medium'}, {category:'config', severity:'low'},
+  ];
+  const summary = domain.scanSummary('https://github.com/maebsy/cafe-order-demo', findings, '2026-11-01T07:20:00+09:00');
+  assert.equal(summary, '2026-11-01 보안 점검에서 maebsy/cafe-order-demo 저장소의 보안 문제 5건을 확인했습니다(코드 2, 비밀키 노출 1, 외부 부품 1, 설정 1, 위험도 높음 3건). 실제 무단 접근·변조·유출이 있었는지는 확인 중입니다.');
+  assert.match(domain.scanSummary('https://github.com/a/b', []), /^보안 점검에서 a\/b 저장소의 보안 문제 0건을 확인했습니다\. /);
+  assert.doesNotThrow(() => domain.buildIncidentInput(form({summary})));
+  const finding = {fingerprint:'f1', tool:'semgrep', category:'code', rule_id:'r', title:'t', severity:'high'};
+  const body = domain.buildFilingRequest(form(), [finding], ['https://github.com/a/b', 'https://github.com/a/b', ' ']);
+  assert.deepEqual(body.incident.affected_systems, ['https://github.com/a/b']);
+  assert.deepEqual(body.incident.related_fingerprints, ['f1']);
+  assert.equal('affected_systems' in domain.buildFilingRequest(form(), []).incident, false);
+});

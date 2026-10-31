@@ -91,6 +91,24 @@ export function testsLabel(t: TestOutcome): string {
   return total ? `${t.failed}건 실패 (${t.passed}/${total} 통과)` : "실패";
 }
 
+/**
+ * 판정 메시지를 사람이 읽을 수 있게 풀어 씁니다. 특히 "수정 후 앱이 뜨지 않았습니다"는 실검증이 잘못된 수정을
+ * 걸러낸 결과인데, 그대로 두면 검사 실패처럼 읽힙니다.
+ */
+export function verdictHelp(job: Pick<VerifyJob, "mode" | "result">): string[] {
+  const result = job.result;
+  if (!result) return [];
+  if (result.status === "fix_failed" && /수정 후 앱이/.test(result.message)) return [
+    "수정본을 적용한 앱이 시작되지 않거나 요청에 응답하지 않았습니다. 수정이 앱 기능을 망가뜨렸다는 뜻이라, 이 수정본은 그대로 쓰면 안 됩니다.",
+    job.mode === "ai"
+      ? "AI(Blue)가 만든 수정본에서 자주 생기는 문제입니다(예: 응답을 보내는 줄까지 지움). 실검증이 이런 잘못된 수정을 배포 전에 걸러낸 결과입니다. 아래 '수정 내용 보기'에서 무엇이 바뀌었는지 확인하고, 다시 실행하거나 기준 수정본과 비교해 보세요."
+      : "아래 '수정 내용 보기'에서 무엇이 바뀌었는지 확인하세요.",
+  ];
+  if (result.status === "fix_failed") return ["수정 후에도 공격이 통하거나, 수정 전에는 통과하던 기능 테스트가 깨졌습니다. 공격별 결과와 기능 테스트를 확인하세요."];
+  if (result.status === "not_reproduced") return ["수정 전에도 공격이 통하지 않았습니다. 이 탐지는 실제로는 위험하지 않은 오탐일 수 있습니다."];
+  return [];
+}
+
 export const verdictLabels: Record<VerifyStatus, { label: string; tone: "ok" | "danger" | "warn" | "muted" }> = {
   verified: { label: "검증됨", tone: "ok" },
   fix_failed: { label: "수정 미흡", tone: "danger" },

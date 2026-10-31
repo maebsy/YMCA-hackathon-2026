@@ -128,3 +128,5 @@
   .incident-scan { padding:16px; }
   .incident-entry { padding:20px; }
 }
+.incident-scan-fill { display:grid; gap:8px; margin-block:12px 16px; }
+.incident-scan-fill .button { justify-self:start; }

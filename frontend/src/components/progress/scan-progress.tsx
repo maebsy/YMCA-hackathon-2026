@@ -94,7 +94,6 @@ export default function ProgressH({ repo, phase, startedAt, logs, explained, cou
         })}</ol>
         <div className="ph-outcome">
           {phase === "failed" && failureStep < 0 ? failure : phase === "done" && counts ? <div className="ph-results"><p>전체 <strong>{counts.total}건</strong><span className="ph-result-divider">·</span>미해결 <strong>{counts.open}건</strong></p><p className="ph-results-note">검사 범위와 근거를 함께 확인하세요.</p></div> : <p className="ph-stage-note">{phase === "running" ? "엔진 검사는 보통 1~3분 걸립니다." : phase === "reporting" ? "HTML과 Markdown 리포트를 만들고 있습니다." : phase === "explaining" ? "완료된 해석부터 결과에 반영합니다." : phase === "done" ? "검사 범위와 근거를 함께 확인하세요." : phase === "failed" ? "오류를 확인한 뒤 다시 시도해 주세요." : "검사 요청의 응답을 기다립니다."}</p>}
-          {phase === "done" && !active && resultHref && <Link className="ph-text-button" href={resultHref}>결과 보기</Link>}
         </div>
       </div>
       <div className="ph-console"><div className="ph-console-heading"><h2 className="ph-section-title"><span className="ph-prompt" aria-hidden="true">&gt;_</span> 검사 진행 기록</h2><button className="ph-text-button" type="button" aria-expanded={expanded} aria-controls={panelId} onClick={() => setExpanded(value => !value)}>{expanded ? "접기 −" : "펼치기 +"}</button></div>

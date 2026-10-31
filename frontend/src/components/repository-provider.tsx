@@ -18,17 +18,21 @@ const initialState: RepositoryState = {
 };
 function record(value: unknown): value is JsonRecord { return !!value && typeof value === "object" && !Array.isArray(value); }
 
-/** Accept only an HTTPS GitHub repository root for actual engine scans (auto-prepending https:// when omitted). */
+/** Map GitHub repository roots and GitHub Pages sites to an HTTPS repository URL. */
 export function normalizeRepositoryUrl(value: string): string | null {
   const trimmed = value.trim();
-  const raw = /^github\.com\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
-  if (!/^https:\/\/github\.com\//i.test(raw) || /[%?#\\]/.test(raw)) return null;
+  const raw = /^(?:github\.com\/|[a-z\d-]+\.github\.io(?:\/|$))/i.test(trimmed) ? `https://${trimmed}` : trimmed;
+  const address = /^https:\/\/(github\.com|([a-z\d-]+)\.github\.io)(\/[^%?#\\]*)?$/i.exec(raw);
+  if (!address || /[%?#\\]/.test(raw)) return null;
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:" || url.hostname !== "github.com" || url.port || url.username || url.password) return null;
-    const parts = url.pathname.replace(/\/$/, "").split("/");
-    if (parts.length !== 3) return null;
-    const [, owner, inputRepo] = parts;
+    if (url.protocol !== "https:" || url.port || url.username || url.password) return null;
+    // Read the original path so URL's dot-segment normalization cannot change the repository.
+    const parts = (address[3] ?? "/").replace(/\/$/, "").split("/");
+    const pagesOwner = address[2]?.toLowerCase();
+    if (!pagesOwner && parts.length !== 3) return null;
+    const owner = pagesOwner ?? parts[1];
+    const inputRepo = pagesOwner ? (parts.length === 1 ? `${owner}.github.io` : parts[1]) : parts[2];
     const repo = inputRepo.replace(/\.git$/, "");
     if (!/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(owner) || owner.includes("--")) return null;
     if (!/^[a-z\d_.-]{1,100}$/i.test(repo) || repo === "." || repo === "..") return null;
@@ -101,7 +105,7 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
     if (busy.current || !stateRef.current.restored) return;
     const normalized = normalizeRepositoryUrl(input);
     if (!normalized) {
-      change(current => ({ ...current, error: "공개 GitHub 저장소의 HTTPS 주소를 입력하세요. 예: https://github.com/owner/repository" }));
+      change(current => ({ ...current, error: "github.com/owner/repository 또는 owner.github.io 형식의 공개 GitHub 주소를 입력하세요." }));
       return;
     }
     const repoUrl = normalized;

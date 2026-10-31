@@ -115,6 +115,17 @@ await check("Empty provider has no invented result and invalid input never reach
   provider.unmount();
 });
 
+await check("Pages input sends and displays the canonical repository throughout a scan", async () => {
+  const provider = mountProvider();
+  await provider.run("Alice.github.io/project/docs/");
+  const expected = "https://github.com/alice/project";
+  assert.equal(provider.calls.scans[0].url, expected);
+  assert.equal(provider.value.repoInput, expected);
+  assert.equal(provider.value.resultRepo, expected);
+  assert.equal(provider.calls.saved.at(-1).repoUrl, expected);
+  provider.unmount();
+});
+
 await check("In-flight duplicate requests are blocked and zero findings still publish and persist", async () => {
   const engine = deferred();
   const data = result(repoA);

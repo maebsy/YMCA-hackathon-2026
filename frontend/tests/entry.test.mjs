@@ -55,6 +55,43 @@ test("home submit prepends https:// when github.com URL is entered without schem
   assert.deepEqual(ui.calls, ["https://github.com/papawolf42/kdfakdff"]);
   assert.deepEqual(ui.navigation, ["/repository"]);
 });
+test("GitHub Pages user and project sites normalize to repository roots", () => {
+  for (const [input, expected] of [
+    ["alice.github.io", "https://github.com/alice/alice.github.io"],
+    ["https://alice.github.io/", "https://github.com/alice/alice.github.io"],
+    [" ALIce.GitHub.IO/ ", "https://github.com/alice/alice.github.io"],
+    ["HTTPS://ALIce.GitHub.IO", "https://github.com/alice/alice.github.io"],
+    ["alice.github.io/My-Repo", "https://github.com/alice/My-Repo"],
+    ["https://alice.github.io/My-Repo/", "https://github.com/alice/My-Repo"],
+    ["Alice.GITHUB.IO/My-Repo/docs/start.html", "https://github.com/alice/My-Repo"],
+    ["https://alice.github.io/My-Repo/docs/", "https://github.com/alice/My-Repo"],
+    ["a-b.github.io/repo.git/", "https://github.com/a-b/repo"],
+    [`${"a".repeat(39)}.github.io`, `https://github.com/${"a".repeat(39)}/${"a".repeat(39)}.github.io`],
+  ]) assert.equal(normalizeRepositoryUrl(input), expected, input);
+});
+test("GitHub Pages rejects invalid owners, spoofed domains and ambiguous URLs", () => {
+  for (const input of [
+    "github.io", "https://github.io/", "-alice.github.io", "alice-.github.io", "a--b.github.io",
+    "a_b.github.io", "a.b.github.io", `${"a".repeat(40)}.github.io`, "https://example.com/repo",
+    "alice.github.io.evil.com/repo", "https://alice.github.io.evil.com/repo", "https://alice.github.io./repo",
+    "http://alice.github.io/repo", "https://user:pass@alice.github.io/repo", "https://alice.github.io:443/repo",
+    "https://alice.github.io/repo?token=x", "https://alice.github.io/repo#fragment", "https://alice.github.io/repo%2Fother",
+    "https://alice.github.io/repo\\other", "alice.github.io//repo", "alice.github.io/./repo", "alice.github.io/../repo",
+    "alice.github.io/.git", `alice.github.io/${"a".repeat(101)}`,
+  ]) assert.equal(normalizeRepositoryUrl(input), null, input);
+});
+test("home sends a Pages site's repository URL and shows both supported input formats", () => {
+  const ui = entry({ repoInput: "Alice.github.io/project/docs/" });
+  ui.submit();
+  assert.deepEqual(ui.calls, ["https://github.com/alice/project"]);
+  assert.deepEqual(ui.navigation, ["/repository"]);
+  const input = ui.tree.find(node => node.type === "input");
+  assert.match(input.props.placeholder, /github\.com/);
+  assert.match(input.props.placeholder, /github\.io/);
+  const hint = ui.tree.find(node => node.props.id === "repository-hint");
+  assert.match(hint.props.children, /GitHub Pages/);
+  assert.equal(ui.tree.some(node => node.type === "span" && node.props.children === "실제 엔진 검사"), false);
+});
 test("website and malformed repository inputs stay on the form without engine requests", () => {
   for (const repoInput of ["", "https://example.com", "https://github.com/acme/app/tree/main", "https://github.com/acme/app?token=x"]) {
     const ui = entry({ repoInput }); ui.submit();

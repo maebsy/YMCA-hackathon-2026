@@ -39,14 +39,24 @@ def _http_query(keys: list[Key]) -> list[list[str]]:
                                      headers={"content-type": "application/json", "user-agent": "72hours-security-engine"})
     with urllib.request.urlopen(request, timeout=TIMEOUT_SEC) as response:
         data = json.load(response)
-    results = data.get("results")
+    results = data.get("results") if isinstance(data, dict) else None
     if not isinstance(results, list) or len(results) != len(keys):
         raise ValueError("OSV querybatch 응답 개수가 요청과 다릅니다")
     out = []
     for r in results:
-        if (r or {}).get("next_page_token"):
+        if not isinstance(r, dict):
+            raise ValueError("OSV querybatch 결과 항목이 객체가 아닙니다")
+        token = r.get("next_page_token", "")
+        if not isinstance(token, str):
+            raise ValueError("OSV querybatch 페이지 토큰 형식이 올바르지 않습니다")
+        if token:
             raise ValueError("OSV querybatch 결과가 잘렸습니다")  # 일부만 보고 '안전'이라 하지 않는다
-        out.append(sorted({v["id"] for v in (r or {}).get("vulns") or [] if v.get("id")}))
+        vulns = r.get("vulns", [])  # 정상 빈 객체 {}는 알려진 취약점이 없다는 응답입니다.
+        if not isinstance(vulns, list) or any(
+            not isinstance(v, dict) or not isinstance(v.get("id"), str) or not v["id"].strip() for v in vulns
+        ):
+            raise ValueError("OSV querybatch 취약점 목록이나 ID 형식이 올바르지 않습니다")
+        out.append(sorted({v["id"] for v in vulns}))
     return out
 
 

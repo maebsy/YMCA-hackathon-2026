@@ -133,7 +133,10 @@ def test_plain_report_orders_urgent_first_and_uses_explanation():
     assert field(secret, "AI 코딩툴에 붙여 넣을 지시").value.startswith("src/lib/supabase.ts")
     # 해석이 없는 건도 심각도로 우선순위를 정하고 안내 문구를 보여 줍니다
     sqli = next(c for c in cards if "SQL" in c.title)
-    assert "설명 준비 중" in {b.text for b in sqli.badges}
+    assert "기본 설명" in {b.text for b in sqli.badges}
+    # 해석이 없어도 '아직 만들지 못했다' 대신 규칙 기반 쉬운 설명이 나옵니다
+    assert not any("아직 만들지 못했습니다" in p for p in sqli.paragraphs)
+    assert any("데이터베이스 명령" in p for p in sqli.paragraphs)
     assert report.deadline.remaining_minutes == 47 * 60
 
 
@@ -585,3 +588,38 @@ def test_completed_next_steps_do_not_promise_unbuilt_alerts():
     text = " ".join(next_steps([], completed=True).bullets)
     assert "알려 드립니다" not in text and "자동 검사는 계속" not in text
     assert "재검사" in text and "준비 중" in text
+
+
+
+def _basic(**kw):
+    from app.llm.schemas import FindingInput
+    from app.reports.plain import basic_explanation
+
+    base = dict(fingerprint="f", tool="x", category="code", rule_id="r", title="t", severity="high")
+    base.update(kw)
+    return basic_explanation(FindingInput(**base))
+
+
+def test_basic_explanation_secret_skips_english_tool_text_and_says_reissue():
+    # Gitleaks 원문은 영어라 비전공자 설명에 넣지 않고, 키 재발급을 첫 단계로 안내합니다
+    paras, steps = _basic(tool="gitleaks", category="secret", rule_id="generic-api-key", title="Generic API Key",
+                          what="Detected a Generic API Key, potentially exposing access to various services.")
+    assert all("Detected" not in p for p in paras)
+    assert "열쇠" in paras[0]
+    assert "폐기" in steps[0] and "환경 변수" in steps[1]
+
+
+def test_basic_explanation_dependency_uses_engine_versions_only():
+    paras, steps = _basic(tool="osv", category="dependency", rule_id="GHSA-x", title="lodash: Prototype Pollution",
+                          package_name="lodash", installed_version="4.17.11", fixed_version="4.17.21")
+    assert "lodash 4.17.11" in paras[0]
+    assert steps == ["lodash을(를) 4.17.21 이상으로 올린 뒤 사이트가 잘 동작하는지 확인하고 다시 검사하세요."]
+    _, no_fix = _basic(category="dependency", package_name="pkg")
+    assert "아직 확인되지 않았습니다" in no_fix[0]
+
+
+def test_basic_explanation_code_uses_glossary_and_korean_rule_text():
+    paras, _ = _basic(rule_id="vibe-coding/sql-string-concat", title="SQL 문자열 연결",
+                      what="SQL 문을 문자열 이어붙이기로 만들고 있습니다.")
+    assert "데이터베이스 명령" in paras[0]
+    assert paras[-1] == "SQL 문을 문자열 이어붙이기로 만들고 있습니다."

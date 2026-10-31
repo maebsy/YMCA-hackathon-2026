@@ -244,8 +244,49 @@ const DECISION_LABEL: Record<Finding["decision"], string> = {
   act: "act · 지금 바로", attend: "attend · 이번 주", trackstar: "track · 지켜보기",
 };
 
+const HANGUL = /[가-힣]/;
+const PLAIN_BY_CWE: [string[], string][] = [
+  [["CWE-89"], "입력칸이나 주소창에 넣은 글자가 데이터베이스 명령으로 실행될 수 있습니다. 남의 주문·회원 정보를 통째로 꺼내 갈 수 있습니다."],
+  [["CWE-79"], "다른 사람이 넣은 코드가 방문자 화면에서 실행될 수 있습니다. 로그인 정보를 빼앗기거나 가짜 화면이 뜰 수 있습니다."],
+  [["CWE-78", "CWE-77"], "입력값이 서버의 명령으로 실행될 수 있습니다. 서버를 통째로 빼앗길 수 있는 가장 위험한 종류입니다."],
+  [["CWE-798", "CWE-321", "CWE-200"], "서비스에 들어가는 열쇠(비밀키)가 드러나 있습니다. 누구나 그 열쇠로 서비스에 들어올 수 있습니다."],
+  [["CWE-284", "CWE-285", "CWE-306", "CWE-639", "CWE-862"], "로그인했는지, 본인 것인지 확인하지 않아 남의 정보나 관리자 기능에 들어갈 수 있습니다."],
+  [["CWE-22"], "파일 이름을 바꿔 넣어 서버의 다른 파일을 열어 볼 수 있습니다."],
+  [["CWE-538", "CWE-693", "CWE-942", "CWE-922"], "설정이 안전하지 않아, 코드가 맞아도 정보가 새거나 막아야 할 접근이 열릴 수 있습니다."],
+];
+// 실검증(/verify)이 실제 공격으로 재현해 보여 주는 종류
+export const RUNTIME_VERIFIABLE_CWE = new Set(["CWE-89", "CWE-79", "CWE-78", "CWE-77"]);
+
+/** 언어모델 해석이 없을 때의 기본 쉬운 설명. 엔진이 준 사실(분류·CWE·패키지·버전)만 씁니다. 백엔드 리포트의 기본 설명과 같은 기준입니다. */
+export function basicGuide(it: EngineItem): { scenario: string; steps: string[] } {
+  const cwes: string[] = Array.isArray(it.cwe) ? it.cwe.map(String) : [];
+  const meaning = PLAIN_BY_CWE.find(([keys]) => keys.some(key => cwes.includes(key)))?.[1];
+  const hint = it.fix_hint || {};
+  if (it.kind === "secret") return {
+    scenario: "서비스에 들어가는 열쇠(비밀키·토큰)가 코드에 그대로 적혀 있습니다. 저장소를 볼 수 있는 사람은 누구나 이 열쇠로 서비스에 들어갈 수 있고, 지운 뒤에도 커밋 기록에 남습니다.",
+    steps: ["그 서비스의 관리 화면에서 이 키를 바로 폐기하고 새 키를 발급하세요. 코드에서 지우는 것만으로는 부족합니다.",
+      "새 키는 코드가 아니라 환경 변수(.env, 배포 설정)에 넣고, .env 파일은 .gitignore에 추가하세요."],
+  };
+  if (it.kind === "dependency") {
+    const name = hint.package || String(it.title ?? "").split(" ")[0] || "이 부품";
+    const current = hint.current_version ? ` ${hint.current_version}` : "";
+    return {
+      scenario: `사이트가 가져다 쓰는 외부 부품 ${name}${current}에 전 세계에 공개된 취약점이 있습니다. 공격 방법도 함께 알려져 있어 따라 하기 쉬운 공격 대상이 됩니다.`,
+      steps: hint.target_version ? [`${name}을(를) ${hint.target_version} 이상으로 올린 뒤 사이트가 잘 동작하는지 확인하고 다시 검사하세요.`]
+        : [`${name}의 고친 버전이 아직 확인되지 않았습니다. 다른 부품으로 바꿀 수 있는지 개발자와 상의하세요.`],
+    };
+  }
+  const what = typeof it.what === "string" && HANGUL.test(it.what) ? it.what : "";
+  return {
+    scenario: meaning || "코드를 작성한 방식 때문에 공격자가 입력값으로 사이트를 원래 의도와 다르게 움직일 수 있습니다.",
+    steps: what ? [what] : [],
+  };
+}
+
 export function itemToFinding(it: EngineItem): Finding {
   const decision = SEV_DECISION[it.severity] ?? "attend";
+  const guide = basicGuide(it);
+  const cwes = cwesOf(it);
   const tool = String(it.id || "").split(":")[0];
   const cmd = it.fix_hint?.command || "";
   return {
@@ -264,14 +305,27 @@ export function itemToFinding(it: EngineItem): Finding {
     fixed: it.status === "code_resolved",
     desc: it.what || it.title,
     redScenario: it.status === "code_resolved" ? "재검사에서 해결된 항목으로 LLM 해석을 생략합니다."
-      : "LLM 해석 미요청 — 자동 해석은 상위 5개 항목 묶음까지 수행합니다. 현재는 엔진 결과입니다.",
+      : `기본 설명 · ${guide.scenario} (언어모델 상세 해석은 위험도 상위 5건에 먼저 만듭니다.)`,
     why: [it.status_label, ...(it.flags || []).map((x: any) => (typeof x === "string" ? x : x?.note || x?.flag))]
       .filter(Boolean)
       .map(String),
     commands: { windows: cmd, macos: cmd, linux: cmd },
-    aiPrompt: `[72hours 보안 수정 지시 | 규칙: ${it.rule_id}]\n대상 위치: ${it.where || "-"}\n${it.what || it.title}\n${it.fix_hint?.text || ""}`,
+    aiPrompt: basicPrompt(it, guide),
+    cwe: cwes[0],
   };
 }
+
+/** 엔진 결과만으로 만드는 수정 지시문. 내부용 문장("규칙 설명(what)…")과 외부 도구의 영어 원문을 빼고, 고친 뒤 확인할 것까지 적습니다. */
+function basicPrompt(it: EngineItem, guide: { scenario: string; steps: string[] }): string {
+  const what = typeof it.what === "string" && HANGUL.test(it.what) ? it.what : guide.scenario;
+  const hint = typeof it.fix_hint?.text === "string" && !it.fix_hint.text.includes("(what)") ? it.fix_hint.text : "";
+  const steps = [...new Set([hint, ...guide.steps].filter(step => step && step !== what))];
+  const verify = RUNTIME_VERIFIABLE_CWE.has(cwesOf(it)[0] ?? "") ? "같은 종류의 공격 요청을 다시 보내 막히는지 확인하세요." : "";
+  return [`[72hours 보안 수정 지시 | 규칙: ${it.rule_id}]`, `대상 위치: ${it.where || "-"}`, `문제: ${what}`,
+    ...steps.map((step, index) => `${index + 1}. ${step}`),
+    `고친 뒤: 기존 기능이 그대로 동작하는지 테스트하고, 72hours에서 재검사하세요.${verify ? ` ${verify}` : ""}`].join("\n");
+}
+function cwesOf(it: EngineItem): string[] { return Array.isArray(it.cwe) ? it.cwe.map(String) : []; }
 
 export function mergeExplanation(f: Finding, r: ExplainResult): Finding {
   if (r?.status === "failed") return { ...f, verdict: "LLM 해석 실패", verdictType: "warn",

@@ -14,16 +14,21 @@ type RepositoryState = {
   phase: "idle" | "queued" | "running" | "explaining" | "reporting" | "done" | "failed";
   reportHtml: string; reportMarkdown: string; reportError: string; resultReady: boolean;
   startedAt?: number; explained?: { done: number; total: number };
+  // 결과 화면으로 넘어간 뒤에도 남은 언어모델 해석이 계속 도는 중인지
+  llmPending: boolean;
 };
 const initialState: RepositoryState = {
   repoInput: "", resultRepo: "", findings: [], result: null, reportInput: null, logs: [], pendingIds: [],
   selectedFindingId: "", isScanning: false, restored: false, error: "", message: "", os: "windows",
-  phase: "idle", reportHtml: "", reportMarkdown: "", reportError: "", resultReady: false,
+  phase: "idle", reportHtml: "", reportMarkdown: "", reportError: "", resultReady: false, llmPending: false,
 };
 // 임시값: 결과 정리 단계를 인지할 수 있도록 최소 1.5초 표시합니다.
 const REPORT_MIN_MS = 1500;
 // 임시값: 이동 직전 완료 체크를 잠깐 표시합니다.
 const REPORT_DONE_MS = 350;
+// 임시값: 언어모델 해석을 기다리는 최대 시간. GPU 대기열이 밀리면 해석 5건에 10분 넘게 걸려
+// 결과 화면으로 넘어가지 못했습니다. 이 시간이 지나면 엔진 결과로 먼저 넘어가고, 남은 해석은 뒤에서 이어서 반영합니다.
+const LLM_WAIT_MS = 60_000;
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 function record(value: unknown): value is JsonRecord { return !!value && typeof value === "object" && !Array.isArray(value); }
@@ -170,9 +175,12 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
       collected.push({ time: now(), step, msg, status, type });
       change(value => ({ ...value, logs: [...collected] }));
     }
-    change(value => ({ ...value, repoInput: repoUrl, isScanning: true, phase: "queued", startedAt: Date.now(), explained: undefined, reportError: "", resultReady: false, error: "", message: "", logs: [] }));
+    change(value => ({ ...value, repoInput: repoUrl, isScanning: true, phase: "queued", startedAt: Date.now(), explained: undefined, llmPending: false, reportError: "", resultReady: false, error: "", message: "", logs: [] }));
     log("engine", `${repoUrl} ${previous ? "재검사" : "검사"}를 요청합니다.`, "접수 중");
     let finalReportInput: ReportInput | undefined;
+    // 결과 화면으로 넘어간 뒤(background)에는 리포트를 지우지 않고, 해석이 끝났을 때 한 번만 다시 만듭니다
+    let background = false;
+    let llmRun: Promise<void> | undefined;
     async function scanEngine() {
       const data: unknown = await startScan(repoUrl, previous, status => {
         if (!active()) return;
@@ -184,7 +192,8 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
         throw new Error("엔진 응답에 검사 결과나 리포트 정보가 없습니다. 기존 결과를 유지합니다.");
       const items = data.llm_input.items;
       if (!items.every(record)) throw new Error("엔진 발견 항목의 형식이 올바르지 않습니다.");
-      let mapped = items.map(item => ({ ...itemToFinding(item), redScenario: "추가 AI 해석이 아직 없습니다. 엔진 관찰 근거와 수정 안내를 직접 검토하세요." }));
+      // 언어모델 해석 전에는 엔진 사실로 만든 기본 쉬운 설명을 보여 줍니다 (itemToFinding)
+      let mapped = items.map(item => itemToFinding(item));
       if (!mapped.every(validFinding)) throw new Error("엔진 발견 항목을 표시할 수 없습니다. 응답 형식을 확인하세요.");
       const result = data.result;
       const rawFindings = data.findings;
@@ -199,14 +208,14 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
       function publish(message: string) {
         if (!active()) return;
         finalReportInput = reportInput;
-        change(value => ({ ...value, resultRepo: repoUrl, result, findings: mapped, reportInput, reportHtml: "", reportMarkdown: "", logs: [...collected],
+        change(value => ({ ...value, resultRepo: repoUrl, result, findings: mapped, reportInput, ...(background ? {} : { reportHtml: "", reportMarkdown: "" }), logs: [...collected],
           pendingIds: [], selectedFindingId: value.resultRepo.toLowerCase() === repoUrl.toLowerCase() && mapped.some(finding => finding.id === value.selectedFindingId)
             ? value.selectedFindingId : mapped[0]?.id ?? "", message }), true);
       }
       publish("엔진 검사가 끝났습니다. 아래 결과와 도구별 실행 범위를 확인하세요.");
       const open = rawFindings.filter(finding => record(finding) && finding.status !== "code_resolved");
       if (!open.length) return;
-      try {
+      llmRun = (async () => { try {
         if (!(await llmHealthy())) {
           log("LLM", "추가 해석 서버에 연결할 수 없어 엔진 결과와 기본 안내를 유지합니다.", "해석 없음", "warn");
           publish("엔진 결과를 표시합니다. 추가 AI 해석은 사용할 수 없습니다.");
@@ -250,11 +259,34 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         log("LLM", `${error instanceof Error ? error.message : "추가 해석 실패"} · 엔진 결과를 유지합니다.`, "해석 실패", "warn");
         publish("추가 AI 해석에 실패했습니다. 엔진 검사 결과는 유지됩니다.");
+      } })();
+      const timedOut = await Promise.race([llmRun.then(() => false), wait(LLM_WAIT_MS).then(() => true)]);
+      if (timedOut && active()) {
+        background = true;
+        change(value => ({ ...value, llmPending: true }));
+        log("LLM", "해석이 길어져 엔진 결과로 먼저 결과 화면을 엽니다. 남은 해석은 끝나는 대로 리포트에 반영합니다.", "이어서 해석");
+      }
+    }
+    // 뒤에서 이어진 해석이 끝나면 리포트만 조용히 다시 만듭니다. 작업 번호(operation)를 올리지 않아야
+    // 진행 중인 해석이 '취소된 작업'으로 보이지 않습니다.
+    async function refreshAfterLLM() {
+      if (!llmRun || !background) return;
+      await llmRun;
+      if (!active() || !finalReportInput) return;
+      try {
+        const [html, markdown] = await Promise.all([plainReport(finalReportInput, "html"), plainReport(finalReportInput, "markdown")]);
+        if (active() && html.trim() && markdown.trim()) change(value => ({ ...value, reportHtml: html, reportMarkdown: markdown, llmPending: false,
+          message: "언어모델 해석이 끝나 리포트를 다시 만들었습니다." }));
+      } catch {
+        if (active()) change(value => ({ ...value, llmPending: false, message: "해석은 끝났지만 리포트를 다시 만들지 못했습니다. 리포트의 '다시 만들기'를 눌러 주세요." }));
+      } finally {
+        if (active()) change(value => ({ ...value, llmPending: false }));
       }
     }
     try {
       await scanEngine();
       if (active() && finalReportInput) await generateReport(finalReportInput, token, true);
+      void refreshAfterLLM();
     } catch (error) {
       if (!active()) return;
       const message = error instanceof Error ? error.message : "검사 요청을 완료하지 못했습니다.";

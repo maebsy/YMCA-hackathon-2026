@@ -106,6 +106,16 @@ export default function VerifyPanel() {
   const busy = phase === "queued" || phase === "running";
 
   useEffect(() => () => { run.current++; }, []);
+  // 취약점 상세의 '실검증으로 확인하기'(/verify?run=reference)로 들어오면 바로 실행합니다. 한 번만 실행하고 주소에서 지웁니다
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("run");
+    if (requested !== "reference" && requested !== "ai") return;
+    window.history.replaceState(null, "", window.location.pathname);
+    const timer = window.setTimeout(() => { void start(requested); }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (!busy) return;
     const started = Date.now();

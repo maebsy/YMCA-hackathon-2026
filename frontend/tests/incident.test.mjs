@@ -284,3 +284,13 @@ test('scan records become action lines without exposing token-like strings or ex
 test('the "now" shortcut is Korea time regardless of the device time zone', () => {
   assert.equal(domain.koreaNow(new Date('2026-10-31T15:30:45Z')), '2026-11-01T00:30');
 });
+
+test('a scan alone gives an action line and urgent findings to link as cause candidates', () => {
+  assert.equal(domain.scanCheckLine('https://github.com/maebsy/cafe-order-demo', [{decision:'act'}, {decision:'act'}, {decision:'attend'}]),
+    '저장소 보안 점검 실시: maebsy/cafe-order-demo · 발견 3건(지금 바로 고칠 것 2건)');
+  assert.equal(domain.scanCheckLine('https://github.com/a/b', []), '저장소 보안 점검 실시: a/b · 발견 0건');
+  const candidates = ['critical', 'low', 'high', 'medium'].map((severity, index) => ({fingerprint:String(index), finding:{severity}}));
+  assert.deepEqual(domain.urgentEvidence(candidates).map(item => item.fingerprint), ['0', '2']);
+  assert.equal(domain.urgentEvidence(Array.from({length:20}, () => ({finding:{severity:'high'}}))).length, 10);
+  assert.doesNotThrow(() => domain.buildIncidentInput(form({actions:domain.mergeActions('', [domain.scanCheckLine('https://github.com/a/b', [])])})));
+});

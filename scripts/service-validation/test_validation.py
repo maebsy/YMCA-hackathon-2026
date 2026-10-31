@@ -241,6 +241,27 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(all(r['http_status'] == 429 and r['status'] == 'unavailable' for r in rows))
         self.assertNotIn('private response text', json.dumps(rows))
 
+    def test_independent_review_requires_exact_commit_job_and_finding(self):
+        case = {'key': 'site', 'repository': 'https://github.com/owner/site',
+                'source': {'revision': 'a'*40}, 'scan_job': {'job_id': 'b'*32},
+                'llm_jobs': [{'job_id': 'c'*32, 'fingerprint': 'fp'}],
+                'checks': [{'name': '독립 의미 검토', 'stage': 'semantic_review', 'status': 'fail',
+                            'detail': 'environment-only fix', 'job_id': 'c'*32,
+                            'independent_review': {'code': 'BROWSER_KEY_ENV_RELOCATION',
+                                                   'revision': 'a'*40, 'fingerprint': 'fp'}}]}
+        row = failures({'cases': [case]})[0]
+        self.assertTrue(row['issue'].endswith('/100'))
+        self.assertEqual(row['cause_status'], 'confirmed')
+        self.assertFalse(row['evidence']['permissions_verified'])
+        for key, wrong in [('revision', 'd'*40), ('fingerprint', 'other')]:
+            review = case['checks'][0]['independent_review']
+            previous = review[key]
+            review[key] = wrong
+            self.assertIsNone(failures({'cases': [case]})[0]['issue'])
+            review[key] = previous
+        case['checks'][0]['job_id'] = 'e'*32
+        self.assertEqual(failures({'cases': [case]})[0]['cause_status'], 'unconfirmed')
+
 
 if __name__ == '__main__':
     unittest.main()

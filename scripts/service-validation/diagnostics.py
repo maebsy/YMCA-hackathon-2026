@@ -64,14 +64,32 @@ def failures(data):
                           'mcp': 'MCP 도구 응답과 검사 ID·커밋, 연결 폐기 결과를 확인하세요.',
                           'rescan': '이전 scan ID·기준 커밋과 comparison을 대조하세요.',
                           'browser': '브라우저 캡처와 UI 선택자, 실제 API 응답 여부를 확인하세요.'}[stage]
+            issue = 'https://github.com/maebsy/YMCA-hackathon-2026/issues/83' if confirmed else None
+            reproduce = {'method': 'POST', 'path': '/api/scans', 'body': {'repo_url': target['repository']}} if target.get('repository') else None
+            review = check.get('independent_review', {})
+            reviewed = (stage == 'semantic_review' and review.get('code') == 'BROWSER_KEY_ENV_RELOCATION'
+                        and bool(review.get('revision')) and review['revision'] == target.get('source', {}).get('revision')
+                        and bool(check.get('job_id')) and bool(review.get('fingerprint'))
+                        and any(j.get('job_id') == check['job_id'] and j.get('fingerprint') == review['fingerprint']
+                                for j in target.get('llm_jobs', [])))
+            if reviewed:
+                code, confirmed = 'BROWSER_KEY_ENV_RELOCATION', True
+                cause = '브라우저로 전달되는 검색 설정에 대해 환경변수 이전과 스캐너 통과만 제안했고 권한 확인·노출 경로 변경을 요구하지 않았습니다. 실제 키 권한이나 확정 오탐을 판정한 것은 아닙니다.'
+                action = '검색 전용 키인지 소유자가 권한을 확인하기 전에는 자동 수정 전달을 보류하세요. 프롬프트·Red 검토에서 브라우저 전달 경로와 공개 키 정책을 검증하세요.'
+                diagnosis = {'method': 'independent_source_and_output_review', 'fingerprint': review['fingerprint'],
+                             'revision': review['revision'], 'source_reference': review.get('source_reference'),
+                             'permissions_verified': False}
+                issue = 'https://github.com/maebsy/YMCA-hackathon-2026/issues/100'
+                reproduce = {'scan_result': '/api/scans/'+job['job_id'],
+                             'llm_result': '/api/llm/explain/tasks/'+check['job_id'],
+                             'notice': '기존 결과와 고정 커밋을 대조합니다. 외부 키를 사용하거나 공개 저장소에 패치하지 않습니다.'}
             signature = hashlib.sha256((target.get('repository', 'service')+'|'+stage+'|'+code+'|'+check['name']).encode()).hexdigest()[:16]
             result.append({'signature': signature, 'case': key, 'stage': stage, 'check': check['name'],
                 'repository': target.get('repository'), 'revision': target.get('source', {}).get('revision'),
                 'job_id': check.get('job_id') or job.get('job_id'), 'code': code, 'observed': check['detail'],
                 'cause_status': 'confirmed' if confirmed else 'unconfirmed', 'cause': cause,
-                'evidence': diagnosis, 'issue': 'https://github.com/maebsy/YMCA-hackathon-2026/issues/83' if confirmed else None,
-                'next_action': action, 'reproduce': {'method': 'POST', 'path': '/api/scans',
-                    'body': {'repo_url': target['repository']}} if target.get('repository') else None,
+                'evidence': diagnosis, 'issue': issue,
+                'next_action': action, 'reproduce': reproduce,
                 'revision_note': '검사 완료 전에 실패했으면 서버의 실제 검사 커밋은 미확인입니다. 현재 GitHub HEAD와 동일하다고 가정하지 않습니다.'})
     return result
 

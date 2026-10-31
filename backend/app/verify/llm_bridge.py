@@ -10,7 +10,6 @@
 """
 from __future__ import annotations
 
-import difflib
 import json
 import re
 from pathlib import Path, PurePosixPath
@@ -60,8 +59,9 @@ class RedAttackPlan(BaseModel):
 
 
 class Edit(BaseModel):
-    find: str = Field(max_length=1500, description="원본에 정확히 한 번 나오는 바꿀 부분 (공백·따옴표까지 그대로)")
-    replace: str = Field(max_length=2500, description="바꾼 내용")
+    start_line: int = Field(description="바꿀 첫 줄 번호 (입력 파일에 붙은 번호)")
+    end_line: int = Field(description="바꿀 마지막 줄 번호 (한 줄이면 start_line과 같음)")
+    replace: str = Field(max_length=2500, description="그 줄들을 대신할 새 코드 (줄 번호 없이)")
 
 
 class BluePatch(BaseModel):
@@ -112,8 +112,9 @@ RED_ATTACK_SYSTEM = """\
 BLUE_PATCH_SYSTEM = """\
 너는 72hours의 Blue다. 탐지된 취약점을 고칠 편집 목록(edits)을 출력한다.
 - file_path는 입력에 준 경로를 그대로 쓴다.
-- 각 편집의 find는 원본 파일에서 **정확히 한 번** 나오는 부분을 공백·따옴표까지 그대로 복사한다(한두 줄이면 충분).
-  replace는 그 부분을 고친 내용이다. 파일 전체를 다시 쓰지 않는다.
+- 입력 파일의 각 줄 앞에는 `번호| `가 붙어 있다. 각 편집은 바꿀 줄 범위(start_line~end_line)와
+  그 줄들을 대신할 새 코드(replace)다. replace에는 줄 번호를 넣지 않는다. 파일 전체를 다시 쓰지 않는다.
+- 편집끼리 줄 범위가 겹치지 않게 한다.
 - 취약점과 관련된 줄만 최소한으로 고친다. 라우트·응답 형식·정상 동작·내보내기(export)는 바꾸지 않는다.
 - 새 패키지를 추가하지 않는다. 언어 기본 기능과 이미 쓰는 라이브러리로 고친다.
   (예: SQL은 자리표시자(?)와 매개변수, HTML 출력은 이스케이프, 비밀값은 환경변수)
@@ -129,9 +130,14 @@ def red_attack_messages(finding: FindingInput, path: str, source: str) -> list[d
     return [{"role": "system", "content": RED_ATTACK_SYSTEM}, {"role": "user", "content": content}]
 
 
+def _numbered(source: str) -> str:
+    return "\n".join(f"{n:>4}| {line}" for n, line in enumerate(source.splitlines(), 1))
+
+
 def blue_patch_messages(findings: list[FindingInput], path: str, source: str) -> list[dict]:
     blocks = "\n".join(f"<finding>\n{prompts.render_finding(f)}\n</finding>" for f in findings)
-    content = f"{blocks}\n\n{_source_block(path, source)}\n\n위 탐지 결과를 모두 고치는 {path} 편집 목록을 출력하세요."
+    content = (f"{blocks}\n\n{_source_block(path, _numbered(source))}\n\n"
+               f"위 탐지 결과를 모두 고치는 {path} 편집 목록을 출력하세요.")
     return [{"role": "system", "content": BLUE_PATCH_SYSTEM}, {"role": "user", "content": content}]
 
 
@@ -178,63 +184,48 @@ def to_attack_spec(draft: RedAttackDraft, attack_id: str, finding: FindingInput)
 
 
 def to_patch_content(patch: BluePatch, path: str, original: str) -> tuple[str | None, str]:
-    """편집 목록을 원본에 차례로 적용해 (수정된 전체 내용, '') 또는 받을 수 없으면 (None, 이유)를 돌려줍니다.
+    """줄 범위 편집을 원본에 적용해 (수정된 전체 내용, '') 또는 받을 수 없으면 (None, 이유)를 돌려줍니다.
 
-    find가 없거나 두 번 이상 나오면 어디를 고칠지 모호하므로 전체를 거절합니다(일부만 적용하지 않음).
+    범위가 파일 밖이거나 서로 겹치면 어디를 고칠지 모호하므로 전체를 거절합니다(일부만 적용하지 않음).
     """
     if PurePosixPath(patch.file_path.strip().lstrip("./")) != PurePosixPath(path):
         return None, f"입력에 없는 파일을 고치려 했습니다: {patch.file_path[:80]!r}"
-    content = original
-    for i, edit in enumerate(patch.edits, 1):
-        if not edit.find.strip():
-            return None, f"{i}번째 편집의 find가 비어 있습니다."
-        count = content.count(edit.find)
-        if count == 1:
-            content = content.replace(edit.find, edit.replace, 1)
-            continue
-        if count == 0:  # 따옴표·들여쓰기만 다르게 옮긴 경우: 줄 단위로 정확히 한 곳이면 받습니다
-            loose = _apply_loose(content, edit)
-            if loose is not None:
-                content = loose
-                continue
-        where = "찾지 못했습니다" if count == 0 else f"{count}번 나와 어디인지 모호합니다"
-        return None, f"{i}번째 편집의 find를 원본에서 {where}: {edit.find[:60]!r}{_closest_hint(content, edit.find)}"
+    lines = original.splitlines(keepends=True)
+    edits = sorted(patch.edits, key=lambda e: e.start_line)
+    for i, edit in enumerate(edits, 1):
+        if not 1 <= edit.start_line <= edit.end_line <= len(lines):
+            return None, f"{i}번째 편집의 줄 범위 {edit.start_line}~{edit.end_line}가 파일(1~{len(lines)}줄) 밖입니다."
+        if i > 1 and edit.start_line <= edits[i - 2].end_line:
+            return None, f"편집 줄 범위가 겹칩니다: {edits[i - 2].start_line}~{edits[i - 2].end_line}, {edit.start_line}~{edit.end_line}."
+    for edit in reversed(edits):  # 뒤에서부터 바꿔야 앞 줄 번호가 밀리지 않습니다
+        start, end = edit.start_line - 1, edit.end_line
+        lines[start:end] = _replacement(edit.replace, lines[start], lines[end - 1])
+    content = "".join(lines)
     if content == original:
-        return None, "편집을 적용해도 원본과 같습니다."
+        return None, "편집을 적용해도 원본과 같습니다. 취약한 줄을 실제로 고치세요."
     return content, ""
 
 
-def _norm(line: str) -> str:
-    return re.sub(r"\s+", " ", line.strip()).replace("'", '"')
+_LINE_NO = re.compile(r"^\s*\d+\| ?")
 
 
-def _apply_loose(content: str, edit: Edit) -> str | None:
-    """find의 각 줄이 원본의 연속된 줄과 공백·따옴표 종류만 다르게 같고 그런 곳이 한 곳뿐이면 그 줄들을 바꿉니다."""
-    want = [_norm(line) for line in edit.find.splitlines() if line.strip()]
-    lines = content.splitlines(keepends=True)
-    normed = [_norm(line) for line in lines]
-    hits = [i for i in range(len(lines) - len(want) + 1) if normed[i:i + len(want)] == want]
-    if len(hits) != 1 or not want:
-        return None
-    start, end = hits[0], hits[0] + len(want)
-    indent = re.match(r"\s*", lines[start]).group(0)
-    body = [line.strip() for line in edit.replace.splitlines()]
-    newline = "\n" if lines[end - 1].endswith("\n") else ""
-    replaced = "\n".join(indent + line if line else "" for line in body) + newline
-    return "".join(lines[:start]) + replaced + "".join(lines[end:])
-
-
-def _closest_hint(content: str, find: str) -> str:
-    first = next((line.strip() for line in find.splitlines() if line.strip()), "")
-    close = difflib.get_close_matches(first, [line.strip() for line in content.splitlines()], n=1, cutoff=0.4)
-    return f" — 원본에서 가장 비슷한 줄: {close[0][:200]!r}" if close else ""
+def _replacement(text: str, first: str, last: str) -> list[str]:
+    """replace 를 줄 목록으로. 모델이 줄 번호를 따라 붙였으면 떼고, 들여쓰기를 빼먹었으면 원래 들여쓰기를 붙입니다."""
+    body = text.splitlines()
+    if body and all(_LINE_NO.match(line) for line in body if line.strip()):
+        body = [_LINE_NO.sub("", line, count=1) for line in body]
+    indent = re.match(r"[ \t]*", first).group(0)
+    if indent and not any(line[:1] in (" ", "\t") for line in body if line.strip()):
+        body = [indent + line if line.strip() else line for line in body]
+    newline = "\n" if last.endswith("\n") else ""
+    return [line + "\n" for line in body[:-1]] + ([body[-1] + newline] if body else [])
 
 
 def blue_check(path: str, original: str):
     """chat_json 의 check: 편집을 적용할 수 없으면 그 이유를 모델에게 돌려줘 한 번 더 받게 합니다."""
     def check(patch: BluePatch) -> list[str]:
         content, why = to_patch_content(patch, path, original)
-        return [] if content is not None else [why + ". find는 원본에서 한 글자도 바꾸지 말고 그대로 복사하세요"]
+        return [] if content is not None else [why]
     return check
 
 

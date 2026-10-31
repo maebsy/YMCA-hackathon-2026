@@ -13,12 +13,19 @@ pytestmark = pytest.mark.anyio
 DEMO = Path(__file__).resolve().parents[2] / "demo-vulnerable-site"
 ORIGINAL = (DEMO / "server.js").read_text(encoding="utf-8")
 
-# Blue가 내는 편집: 원본의 한 부분을 → 고친 내용으로
-SQL_EDIT = {"find": 'db.query("SELECT * FROM orders WHERE id = " + orderId)',
-            "replace": 'db.query("SELECT * FROM orders WHERE id = ?", orderId)'}
-XSS_EDIT = {"find": 'const q = req.query.q || "";',
-            "replace": 'const q = String(req.query.q || "").replace(/[&<>"\']/g, (c) => '
+# Blue가 내는 편집: 원본의 줄 범위를 → 새 코드로 (줄 번호는 모델에 보여 준 번호)
+def line_of(text: str) -> int:
+    return next(n for n, line in enumerate(ORIGINAL.splitlines(), 1) if text in line)
+
+
+SQL_LINE = line_of('db.query("SELECT * FROM orders WHERE id = " + orderId)')
+XSS_LINE = line_of('const q = req.query.q || "";')
+SQL_EDIT = {"start_line": SQL_LINE, "end_line": SQL_LINE,
+            "replace": '      const rows = db.query("SELECT * FROM orders WHERE id = ?", orderId);'}
+XSS_EDIT = {"start_line": XSS_LINE, "end_line": XSS_LINE,
+            "replace": '    const q = String(req.query.q || "").replace(/[&<>"\']/g, (c) => '
                        '({ "&": "&amp;", "<": "&lt;", ">": "&gt;", \'"\': "&quot;", "\'": "&#39;" })[c]);'}
+
 
 SQLI = FindingInput(fingerprint="semgrep:sqli", tool="semgrep", category="code", rule_id="vibe-coding/sql-string-concat",
                     title="SQL 문자열 연결", severity="critical", file_path="server.js", start_line=39,
@@ -93,11 +100,12 @@ async def test_bad_red_output_is_skipped(fake_vllm, over, why):
     [
         (blue(file_path="../package.json"), "입력에 없는 파일"),
         (blue(file_path="other.js"), "입력에 없는 파일"),
-        (blue([{"find": "  ", "replace": "x"}]), "비어"),
-        (blue([{"find": "db.execute(sql)", "replace": "x"}]), "찾지 못했"),
-        (blue([{"find": "res.json(", "replace": "res.send("}]), "모호"),  # 원본에 여러 번 나옴
-        (blue([SQL_EDIT, {"find": "없는 줄", "replace": "x"}]), "2번째"),  # 하나라도 틀리면 전체 거절
-        (blue([{"find": SQL_EDIT["find"], "replace": SQL_EDIT["find"]}]), "원본과 같"),
+        (blue([{"start_line": 0, "end_line": 1, "replace": "x"}]), "밖입니다"),
+        (blue([{"start_line": 5, "end_line": 9999, "replace": "x"}]), "밖입니다"),
+        (blue([{"start_line": 9, "end_line": 8, "replace": "x"}]), "밖입니다"),
+        (blue([SQL_EDIT, {"start_line": SQL_LINE, "end_line": SQL_LINE + 1, "replace": "x"}]), "겹칩니다"),
+        (blue([{"start_line": SQL_LINE, "end_line": SQL_LINE,
+                "replace": ORIGINAL.splitlines()[SQL_LINE - 1]}]), "원본과 같"),
     ],
 )
 async def test_bad_blue_output_is_skipped(fake_vllm, patch, why):
@@ -111,14 +119,40 @@ async def test_bad_blue_output_is_skipped(fake_vllm, patch, why):
     assert len(fake_vllm.calls("BluePatch")) == 2
 
 
-async def test_edits_apply_in_order(fake_vllm):
-    """앞 편집이 바꾼 내용을 뒤 편집이 이어서 고칠 수 있습니다."""
-    second = {"find": SQL_EDIT["replace"], "replace": SQL_EDIT["replace"] + " // 매개변수 바인딩"}
-    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", blue([SQL_EDIT, second]))
+async def test_blue_sees_numbered_source(fake_vllm):
+    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", blue())
+
+    await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
+
+    sent = fake_vllm.calls("BluePatch")[0]["messages"][-1]["content"]
+    assert f"{SQL_LINE:>4}| " + ORIGINAL.splitlines()[SQL_LINE - 1] in sent
+
+
+async def test_multi_line_edits_apply_from_the_bottom(fake_vllm):
+    """앞 편집이 줄 수를 바꿔도 뒤 편집의 줄 번호가 밀리지 않습니다."""
+    two_lines = {"start_line": SQL_LINE, "end_line": SQL_LINE,
+                 "replace": '      const id = Number(orderId);\n'
+                            '      const rows = db.query("SELECT * FROM orders WHERE id = ?", id);'}
+    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", blue([two_lines, XSS_EDIT]))
 
     plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
 
-    assert "orderId) // 매개변수 바인딩" in plan.patch.files["server.js"]
+    patched = plan.patch.files["server.js"].splitlines()
+    assert patched[SQL_LINE - 1].strip() == "const id = Number(orderId);"
+    assert "&amp;" in patched[XSS_LINE]  # 한 줄 늘어난 만큼 아래로
+    assert len(patched) == len(ORIGINAL.splitlines()) + 1
+
+
+async def test_line_numbers_copied_into_replace_are_removed_and_indent_kept(fake_vllm):
+    sloppy = {"start_line": SQL_LINE, "end_line": SQL_LINE,
+              "replace": f'{SQL_LINE:>4}| const rows = db.query("SELECT * FROM orders WHERE id = ?", orderId);'}
+    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", blue([sloppy]))
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
+
+    line = plan.patch.files["server.js"].splitlines()[SQL_LINE - 1]
+    indent = ORIGINAL.splitlines()[SQL_LINE - 1][: -len(ORIGINAL.splitlines()[SQL_LINE - 1].lstrip())]
+    assert line == indent + 'const rows = db.query("SELECT * FROM orders WHERE id = ?", orderId);'
 
 
 @pytest.mark.parametrize("file_path", [None, "../../etc/passwd", "/etc/passwd", "missing.js"])
@@ -208,25 +242,12 @@ async def test_red_query_in_path_is_moved_and_get_has_no_content_type(fake_vllm)
     assert req.headers == {}
 
 
-async def test_blue_find_with_other_quotes_and_indent_is_applied(fake_vllm):
-    """실제 모델이 따옴표(" → ')와 들여쓰기를 바꿔 옮긴 find. 줄 단위로 한 곳뿐이면 받습니다."""
-    loose = {"find": "      const rows = db.query('SELECT * FROM orders WHERE id = ' + orderId);",
-             "replace": "const rows = db.query('SELECT * FROM orders WHERE id = ?', orderId);"}
-    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", blue([loose]))
-
-    plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
-
-    patched = plan.patch.files["server.js"]
-    assert "      const rows = db.query('SELECT * FROM orders WHERE id = ?', orderId);\n" in patched  # 원본 들여쓰기
-    assert len(patched.splitlines()) == len(ORIGINAL.splitlines())
-
-
-async def test_unmatched_find_is_retried_with_closest_line_hint(fake_vllm):
-    wrong = blue([{"find": "const rows = db.query(`SELECT * FROM orders WHERE id = ${orderId}`);", "replace": "x"}])
+async def test_bad_range_is_retried_with_reason(fake_vllm):
+    wrong = blue([{"start_line": 500, "end_line": 500, "replace": "x"}])
     fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", wrong, blue())
 
     plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
 
     assert "server.js" in plan.patch.files  # 두 번째 응답으로 적용됨
     retry = fake_vllm.calls("BluePatch")[1]["messages"][-1]["content"]
-    assert "가장 비슷한 줄" in retry and "WHERE id = \" + orderId" in retry
+    assert "밖입니다" in retry

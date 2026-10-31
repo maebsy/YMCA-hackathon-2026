@@ -139,3 +139,14 @@ test('runVerify sends the chosen mode', async () => {
     assert.deepEqual(sent, [{target: 'demo', mode: 'ai'}]);
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('a fix that breaks the app is explained as a caught bad fix, not a tool failure', () => {
+  const { verdictHelp } = loaded.exports;
+  const broken = {status:'fix_failed', message:'수정 후 앱이 뜨지 않았습니다: probe timeout: 앱이 제한 시간 안에 응답하지 않았습니다'};
+  const ai = verdictHelp({mode:'ai', result:broken});
+  assert.match(ai[0], /수정이 앱 기능을 망가뜨렸다는 뜻/);
+  assert.match(ai[1], /AI\(Blue\)/);
+  assert.doesNotMatch(verdictHelp({mode:'reference', result:broken})[1], /AI/);
+  assert.deepEqual(verdictHelp({mode:'reference', result:{status:'verified', message:'ok'}}), []);
+  assert.match(verdictHelp({mode:'ai', result:{status:'not_reproduced', message:''}})[0], /오탐/);
+});

@@ -92,3 +92,4 @@
 .vp-diff [data-line="add"] { color: var(--vp-ok); }
 .vp-diff [data-line="del"] { color: var(--vp-danger); }
 .vp-diff [data-line="hunk"] { color: var(--muted, #a1a1aa); }
+.vp-help { font-size: 13px; line-height: 1.7; margin-top: 6px !important; }

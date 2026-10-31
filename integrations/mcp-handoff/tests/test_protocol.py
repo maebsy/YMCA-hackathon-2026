@@ -60,6 +60,43 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaises(McpError):
                         await client.get_prompt("fix_finding", {"fingerprint": "blocked"})
 
+    async def test_stdio_live_file_updates_without_restart(self):
+        """--revision 없이 띄우면 웹이 덮어쓴 최신 파일을 다음 호출에서 읽습니다 (#65)."""
+        from test_live import REV_A, REV_B, web_file
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "72hours-mcp-demo-example.json"
+            params = StdioServerParameters(
+                command=sys.executable,
+                args=[str(Path(__file__).resolve().parents[1] / "server.py"),
+                      "--results", str(path), "--repository", "demo/example"],
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            )
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write, read_timeout_seconds=timedelta(seconds=20)) as client:
+                    await client.initialize()
+                    # 최초 연결: 파일이 아직 없어도 서버는 뜨고 다음 할 일을 알려 줌
+                    empty = json.loads((await client.call_tool("list_findings", {})).content[0].text)
+                    self.assertEqual(empty["findings"], [])
+                    self.assertIn("자동 저장", empty["notice"])
+
+                    path.write_text(json.dumps(web_file("first", REV_A)), encoding="utf-8")
+                    os.utime(path, (1_700_000_000, 1_700_000_000))
+                    first = json.loads((await client.call_tool("list_findings", {})).content[0].text)
+                    self.assertEqual(first["source"]["revision"], REV_A)
+                    self.assertEqual(first["findings"][0]["fingerprint"], "first")
+
+                    # 재검사 결과로 덮어쓰기 → 같은 MCP 세션에서 바로 최신 결과
+                    path.write_text(json.dumps(web_file("second", REV_B, prompt="재검사 뒤 새 지시")), encoding="utf-8")
+                    os.utime(path, (1_700_000_100, 1_700_000_100))
+                    second = json.loads((await client.call_tool("list_findings", {})).content[0].text)
+                    self.assertEqual(second["source"]["revision"], REV_B)
+                    result = await client.call_tool("get_fix_prompt", {"fingerprint": "second"})
+                    self.assertFalse(result.isError)
+                    self.assertIn("재검사 뒤 새 지시", result.content[0].text)
+                    stale = await client.call_tool("get_fix_prompt", {"fingerprint": "first"})
+                    self.assertTrue(stale.isError)
+
 
 if __name__ == "__main__":
     unittest.main()

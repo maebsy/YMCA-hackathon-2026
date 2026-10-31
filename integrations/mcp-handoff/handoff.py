@@ -1,4 +1,10 @@
-"""Read an explicit LLM result snapshot without importing or changing the service."""
+"""Read an explicit LLM result snapshot without importing or changing the service.
+
+- `Snapshot`: 파일을 한 번 읽어 고정합니다. 저장소·커밋은 운영자가 실행 인자로 주거나(기존 방식),
+  웹이 저장한 파일의 `source`에서 읽습니다.
+- `LiveSnapshot`: 같은 경로의 파일이 바뀌면(수정 시각·크기) 다음 호출 때 다시 읽습니다. 웹이 검사할 때마다
+  결과 파일을 덮어쓰면 MCP를 재시작하지 않아도 최신 결과가 전달됩니다(#65). 새 파일이 깨졌으면 직전 결과를 유지합니다.
+"""
 
 import hashlib
 import json
@@ -6,6 +12,8 @@ import re
 from pathlib import Path
 
 MAX_BYTES = 2 * 1024 * 1024
+_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+_REVISION = re.compile(r"[0-9a-fA-F]{40}")
 MAX_RESULTS = 50
 MAX_PROMPT = 2000
 
@@ -65,11 +73,32 @@ def _reason(result: dict) -> str | None:
     return None
 
 
+def _file_source(doc: dict) -> dict:
+    """웹이 저장한 파일의 검사 대상 정보. 없으면 빈 dict"""
+    source = doc.get("source")
+    if source is None:
+        return {}
+    if not isinstance(source, dict):
+        raise HandoffError("source는 JSON 객체여야 합니다.")
+    out = {}
+    for key, pattern in (("repository", _REPOSITORY), ("revision", _REVISION)):
+        value = source.get(key)
+        if value is not None and not (isinstance(value, str) and pattern.fullmatch(value)):
+            raise HandoffError(f"결과 파일의 source.{key} 형식이 올바르지 않습니다.")
+        if value is not None:
+            out[key] = value
+    generated = source.get("generated_at")
+    if isinstance(generated, str) and 1 <= len(generated) <= 40 and redact(generated) == generated:
+        out["generated_at"] = generated
+    return out
+
+
 class Snapshot:
-    def __init__(self, path: Path, repository: str, revision: str, run_index: int | None = None):
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+    def __init__(self, path: Path, repository: str | None, revision: str | None, run_index: int | None = None):
+        # 실행 인자로 준 값은 형식을 먼저 확인합니다. 비우면 결과 파일의 source에서 읽습니다
+        if repository is not None and not _REPOSITORY.fullmatch(repository):
             raise HandoffError("repository는 owner/repo 형식이어야 합니다.")
-        if not re.fullmatch(r"[0-9a-fA-F]{40}", revision):
+        if revision is not None and not _REVISION.fullmatch(revision):
             raise HandoffError("revision에는 검사 대상의 40자리 Git 커밋 SHA가 필요합니다.")
         if not path.is_absolute():
             raise HandoffError("results에는 운영자가 지정한 절대 경로가 필요합니다.")
@@ -83,6 +112,19 @@ class Snapshot:
             raise HandoffError("결과 파일을 읽을 수 없거나 유효한 JSON이 아닙니다.") from exc
         if not isinstance(doc, dict):
             raise HandoffError("결과는 JSON 객체여야 합니다.")
+        source = _file_source(doc)
+        identity_from_args = bool(repository and revision)
+        # 실행 인자와 파일이 서로 다른 저장소·커밋을 가리키면 섞인 결과일 수 있어 거부합니다
+        if repository and source.get("repository") and source["repository"].lower() != repository.lower():
+            raise HandoffError("결과 파일의 저장소가 MCP 설정의 --repository와 다릅니다. 다른 저장소 결과는 전달하지 않습니다.")
+        if revision and source.get("revision") and source["revision"].lower() != revision.lower():
+            raise HandoffError("결과 파일의 커밋이 --revision과 다릅니다. 새 검사 결과라면 --revision을 빼고 실행하세요.")
+        repository = repository or source.get("repository")
+        revision = revision or source.get("revision")
+        if not repository:
+            raise HandoffError("검사 대상 저장소를 알 수 없습니다. --repository를 지정하거나 웹에서 저장한 파일을 쓰세요.")
+        if not revision:
+            raise HandoffError("검사한 커밋을 알 수 없습니다. --revision을 지정하거나 웹에서 저장한 파일을 쓰세요.")
         if "runs" in doc:
             runs = doc["runs"]
             if (not isinstance(runs, list) or type(run_index) is not int
@@ -123,7 +165,10 @@ class Snapshot:
             "revision": revision.lower(),
             "source_sha256": hashlib.sha256(raw).hexdigest(),
             "run_index": run_index,
-            "binding": "operator_supplied_not_verified_by_mcp",
+            "generated_at": source.get("generated_at"),
+            # 저장소·커밋을 누가 정했는지. 어느 쪽이든 MCP가 실제 저장소와 대조해 인증하지는 않습니다
+            "binding": "file_supplied_not_verified_by_mcp" if source and not identity_from_args
+            else "operator_supplied_not_verified_by_mcp",
         }
 
     def list_findings(self) -> dict:
@@ -163,3 +208,56 @@ class Snapshot:
             "노출 키는 원문을 읽거나 출력하지 말고 폐기·재발급 필요 여부를 안내하세요.\n\n"
             f"<local_llm_proposal>\n{data}\n</local_llm_proposal>"
         )
+
+
+class LiveSnapshot:
+    """같은 경로의 결과 파일이 바뀌면 다음 호출 때 다시 읽습니다 (웹 자동 저장용).
+
+    - `repository`를 주면 고정합니다. 파일이 다른 저장소를 가리키면 그 파일은 받지 않습니다.
+    - 커밋은 파일의 source.revision을 씁니다. 재검사로 커밋이 바뀌어도 설정을 고칠 필요가 없습니다.
+    - 새 파일을 읽지 못하면(작성 중, 형식 오류, 다른 저장소) 직전 정상 결과를 유지하고 그 사실을 알립니다.
+    """
+
+    def __init__(self, path: Path, repository: str | None = None):
+        if not path.is_absolute():
+            raise HandoffError("results에는 운영자가 지정한 절대 경로가 필요합니다.")
+        if repository is not None and not _REPOSITORY.fullmatch(repository):
+            raise HandoffError("repository는 owner/repo 형식이어야 합니다.")
+        self.path = path
+        self.repository = repository
+        self._snapshot: Snapshot | None = None
+        self._signature: tuple[int, int] | None = None
+        self._problem: str | None = None
+
+    def _refresh(self) -> None:
+        try:
+            stat = self.path.stat()
+        except OSError:
+            if self._snapshot is None:
+                self._problem = "아직 결과 파일이 없습니다. 웹에서 검사하고 자동 저장을 켜 주세요."
+            return
+        signature = (stat.st_mtime_ns, stat.st_size)
+        if signature == self._signature:
+            return
+        # 실패한 파일도 서명을 기억해, 파일이 다시 바뀔 때까지 같은 파일을 반복해서 읽지 않습니다
+        self._signature = signature
+        try:
+            self._snapshot = Snapshot(self.path, self.repository, None)
+            self._problem = None
+        except HandoffError as exc:
+            self._problem = str(exc)
+
+    def list_findings(self) -> dict:
+        self._refresh()
+        if self._snapshot is None:
+            return {"source": None, "findings": [], "notice": self._problem}
+        listing = self._snapshot.list_findings()
+        if self._problem:
+            listing["notice"] = f"최신 결과 파일을 읽지 못해 직전 결과를 보여 줍니다: {self._problem}"
+        return listing
+
+    def fix_prompt(self, fingerprint: str) -> str:
+        self._refresh()
+        if self._snapshot is None:
+            raise HandoffError(self._problem or "결과 파일을 읽지 못했습니다.")
+        return self._snapshot.fix_prompt(fingerprint)

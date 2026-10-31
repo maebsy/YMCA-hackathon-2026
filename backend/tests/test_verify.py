@@ -137,6 +137,42 @@ def test_symlink_copied_as_link_not_content(monkeypatch, tmp_path):
     assert seen["is_link"] is True  # 내용이 복사된 일반 파일이 아니라 링크 그대로
 
 
+ISO_OK = {"network_isolated": True, "non_root": True, "caps_dropped": True, "no_new_privs": True}
+
+
+def _iso(probe, iso):
+    return {**probe, "isolation": iso}
+
+
+def test_user_repo_without_confirmed_isolation_is_error(monkeypatch):
+    """사용자 저장소는 격리가 실행 결과로 확인되지 않으면(예: 네트워크가 열려 있음) 판정을 내지 않는다."""
+    leaky = {**ISO_OK, "network_isolated": False}
+    monkeypatch.setattr(V, "pick_sandbox",
+                        lambda trusted: _FakeSandbox(_iso(_probe(True), leaky), _iso(_probe(False), leaky)))
+    monkeypatch.setattr(shutil, "copytree", lambda *a, **k: None)
+    r = verify(_req(), trusted=False)
+    assert r.status == "error" and "network_isolated" in r.message
+    assert r.isolation_confirmed is False
+
+
+def test_user_repo_with_confirmed_isolation_is_judged(monkeypatch):
+    monkeypatch.setattr(V, "pick_sandbox",
+                        lambda trusted: _FakeSandbox(_iso(_probe(True), ISO_OK), _iso(_probe(False), ISO_OK)))
+    monkeypatch.setattr(shutil, "copytree", lambda *a, **k: None)
+    r = verify(_req(), trusted=False)
+    assert r.status == "verified" and r.isolation_confirmed is True
+
+
+def test_isolation_must_hold_in_both_runs(monkeypatch):
+    """수정 후 실행에서 한 항목이라도 깨지면 격리 확인 실패."""
+    broken = {**ISO_OK, "caps_dropped": False}
+    monkeypatch.setattr(V, "pick_sandbox",
+                        lambda trusted: _FakeSandbox(_iso(_probe(True), ISO_OK), _iso(_probe(False), broken)))
+    monkeypatch.setattr(shutil, "copytree", lambda *a, **k: None)
+    r = verify(_req(), trusted=False)
+    assert r.status == "error" and r.isolation.caps_dropped is False
+
+
 # ── 통합: 실제 데모 과녁 + LocalSandbox (Node 22.5+ 필요: 데모가 내장 node:sqlite 사용) ──
 def _node_ok() -> bool:
     import subprocess
@@ -156,16 +192,9 @@ needs_node = pytest.mark.skipif(not _node_ok(), reason="Node 22.5+(node:sqlite)�
 @needs_node
 def test_integration_demo_before_after():
     attacks = [AttackSpec(**a) for a in json.loads((DEMO / "verify" / "attacks.json").read_text())["attacks"]]
-    src = (DEMO / "server.js").read_text()
-    fixed = src.replace(
-        'const rows = db.query("SELECT * FROM orders WHERE id = " + orderId);',
-        'const rows = db.query("SELECT * FROM orders WHERE id = ?", orderId);',
-    ).replace(
-        'const q = req.query.q || "";',
-        'const q = String(req.query.q || "").replace(/[&<>"\\\']/g, c => '
-        '({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;","\\\'":"&#39;"}[c]));',
-    )
-    assert "WHERE id = ?" in fixed
+    # 기준 수정본(Blue가 내야 할 수정의 예시): 파라미터 바인딩 + 출력 이스케이프 + 서명 키 환경변수화
+    fixed = (DEMO / "verify" / "fix" / "server.js").read_text()
+    assert "WHERE id = ?" in fixed and "demo-insecure-key" not in fixed
     r = verify(VerifyRequest(repo_dir=str(DEMO), attacks=attacks, patch=Patch(files={"server.js": fixed})),
                trusted=True)
     assert r.status == "verified", r.message

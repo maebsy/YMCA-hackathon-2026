@@ -68,6 +68,19 @@ class TestOutcome(BaseModel):
     failed: int | None = None
 
 
+class Isolation(BaseModel):
+    """probe가 샌드박스 안에서 직접 읽은 격리 상태 (외부 요청 없이 확인). 수정 전·후 실행 모두 만족해야 True."""
+
+    network_isolated: bool | None = None  # 루프백 외 네트워크 장치 없음
+    non_root: bool | None = None  # root 아님
+    caps_dropped: bool | None = None  # 리눅스 특수 권한 0
+    no_new_privs: bool | None = None  # 권한 상승 금지
+
+    @property
+    def confirmed(self) -> bool:
+        return all(v is True for v in (self.network_isolated, self.non_root, self.caps_dropped, self.no_new_privs))
+
+
 class VerifyResult(BaseModel):
     # verified: 모든 런타임 공격이 차단되고 기능 테스트 통과
     # not_reproduced: 수정 전 공격이 재현되지 않음 → 오탐 후보
@@ -76,6 +89,8 @@ class VerifyResult(BaseModel):
     status: Literal["verified", "not_reproduced", "fix_failed", "error"]
     message: str = ""
     sandbox: Literal["docker", "local"] = "docker"
+    isolation: Isolation = Field(default_factory=Isolation)
+    isolation_confirmed: bool = False  # 네 항목이 수정 전·후 모두 True
     attacks: list[AttackOutcome] = Field(default_factory=list)
     before_tests: TestOutcome = Field(default_factory=TestOutcome)
     after_tests: TestOutcome = Field(default_factory=TestOutcome)

@@ -418,6 +418,21 @@ def test_incident_report_overdue():
     assert report.status.text == "기한 지남 · 즉시 신고"
 
 
+def test_filing_legal_notes_follow_official_guidance_checked_2026_10_31():
+    # KISA 보호나라: 24시간 안에 신고하지 않거나 늦으면 제76조 5천만원 이하 과태료 (위반 횟수별 금액 없음)
+    incident_report = filing.build_incident_report(FilingRequest(incident=incident()), NOW)
+    todo = section(incident_report, "신고 전후로 꼭 할 일").bullets
+    assert any("5천만 원 이하 과태료" in b and "제76조" in b for b in todo)
+    assert not any("750만" in b or "1,500만" in b for b in todo)
+    assert any("위조·변조·훼손" in b for b in todo)
+    # 개인정보보호위원회 2026-09-10 보도자료: 위조·변조·훼손 포함, 가능성 통지 신설, 분쟁조정·손해배상 통지 항목 추가
+    req = FilingRequest.model_validate({"incident": incident(personal_info=breach())})
+    privacy_report = filing.build_privacy_report(req, NOW)
+    assert any("유출 가능성" in b and "위조·변조·훼손" in b for b in section(privacy_report, "꼭 할 일").bullets)
+    notice = section(privacy_report, "정보주체 통지문 초안").cards[0].paragraphs
+    assert any(p.startswith("분쟁조정·손해배상:") for p in notice)
+
+
 # ── 개인정보 유출 신고서 (72시간) ──
 
 

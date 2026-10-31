@@ -78,7 +78,7 @@ python -m unittest discover -s scripts/service-validation -p test_validation.py 
 
 ```powershell
 ssh hk-server 'mkdir -p apps/72hours/validation/code'
-scp scripts/service-validation/serve.py scripts/service-validation/history.html scripts/service-validation/server_diagnose.py scripts/service-validation/install_server.py scripts/service-validation/enable_route.py hk-server:apps/72hours/validation/code/
+scp scripts/service-validation/serve.py scripts/service-validation/history.html scripts/service-validation/diagnostics.py scripts/service-validation/server_diagnose.py scripts/service-validation/install_server.py scripts/service-validation/enable_route.py hk-server:apps/72hours/validation/code/
 python scripts/service-validation/publish.py --ssh hk-server --output outputs/my-validation
 ssh hk-server 'python3 apps/72hours/validation/code/install_server.py && python3 apps/72hours/validation/code/enable_route.py'
 ```

@@ -12,7 +12,7 @@ def failures(data):
         for check in target.get('checks', []):
             if check['status'] != 'fail':
                 continue
-            stage = check.get('stage') or target.get('stage') or key
+            stage = check.get('stage') or target.get('stage') or ('scan' if target.get('scan_job', {}).get('status') == 'failed' else key)
             job = target.get('scan_job', {})
             error = str(check['detail'])
             code = job.get('error_code') or ('SCAN_ERROR' if 'SCAN_ERROR' in error else 'CHECK_FAILED')

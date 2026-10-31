@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
 from urllib.parse import urlsplit, unquote
+from diagnostics import failures
 
 
 def history(archives):
@@ -33,7 +34,8 @@ def history(archives):
             runs.append({'id': directory.name, 'started_at': data.get('started_at'), 'finished_at': data.get('finished_at'),
                 'status': data.get('status'), 'cases': len(data.get('cases', [])),
                 'counts': {k: sum(c['status'] == k for c in checks) for k in ('pass', 'fail', 'warn', 'skipped')},
-                'failures': data.get('failures', []), 'path': '/validation/runs/'+directory.name+'/index.html'})
+                'failures': data.get('failures', failures(data)), 'handoff_available': (directory/'handoff.md').is_file(),
+                'path': '/validation/runs/'+directory.name+'/index.html'})
         except (OSError, ValueError, KeyError, TypeError):
             continue
     return {'runs': runs, 'notice': '최근 100개 게시 실행. 같은 증상의 반복 관측이며, 재등장하지 않았다는 이유만으로 해결 처리하지 않습니다.'}

@@ -10,10 +10,12 @@
 """
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from pathlib import Path, PurePosixPath
 from typing import Literal
+from urllib.parse import parse_qsl
 
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
@@ -157,19 +159,19 @@ def to_attack_spec(draft: RedAttackDraft, attack_id: str, finding: FindingInput)
         return f"성공 판정 값이 올바르지 않습니다: {draft.success_rule}:{draft.success_value[:40]!r}"
     if any(not p.name.strip() for p in draft.query):
         return "쿼리 파라미터 이름이 비어 있습니다."
-    headers = {} if draft.content_type == "none" else {"Content-Type": draft.content_type}
+    # 모델이 쿼리를 path 에도 붙여 쓰는 경우가 있습니다. 그대로 두면 파라미터가 두 번 가서 값이 배열이 됩니다
+    path, _, inline = path.partition("?")
+    query = {k: v for k, v in parse_qsl(inline, keep_blank_values=True)}
+    query.update({p.name: p.value for p in draft.query})
+    body = draft.body or None
+    # 본문이 없는 요청에 Content-Type 을 붙이지 않습니다
+    headers = {"Content-Type": draft.content_type} if body and draft.content_type != "none" else {}
     return AttackSpec(
         id=attack_id,
         cwe=finding.refs.cwe[0] if finding.refs.cwe else None,
         rule_id=finding.rule_id,
         runtime=True,
-        request=HttpRequest(
-            method=draft.method,
-            path=path,
-            query={p.name: p.value for p in draft.query},
-            headers=headers,
-            body=draft.body or None,
-        ),
+        request=HttpRequest(method=draft.method, path=path, query=query, headers=headers, body=body),
         success_when=success,
         note=draft.reason,
     )
@@ -187,13 +189,53 @@ def to_patch_content(patch: BluePatch, path: str, original: str) -> tuple[str | 
         if not edit.find.strip():
             return None, f"{i}번째 편집의 find가 비어 있습니다."
         count = content.count(edit.find)
-        if count != 1:
-            where = "찾지 못했습니다" if count == 0 else f"{count}번 나와 어디인지 모호합니다"
-            return None, f"{i}번째 편집의 find를 원본에서 {where}: {edit.find[:60]!r}"
-        content = content.replace(edit.find, edit.replace, 1)
+        if count == 1:
+            content = content.replace(edit.find, edit.replace, 1)
+            continue
+        if count == 0:  # 따옴표·들여쓰기만 다르게 옮긴 경우: 줄 단위로 정확히 한 곳이면 받습니다
+            loose = _apply_loose(content, edit)
+            if loose is not None:
+                content = loose
+                continue
+        where = "찾지 못했습니다" if count == 0 else f"{count}번 나와 어디인지 모호합니다"
+        return None, f"{i}번째 편집의 find를 원본에서 {where}: {edit.find[:60]!r}{_closest_hint(content, edit.find)}"
     if content == original:
         return None, "편집을 적용해도 원본과 같습니다."
     return content, ""
+
+
+def _norm(line: str) -> str:
+    return re.sub(r"\s+", " ", line.strip()).replace("'", '"')
+
+
+def _apply_loose(content: str, edit: Edit) -> str | None:
+    """find의 각 줄이 원본의 연속된 줄과 공백·따옴표 종류만 다르게 같고 그런 곳이 한 곳뿐이면 그 줄들을 바꿉니다."""
+    want = [_norm(line) for line in edit.find.splitlines() if line.strip()]
+    lines = content.splitlines(keepends=True)
+    normed = [_norm(line) for line in lines]
+    hits = [i for i in range(len(lines) - len(want) + 1) if normed[i:i + len(want)] == want]
+    if len(hits) != 1 or not want:
+        return None
+    start, end = hits[0], hits[0] + len(want)
+    indent = re.match(r"\s*", lines[start]).group(0)
+    body = [line.strip() for line in edit.replace.splitlines()]
+    newline = "\n" if lines[end - 1].endswith("\n") else ""
+    replaced = "\n".join(indent + line if line else "" for line in body) + newline
+    return "".join(lines[:start]) + replaced + "".join(lines[end:])
+
+
+def _closest_hint(content: str, find: str) -> str:
+    first = next((line.strip() for line in find.splitlines() if line.strip()), "")
+    close = difflib.get_close_matches(first, [line.strip() for line in content.splitlines()], n=1, cutoff=0.4)
+    return f" — 원본에서 가장 비슷한 줄: {close[0][:200]!r}" if close else ""
+
+
+def blue_check(path: str, original: str):
+    """chat_json 의 check: 편집을 적용할 수 없으면 그 이유를 모델에게 돌려줘 한 번 더 받게 합니다."""
+    def check(patch: BluePatch) -> list[str]:
+        content, why = to_patch_content(patch, path, original)
+        return [] if content is not None else [why + ". find는 원본에서 한 글자도 바꾸지 말고 그대로 복사하세요"]
+    return check
 
 
 # ── 연결 ──
@@ -248,7 +290,8 @@ async def plan_verification(client: LLMClient, findings: list[FindingInput], rep
             plan.attacks.append(spec)
             plan.attack_fingerprints[spec.id] = f.fingerprint
             plan.red_reasons[spec.id] = red.data.attack.reason
-        blue = await client.chat_json(blue_patch_messages(group, rel, source), BluePatch, sampling=BLUE_PATCH_SAMPLING)
+        blue = await client.chat_json(blue_patch_messages(group, rel, source), BluePatch, sampling=BLUE_PATCH_SAMPLING,
+                                      check=blue_check(rel, source))
         content, why = to_patch_content(blue.data, rel, source)
         if content is None:
             for f in group:

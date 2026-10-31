@@ -101,12 +101,14 @@ async def test_bad_red_output_is_skipped(fake_vllm, over, why):
     ],
 )
 async def test_bad_blue_output_is_skipped(fake_vllm, patch, why):
-    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", patch)
+    # 적용할 수 없으면 이유를 알려 주고 한 번 더 받습니다. 두 번 다 틀리면 건너뜁니다
+    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", patch, patch)
 
     plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
 
     assert not plan.patch.files
     assert plan.skipped[0].stage == "blue" and why in plan.skipped[0].reason
+    assert len(fake_vllm.calls("BluePatch")) == 2
 
 
 async def test_edits_apply_in_order(fake_vllm):
@@ -192,3 +194,39 @@ async def test_integration_llm_outputs_verified_in_sandbox(fake_vllm):
 
     assert out.result.status == "verified", out.result.message
     assert {a.verdict for a in out.result.attacks} == {"verified"}
+
+
+# ── 실제 GPU LLM 실행에서 나온 출력 모양 (#97) ──
+async def test_red_query_in_path_is_moved_and_get_has_no_content_type(fake_vllm):
+    fake_vllm.queue("RedAttackPlan", red(path="/api/orders?orderId=1%20OR%201=1", content_type="application/json"))
+    fake_vllm.queue("BluePatch", blue())
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
+
+    req = plan.attacks[0].request
+    assert req.path == "/api/orders" and req.query == {"orderId": "0 OR 1=1"}  # query 칸 값이 우선
+    assert req.headers == {}
+
+
+async def test_blue_find_with_other_quotes_and_indent_is_applied(fake_vllm):
+    """실제 모델이 따옴표(" → ')와 들여쓰기를 바꿔 옮긴 find. 줄 단위로 한 곳뿐이면 받습니다."""
+    loose = {"find": "      const rows = db.query('SELECT * FROM orders WHERE id = ' + orderId);",
+             "replace": "const rows = db.query('SELECT * FROM orders WHERE id = ?', orderId);"}
+    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", blue([loose]))
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
+
+    patched = plan.patch.files["server.js"]
+    assert "      const rows = db.query('SELECT * FROM orders WHERE id = ?', orderId);\n" in patched  # 원본 들여쓰기
+    assert len(patched.splitlines()) == len(ORIGINAL.splitlines())
+
+
+async def test_unmatched_find_is_retried_with_closest_line_hint(fake_vllm):
+    wrong = blue([{"find": "const rows = db.query(`SELECT * FROM orders WHERE id = ${orderId}`);", "replace": "x"}])
+    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", wrong, blue())
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
+
+    assert "server.js" in plan.patch.files  # 두 번째 응답으로 적용됨
+    retry = fake_vllm.calls("BluePatch")[1]["messages"][-1]["content"]
+    assert "가장 비슷한 줄" in retry and "WHERE id = \" + orderId" in retry

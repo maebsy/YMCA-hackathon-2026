@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 import urllib.request
 
 from client import NoRedirect, repo_url, CheckError
+from targets import allowed_owners
 
 
 def github(path):
@@ -27,11 +28,16 @@ def github(path):
 def discover(query, count):
     if not 1 <= count <= 10:
         raise ValueError('자동 수집은 한 번에 1~10개입니다.')
-    query = query + ' is:public fork:false archived:false size:<10000'
+    owners = allowed_owners()
+    # 검색어에 무엇을 넣어도 허용 소유자(OWASP·팀원) 저장소만 후보가 됩니다 (#69)
+    scope = ' '.join('user:' + o for o in sorted(owners))
+    query = f'{query} {scope} is:public fork:false archived:false size:<10000'
     result = github('/search/repositories?' + urlencode({'q': query, 'sort': 'stars', 'per_page': min(30, count*3)}))
     selected = []
     for item in result.get('items', []):
         if item.get('private') or item.get('archived') or item.get('size', 0) >= 10000:
+            continue
+        if (item.get('owner') or {}).get('login', '').lower() not in owners:
             continue
         files = github('/repos/' + item['full_name'] + '/contents')
         names = {f.get('name', '').lower() for f in files if f.get('type') in ('file', 'dir')}

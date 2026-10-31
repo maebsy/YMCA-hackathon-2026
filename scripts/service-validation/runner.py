@@ -7,9 +7,10 @@ import subprocess
 import time
 
 from checks import scan_checks, llm_checks, report_checks, rescan_checks
-from client import Client, CheckError, repo_url
+from client import Client, CheckError, PolicyRejected, repo_url
 from discover import discover
 from evidence import Evidence, now
+from targets import allowed_repo
 
 
 def outcome(checks):
@@ -48,10 +49,11 @@ def mcp_handoff(client, evidence, case, scan, analyses):
             raise CheckError('MCP 수정 프롬프트에서 구조화된 실제 결과를 확인할 수 없습니다.') from None
         evidence.check(case, '실제 결과 MCP 전달', 'pass', '검사 ID·커밋 일치 및 실제 수정 프롬프트 수신. 결과별 연결은 검증 후 폐기합니다.')
     finally:
+        # 시간 상한을 넘겨 중단된 경우에도 결과별 연결은 반드시 폐기합니다 (#84 리뷰)
         client.request('POST', '/mcp/links/revoke', {'token': link['token'], 'revoke_token': link['revoke_token']},
-                       headers={'Origin': client.base})
+                       headers={'Origin': client.base}, cleanup=True)
     try:
-        client.request('GET', path + '/agent.txt', raw=True)
+        client.request('GET', path + '/agent.txt', raw=True, cleanup=True)
         evidence.check(case, 'MCP 검증 연결 폐기', 'fail', '폐기 후에도 결과 안내에 접근됩니다.')
     except CheckError as exc:
         evidence.check(case, 'MCP 검증 연결 폐기', 'pass' if str(exc).startswith('HTTP 404:') else 'fail',
@@ -143,7 +145,7 @@ def main():
     p.add_argument('--repos-file', type=Path, default=Path(__file__).with_name('repositories.json'))
     p.add_argument('--repo', action='append', default=[])
     p.add_argument('--discover', type=int, default=0)
-    p.add_argument('--github-query', default='user:StartBootstrap language:HTML')
+    p.add_argument('--github-query', default='language:HTML', help='검색 범위는 항상 허용 소유자(OWASP·팀원)로 제한됩니다')
     p.add_argument('--max-repos', type=int, default=3)
     p.add_argument('--repeat', type=int, default=1)
     p.add_argument('--interval', type=int, default=60)
@@ -160,7 +162,7 @@ def main():
     p.add_argument('--mcp', action='store_true')
     p.add_argument('--incident-drafts', action='store_true')
     p.add_argument('--browser', action='store_true')
-    p.add_argument('--browser-repo', default='https://github.com/octocat/Spoon-Knife')
+    p.add_argument('--browser-repo', default='https://github.com/OWASP/www-project-top-ten')
     p.add_argument('--server-ssh', help='선택: 운영자 SSH config 별칭. 공개 API 검증에는 필요 없음')
     p.add_argument('--gpu-ssh', help='선택: GPU 사용률 조회용 SSH config 별칭')
     p.add_argument('--ensure-services', action='store_true', help='기존 일반 서버 unit이 꺼져 있으면 start. 재시작/설정 변경 없음')
@@ -173,7 +175,13 @@ def main():
     repositories = [{'url': url} for url in args.repo] if args.repo else json.loads(args.repos_file.read_text(encoding='utf-8'))
     if args.discover:
         repositories += discover(args.github_query, args.discover)
-    urls = list(dict.fromkeys(repo_url(r['url']) for r in repositories))[:args.max_repos]
+    try:
+        # 실행 전에 거절합니다: 허용 목록 밖 저장소의 결과를 공개 검증 화면에 올리지 않습니다 (#69)
+        urls = list(dict.fromkeys(allowed_repo(r['url']) for r in repositories))[:args.max_repos]
+        if args.browser:
+            allowed_repo(args.browser_repo)
+    except ValueError as exc:
+        p.error(str(exc))
     if not urls:
         p.error('검사할 저장소가 없습니다.')
     settings = {k: v for k, v in vars(args).items() if k not in ('output', 'repos_file', 'resume', 'repo', 'server_ssh', 'gpu_ssh')}
@@ -227,6 +235,10 @@ def main():
                 evidence.save()
                 try:
                     case_run(client, evidence, case, args, model)
+                except PolicyRejected as exc:
+                    # 서비스 장애가 아니라 정책상 거절. 실패로 세지 않고 검토 필요로 남깁니다
+                    case['policy_rejected'] = True
+                    evidence.check(case, '검사 대상 정책 거절', 'skipped', str(exc))
                 except (CheckError, KeyError, TypeError, ValueError) as exc:
                     evidence.check(case, '실행 중단 단계', 'fail', str(exc) if isinstance(exc, CheckError) else '서버 응답 계약 불일치: ' + type(exc).__name__)
                 if args.server_ssh and case.get('scan_job', {}).get('error_code') == 'SCAN_ERROR':

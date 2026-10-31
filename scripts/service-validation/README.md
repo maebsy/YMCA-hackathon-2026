@@ -76,7 +76,14 @@ Python 3.11+와 인터넷 연결이 필요합니다. 저장소 루트의 PowerSh
 - 재검사는 같은 공개 기본 브랜치를 다시 검사합니다. 코드 수정 후 해결을 증명하는 테스트가 아닙니다.
 - MCP는 전체 서비스 initialize/tools 목록과 실제 검사별 결과 전달·프롬프트 수신·연결 폐기를 확인합니다. 모든 서비스 MCP 도구나 모든 AI 제품의 호환성 검증은 아닙니다.
 - 리포트 대상/검사 ID/커밋/탐지 범위/LLM 설명/완료 주장 등을 검사합니다. 취약점 진위와 수정 코드의 의미적 정확도는 전문가 리뷰가 필요합니다.
-- UI 기본 대상은 작은 HTML 저장소 Spoon-Knife입니다. 여러 취약점 저장소는 API로 검사합니다. UI의 전체 버튼·모든 저장소 조합을 확인했다고 해석하지 마세요.
+- UI 기본 대상은 작은 OWASP 프로젝트 사이트(www-project-top-ten)입니다. 여러 취약점 저장소는 API로 검사합니다. UI의 전체 버튼·모든 저장소 조합을 확인했다고 해석하지 마세요.
+
+### 검증 대상 범위 (#69 허용 목록과 같음)
+- 검증 대상은 **교육용 취약 앱(OWASP)과 팀원 저장소**만 씁니다(`targets.py`, 기본 `OWASP,maebsy,surilog,SeouliteParker,papawolf42,nick19850906-debug`). 남의 저장소 결과를 공개 `/validation/`에 올리면 #69가 막는 '남의 취약점 목록 수집'과 같은 모양이 되기 때문입니다.
+- `repositories.json`, `--repo`, `--browser-repo`, `--discover` 모두 실행 전에 이 목록으로 거릅니다. 자동 검색(`--discover`)은 검색어에 `user:<허용 소유자>`를 붙이고 결과의 소유자도 다시 확인합니다.
+- 운영 서버의 `SCAN_ALLOWED_OWNERS`가 다르면 `SERVICE_VALIDATION_ALLOWED_OWNERS`에 같은 값을 주세요.
+- 서비스가 403 `SCAN_TARGET_NOT_ALLOWED`로 거절하면 **서비스 장애(fail)가 아니라 정책 거절(skipped)**로 기록합니다. 거절된 접수는 '접수 불명확'으로 남기지 않아 `--resume`이 막히지 않습니다.
+- 공개 산출물(`results.json`·`failures.json`·`index.html`·`handoff.md`·리포트)의 작업 ID(32자리)는 `job-<해시>` 참조값으로 바꿉니다. `GET /api/scans/{job_id}`가 인증 없이 전체 결과를 돌려주기 때문입니다. 실제 ID는 `private/`에만 남고 `--resume`·서버 진단은 그 값을 씁니다.
 
 오류가 있으면 종료 코드 1, 통과 또는 검토 필요면 0입니다. CI에서 완전 통과가 필요하면 `results.json.status == "passed"`를 별도로 요구하세요. 범위 밖 기능을 표시하므로 기본 실행은 최소 `review_required`입니다.
 

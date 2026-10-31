@@ -12,6 +12,10 @@ class CheckError(RuntimeError):
     pass
 
 
+class PolicyRejected(CheckError):
+    """서비스가 정책(검사 대상 허용 목록 등)으로 거절함. 서비스 장애가 아니므로 실패로 세지 않습니다."""
+
+
 def origin(value):
     url = urlsplit(value)
     if (not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/')
@@ -29,6 +33,15 @@ def repo_url(value):
     return value.rstrip('/').removesuffix('.git')
 
 
+def _error_code(exc):
+    """오류 응답 본문의 detail.code만 읽습니다 (본문 자체는 기록하지 않음)."""
+    try:
+        detail = json.loads(exc.read(64 * 1024).decode('utf-8')).get('detail')
+        return detail.get('code') if isinstance(detail, dict) else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -41,10 +54,11 @@ class Client:
         self.deadline = deadline or time.monotonic() + 3600
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
-    def request(self, method, path, body=None, headers=None, raw=False):
+    def request(self, method, path, body=None, headers=None, raw=False, cleanup=False):
+        """cleanup=True 는 정리(연결 폐기 등) 요청: 전체 시간 상한이 지나도 짧은 제한으로 한 번은 보냅니다."""
         if not path.startswith('/') or path.startswith('//'):
             raise CheckError('API 경로가 올바르지 않습니다.')
-        if time.monotonic() >= self.deadline:
+        if time.monotonic() >= self.deadline and not cleanup:
             raise CheckError('실행 전체 시간 상한을 초과했습니다.')
         request_headers = {'Accept': 'application/json', 'User-Agent': '72hours-service-validation/1'}
         if body is not None:
@@ -56,13 +70,17 @@ class Client:
         request = urllib.request.Request(self.base + path, method=method, headers=request_headers,
             data=json.dumps(body, ensure_ascii=False).encode() if body is not None else None)
         try:
-            with self.opener.open(request, timeout=min(self.timeout, max(1, self.deadline-time.monotonic()))) as response:
+            wait = 10 if cleanup else min(self.timeout, max(1, self.deadline-time.monotonic()))
+            with self.opener.open(request, timeout=wait) as response:
                 body = response.read(8 * 1024 * 1024 + 1)
                 if len(body) > 8 * 1024 * 1024:
                     raise CheckError('응답이 8 MiB 한도를 초과했습니다.')
                 text = body.decode('utf-8')
                 return (text, response.headers.get('Content-Type', '')) if raw else json.loads(text)
         except urllib.error.HTTPError as exc:
+            if exc.code == 403 and _error_code(exc) == 'SCAN_TARGET_NOT_ALLOWED':
+                raise PolicyRejected('HTTP 403 SCAN_TARGET_NOT_ALLOWED: 서비스의 검사 대상 허용 목록 밖입니다. '
+                                     '서비스 장애가 아니며 우회하지 않습니다.') from None
             if exc.code in (401, 403):
                 raise CheckError(f'HTTP {exc.code}: 인증 또는 검사 대상 정책이 거부했습니다. 우회하지 않습니다.') from None
             raise CheckError(f'HTTP {exc.code}: 요청 실패. 접수 요청은 자동 재시도하지 않습니다.') from None
@@ -75,7 +93,12 @@ class Client:
             jobs[key] = {'state': 'dispatching'}
             self.evidence.save()
             # If interrupted here, resume deliberately refuses a duplicate submission.
-            result = self.request('POST', path, payload)
+            try:
+                result = self.request('POST', path, payload)
+            except PolicyRejected:
+                del jobs[key]  # 정책 거절은 접수되지 않은 것이 확실하므로 '불명확' 상태로 남기지 않습니다
+                self.evidence.save()
+                raise
             job_id = result.get('job_id', '')
             if not re.fullmatch(r'[a-f0-9]{32}', job_id):
                 raise CheckError('접수 응답에 유효한 job_id가 없습니다.')

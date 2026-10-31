@@ -263,5 +263,114 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(failures({'cases': [case]})[0]['cause_status'], 'unconfirmed')
 
 
+class TargetScopeTests(unittest.TestCase):
+    """#84 리뷰: 검증 대상은 서비스 허용 목록(#69)과 같은 OWASP·팀원 저장소로 한정합니다."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_only_allowed_owners_are_targets(self):
+        from targets import allowed_repo
+        self.assertEqual(allowed_repo('https://github.com/OWASP/NodeGoat/'), 'https://github.com/OWASP/NodeGoat')
+        self.assertEqual(allowed_repo('https://github.com/owasp/www-project-top-ten'),
+                         'https://github.com/owasp/www-project-top-ten')
+        for outside in ('https://github.com/StartBootstrap/startbootstrap-clean-blog',
+                        'https://github.com/octocat/Spoon-Knife', 'https://github.com/geekan/HowToLiveLonger',
+                        'https://github.com/OWASPx/NodeGoat'):
+            with self.assertRaises(ValueError):
+                allowed_repo(outside)
+        with patch.dict('os.environ', {'SERVICE_VALIDATION_ALLOWED_OWNERS': 'octocat'}):
+            self.assertTrue(allowed_repo('https://github.com/octocat/Spoon-Knife'))
+
+    def test_shipped_defaults_are_inside_allowlist(self):
+        import re
+        from targets import allowed_repo, DEFAULT_OWNERS
+        here = Path(__file__).parent
+        for repo in json.loads((here/'repositories.json').read_text(encoding='utf-8')):
+            allowed_repo(repo['url'])
+        runner = (here/'runner.py').read_text(encoding='utf-8')
+        allowed_repo(re.search(r"'--browser-repo', default='([^']+)'", runner).group(1))
+        example = (here/'../../deploy/general-server/backend.env.example').resolve()
+        if example.exists():  # 배포 예시의 허용 목록과 같은 값인지
+            line = next(x for x in example.read_text(encoding='utf-8').splitlines() if x.startswith('SCAN_ALLOWED_OWNERS='))
+            self.assertEqual(line.split('=', 1)[1], DEFAULT_OWNERS)
+
+    def test_discover_limits_query_and_results_to_allowed_owners(self):
+        import discover as d
+        calls = []
+
+        def github(path):
+            calls.append(path)
+            if path.startswith('/search/'):
+                return {'items': [
+                    {'full_name': 'someone/site', 'html_url': 'https://github.com/someone/site', 'owner': {'login': 'someone'},
+                     'size': 10, 'has_pages': True},
+                    {'full_name': 'OWASP/www-project-x', 'html_url': 'https://github.com/OWASP/www-project-x',
+                     'owner': {'login': 'OWASP'}, 'size': 10, 'has_pages': True}]}
+            return [{'name': 'index.html', 'type': 'file'}]
+        with patch.object(d, 'github', github):
+            picked = d.discover('language:HTML', 2)
+        self.assertEqual([p['url'] for p in picked], ['https://github.com/OWASP/www-project-x'])
+        self.assertIn('user%3aowasp', calls[0].lower())
+        self.assertFalse(any('someone' in c for c in calls[1:]))  # 허용 밖은 내용 조회도 안 함
+
+    def _http_error(self, code, body):
+        import io
+        return urllib.error.HTTPError('https://example.com/api/scans', code, 'x', {}, io.BytesIO(json.dumps(body).encode()))
+
+    def test_policy_rejection_is_not_a_service_failure_and_not_left_dispatching(self):
+        from client import PolicyRejected
+        e = Evidence(self.tmp.name, {'test': True})
+        c = Client('https://example.com', e)
+        c.opener = Mock(open=Mock(side_effect=self._http_error(403, {'detail': {'code': 'SCAN_TARGET_NOT_ALLOWED'}})))
+        with self.assertRaises(PolicyRejected):
+            c.job('scan', '/api/scans', {'repo_url': 'x'}, 10, {})
+        self.assertNotIn('scan', e.state['jobs'])  # 재개 때 '접수 불명확'으로 막히지 않음
+        c.opener = Mock(open=Mock(side_effect=self._http_error(403, {'detail': 'BEARER_REQUIRED'})))
+        with self.assertRaises(CheckError) as other:
+            c.request('POST', '/api/scans', {})
+        self.assertNotIsInstance(other.exception, PolicyRejected)
+
+    def test_public_files_hide_job_ids_but_resume_keeps_them(self):
+        job = 'ab' * 16
+        e = Evidence(self.tmp.name, {'test': True})
+        case = {'key': 'c1', 'repository': 'https://github.com/OWASP/NodeGoat', 'checks': [],
+                'scan_job': {'job_id': job}, 'stage': 'scan'}
+        e.data['cases'].append(case)
+        e.check(case, 'scan', 'fail', 'SCAN_ERROR at /api/scans/' + job)
+        for name in ('results.json', 'failures.json', 'index.html', 'handoff.md'):
+            self.assertNotIn(job, (e.public/name).read_text(encoding='utf-8'), name)
+        self.assertIn('job-', (e.public/'results.json').read_text(encoding='utf-8'))
+        resumed = Evidence(self.tmp.name, {'test': True}, True)
+        self.assertEqual(resumed.data['cases'][0]['scan_job']['job_id'], job)
+
+
+class ReviewFollowupTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_cleanup_request_is_sent_after_deadline(self):
+        import time
+        c = Client('https://example.com', Evidence(self.tmp.name, {'test': True}), deadline=time.monotonic() - 1)
+        response = Mock()
+        response.__enter__ = Mock(return_value=Mock(read=Mock(return_value=b'{"ok": true}'), headers={}))
+        response.__exit__ = Mock(return_value=False)
+        c.opener = Mock(open=Mock(return_value=response))
+        with self.assertRaisesRegex(CheckError, '시간 상한'):
+            c.request('POST', '/api/scans', {})
+        self.assertEqual(c.request('POST', '/mcp/links/revoke', {}, cleanup=True), {'ok': True})
+
+    def test_browser_resume_never_resubmits(self):
+        import browser
+        e = Evidence(self.tmp.name, {'test': True})
+        e.state['browser_submission'] = {'state': 'dispatching', 'repository': 'https://github.com/OWASP/NodeGoat'}
+        browser.browser_check(Mock(), e, 'https://github.com/OWASP/NodeGoat', 10)  # Playwright를 열지 않고 끝나야 함
+        check = e.data['browser']['checks'][0]
+        self.assertEqual(check['status'], 'skipped')
+        self.assertIn('중복 접수', check['detail'])
+
+
 if __name__ == '__main__':
     unittest.main()

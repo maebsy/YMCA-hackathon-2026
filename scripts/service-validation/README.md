@@ -13,7 +13,7 @@
 
 검증은 일반 서버에서 현재 배포본과 동일한 venv/스캐너로 별도 프로세스를 실행합니다. 서비스 DB와 사용자 저장소를 수정하지 않습니다. API 키를 읽거나 GPU LLM을 새로 호출하지 않습니다. `engine-quality.json`에 배포 커밋·규칙 SHA-256·스캐너 버전·정답 사례·변환 추적·리포트를 기록합니다. 이 검증의 리포트는 합성 사례이며 실제 사용자 사고 리포트가 아닙니다.
 
-`campaign.py --server-ssh`는 매 회차 이 검증도 자동 실행합니다(별도 최대 5분). 공개 실행 폴더에 `quality.html`/`engine-quality.json`을 포함해 과거 실행의 비교 결과도 고정해서 볼 수 있습니다. 로컬 개발·Linux 재현은 `engine_quality.py --source <배포 소스> --output <결과 JSON>`입니다. 검사기 실행 파일 환경 변수는 엔진 README를 따릅니다.
+`campaign.py --server-ssh`는 매 회차 이 검증도 자동 실행합니다. 20분 검사 예산에서 웹/API 실행 15분, 독립 정답 검증 최대 5분으로 나누며 산출물 전송·정리는 별도입니다. 공개 실행 폴더에 `quality.html`/`engine-quality.json`을 포함해 과거 실행의 비교 결과도 고정해서 볼 수 있습니다. 로컬 개발·Linux 재현은 `engine_quality.py --source <배포 소스> --output <결과 JSON>`입니다. 검사기 실행 파일 환경 변수는 엔진 README를 따릅니다.
 
 정답 검증 실패는 `failures.json`과 `handoff.md`에도 기대값·실측값·배포 커밋·재현 명령을 항목별로 남깁니다. 과거 커밋 키 탐지 사례는 기존 #87에 연결합니다. 합성 엔진 검사는 API job ID가 없으므로 엔진 scan ID와 구분하며, 탐지 누락만으로 내부 명령의 원인을 확정하지 않습니다.
 

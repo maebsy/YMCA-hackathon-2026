@@ -74,7 +74,7 @@ def main():
         atomic_json(manifest, repos)
         cmd = [sys.executable, str(Path(__file__).with_name('runner.py')), '--base-url', args.base_url,
                '--output', str(output), '--repos-file', str(manifest), '--max-repos', '4', '--llm-per-repo', '2',
-               '--sample-offset', str(index*2), '--max-run-seconds', '1200', '--rescan', '--mcp', '--incident-drafts']
+               '--sample-offset', str(index*2), '--max-run-seconds', '900', '--rescan', '--mcp', '--incident-drafts']
         if not args.skip_browser:
             cmd.append('--browser')
         for option, value in (('--server-ssh', args.server_ssh), ('--gpu-ssh', args.gpu_ssh)):

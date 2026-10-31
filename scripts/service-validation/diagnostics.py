@@ -26,8 +26,10 @@ def quality_failures(quality):
                       '배포 엔진의 정답 사례가 기대값과 다릅니다. 검사기 실행 상태와 변환 추적을 대조해야 합니다.'),
             'evidence': {'artifact': 'engine-quality.json', 'source_revision': revision},
             'issue': 'https://github.com/maebsy/YMCA-hackathon-2026/issues/'+str(known[0]) if known else None,
-            'next_action': ('#87에서 현재 파일 검사와 Git 이력 검사의 지원 범위를 확인하고, 이력 검사를 구현하거나 설계 범위를 정정하세요.'
-                            if historical else 'engine-quality.json의 기대값·실측값·coverage·flow를 대조해 엔진 담당자에게 전달하세요.'),
+            'next_action': ({87: '#87에서 현재 파일 검사와 Git 이력 검사의 지원 범위를 확인하고, 이력 검사를 구현하거나 설계 범위를 정정하세요.',
+                             92: 'security_engine/normalize.py의 생태계별 버전 비교와 다운그레이드 차단을 수정하고 추천 버전의 취약 여부를 다시 확인하세요.',
+                             93: 'backend/app/llm/intel.py의 조회 실패를 unknown으로 구분하고 캐시의 출처·갱신 시각을 보존하세요.'}.get(known[0])
+                            if known else 'engine-quality.json의 기대값·실측값·coverage·flow를 대조해 엔진 담당자에게 전달하세요.'),
             'reproduce': {'command': 'python scripts/service-validation/engine_quality.py --source <동일 배포 커밋 경로> --output <새 결과 JSON>',
                           'source_revision': revision, 'check': check['name']},
             'revision_note': '배포 엔진 커밋이며 공개 저장소 커밋이 아닙니다. 독립 합성 사례에는 API job ID가 없습니다.'})

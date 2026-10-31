@@ -184,7 +184,3 @@ class FileSourceTests(unittest.TestCase):
         self.path.write_text(json.dumps(data), encoding="utf-8")
         listing = Snapshot(self.path, None, None).list_findings()
         self.assertIsNone(listing["source"]["generated_at"])
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -12,7 +12,7 @@ const storage = new Map();
 const requests = [];
 let replies = [];
 const runtime = {
-  URL, Date, Map, Set, console,
+  URL, Date, Map, Set, console, AbortSignal,
   setTimeout(callback) { callback(); return 0; },
   localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
   fetch: async (url, options) => {
@@ -101,6 +101,12 @@ await checkAsync("Scan API surfaces queue rejection", async () => {
   replies = [{ ok: false, status: 400, body: { detail: { message: "invalid repo" } } }];
   await assert.rejects(api.startScan(saved.repoUrl), /invalid repo/);
 });
+await checkAsync("Scan API preserves login, owner-policy and queue errors", async () => {
+  for (const [status, message] of [[401, "login required"], [403, "owner not allowed"], [429, "queue full"]]) {
+    replies.push({ ok: false, status, body: { detail: { message } } });
+    await assert.rejects(api.startScan(saved.repoUrl), new RegExp(message));
+  }
+});
 await checkAsync("Scan API surfaces failed job without inventing results", async () => {
   replies = [{ body: { job_id: "failed" } }, { body: { status: "failed", error: { message: "clone failed" } } }];
   await assert.rejects(api.startScan(saved.repoUrl), /clone failed/);
@@ -113,8 +119,11 @@ await checkAsync("LLM health network failure remains optional", async () => {
   replies = [new Error("offline")]; assert.equal(await api.llmHealthy(), false);
 });
 await checkAsync("LLM requests retain selected OS and engine findings", async () => {
-  replies = [{ body: { results: [] } }]; await api.explain([engineItem], "linux");
-  assert.deepEqual(JSON.parse(requests[0].options.body), { findings: [engineItem], mode: "red_blue", environment: { os: "linux" } });
+  replies = [{ body: { job_id: "explain-1" } }, { body: { status: "running" } }, { body: { status: "done", result: { results: [] } } }];
+  await api.explain([engineItem], "linux", "netlify");
+  assert.equal(requests[0].url, "/api/llm/explain/tasks");
+  assert.deepEqual(JSON.parse(requests[0].options.body), { findings: [engineItem], mode: "red_blue", environment: { os: "linux", hosting: "netlify" } });
+  assert.deepEqual(requests.slice(1).map(request => request.url), ["/api/llm/explain/tasks/explain-1", "/api/llm/explain/tasks/explain-1"]);
 });
 await checkAsync("HTML and Markdown reports pass actual scan input to existing API", async () => {
   for (const format of ["html", "markdown"]) {

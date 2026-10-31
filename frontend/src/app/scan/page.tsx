@@ -1,2 +1,5 @@
-import Workspace from "@/components/workspace";
-export default function Page() { return <Workspace view="scan"/>; }
+import { redirect } from "next/navigation";
+
+export default function Page() {
+  redirect("/repository");
+}

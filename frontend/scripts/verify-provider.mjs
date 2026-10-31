@@ -51,7 +51,7 @@ function mountProvider({ saved = null, scan = async url => result(url), health =
     saveLast: data => calls.saved.push(structuredClone(data)),
     startScan: (url, previous, onStatus) => { calls.scans.push({ url, previous }); return scan(url, previous, onStatus); },
     llmHealthy: () => { calls.health++; return health(); },
-    explain: (findings, os) => { calls.explanations.push({ findings, os }); return explain(findings, os); },
+    explain: (findings, os, hosting) => { calls.explanations.push({ findings, os, hosting }); return explain(findings, os, hosting); },
   };
   function nextSlot(kind, initialize) {
     const index = cursor++;
@@ -164,25 +164,51 @@ await check("Rejected optional AI cannot erase successful engine results", async
   provider.unmount();
 });
 
-await check("Delayed AI enrichment preserves user selection, selected OS and engine verification", async () => {
+await check("Delayed AI enrichment preserves selection/environment and publishes each item before the next", async () => {
   const ai = deferred();
   const data = result(repoA, [item("resolved", "code_resolved"), ...Array.from({ length: 6 }, (_, index) => item(String(index)))]);
-  const provider = mountProvider({ scan: async () => data, health: async () => true, explain: () => ai.promise });
+  const provider = mountProvider({ scan: async () => data, health: async () => true, explain: findings =>
+    findings[0].id === "opengrep:0" ? ai.promise : Promise.resolve([]) });
   provider.value.setOS("linux"); provider.flush();
+  provider.value.setHosting("netlify"); provider.flush();
   const running = provider.value.runScan(repoA); provider.flush();
   await provider.until(() => provider.calls.explanations.length === 1);
   assert.equal(provider.value.isScanning, true); assert.equal(provider.value.findings.length, 7);
   provider.value.selectFinding("opengrep:1"); provider.flush();
-  ai.resolve([{ fingerprint: "opengrep:1", status: "done", explanation: { summary: "Enriched explanation", red_verdict: "pass" } }]);
+  ai.resolve([{ fingerprint: "opengrep:0", status: "done", explanation: { summary: "Enriched explanation", red_verdict: "pass" } }]);
   await running; provider.flush();
   assert.equal(provider.value.selectedFindingId, "opengrep:1");
-  assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:1").title, "Enriched explanation");
+  assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:0").title, "Enriched explanation");
   assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:1").fixed, false);
   assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:resolved").fixed, true);
-  assert.equal(provider.calls.explanations[0].os, "linux"); assert.equal(provider.calls.explanations[0].findings.length, 5);
+  assert.equal(provider.calls.explanations[0].os, "linux"); assert.equal(provider.calls.explanations.length, 5);
+  assert.ok(provider.calls.explanations.every(call => call.findings.length === 1));
+  assert.equal(provider.calls.explanations[0].hosting, "netlify");
   assert.ok(provider.calls.explanations[0].findings.every(finding => finding.status !== "code_resolved"));
   provider.value.selectFinding("opengrep:3"); provider.flush(); await provider.run(repoA);
   assert.equal(provider.value.selectedFindingId, "opengrep:3", "Same-repository rescan should preserve a surviving selection");
+  provider.unmount();
+});
+
+await check("A later failed AI item retains earlier explanations and continues the next item", async () => {
+  const second = deferred();
+  const first = { fingerprint: "opengrep:first", status: "done", explanation: { summary: "First complete" } };
+  const provider = mountProvider({ scan: async () => result(repoA, [item("first"), item("second"), item("third")]),
+    health: async () => true, explain: findings => findings[0].id === "opengrep:first" ? Promise.resolve([first])
+      : findings[0].id === "opengrep:second" ? second.promise : Promise.resolve([]) });
+  const running = provider.value.runScan(repoA); provider.flush();
+  await provider.until(() => provider.calls.explanations.length === 2);
+  assert.equal(provider.value.isScanning, true);
+  assert.equal(provider.value.findings[0].title, "First complete");
+  assert.equal(provider.calls.saved.at(-1).reportInput.explain_results[0].fingerprint, first.fingerprint);
+  second.reject(new Error("second timed out"));
+  await running; provider.flush();
+  assert.equal(provider.calls.explanations.length, 3);
+  assert.equal(provider.value.reportInput.explain_results[0].fingerprint, first.fingerprint);
+  assert.equal(provider.value.reportInput.explain_results[1].status, "failed");
+  assert.equal(provider.value.findings[1].fixed, false);
+  assert.equal(provider.value.findings[1].verdict, "LLM 해석 실패");
+  assert.equal(provider.value.error, "");
   provider.unmount();
 });
 

@@ -1,5 +1,5 @@
 // 백엔드 연결: /api/* 는 next.config.ts rewrites 로 FastAPI(:8000)에 전달됩니다.
-import { Finding } from "@/types/security";
+import type { Finding } from "@/types/security";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type EngineItem = any;
@@ -32,22 +32,37 @@ export async function startScan(repoUrl: string, previous?: unknown, onStatus?: 
 
 export async function llmHealthy(): Promise<boolean> {
   try {
-    const res = await fetch("/api/llm/health");
+    const res = await fetch("/api/llm/health", { cache: "no-store", signal: AbortSignal.timeout(12_000) });
     return res.ok;
   } catch {
     return false;
   }
 }
 
-export async function explain(findings: unknown[], os: string) {
-  const res = await fetch("/api/llm/explain", {
+export async function explain(findings: unknown[], os: string, hosting = "unknown") {
+  const res = await fetch("/api/llm/explain/tasks", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ findings, mode: "red_blue", environment: { os } }),
+    body: JSON.stringify({ findings, mode: "red_blue", environment: { os, hosting } }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.detail?.message || `LLM 해석 실패 (${res.status})`);
-  return data.results as ExplainResult[];
+  if (typeof data.job_id !== "string") throw new Error("LLM 작업 응답이 올바르지 않습니다.");
+  const started = Date.now();
+  while (Date.now() - started < 16 * 60 * 1000) {
+    const response = await fetch(`/api/llm/explain/tasks/${encodeURIComponent(data.job_id)}`,
+      { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    const job = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(job?.detail?.message || `LLM 상태 조회 실패 (${response.status})`);
+    if (job.status === "failed") throw new Error(job.error?.message || "LLM 해석에 실패했습니다.");
+    if (job.status === "done") {
+      if (!Array.isArray(job.result?.results)) throw new Error("LLM 결과 형식이 올바르지 않습니다.");
+      return job.result.results as ExplainResult[];
+    }
+    if (!["queued", "running"].includes(job.status)) throw new Error("LLM 작업 상태가 올바르지 않습니다.");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  throw new Error("LLM 해석이 제한 시간 안에 끝나지 않았습니다.");
 }
 
 // 비전공자용 점검 리포트 (실제 검사 결과로). format=html 이면 인쇄용 HTML, markdown 이면 붙여 넣기용
@@ -110,7 +125,8 @@ export function itemToFinding(it: EngineItem): Finding {
     scope: it.kind,
     fixed: it.status === "code_resolved",
     desc: it.what || it.title,
-    redScenario: "GPU LLM 해석 대기 중 (Red–Blue 결과가 오면 채워집니다)",
+    redScenario: it.status === "code_resolved" ? "재검사에서 해결된 항목으로 LLM 해석을 생략합니다."
+      : "LLM 해석 미요청 — 자동 해석은 상위 5개 항목 묶음까지 수행합니다. 현재는 엔진 결과입니다.",
     why: [it.status_label, ...(it.flags || []).map((x: any) => (typeof x === "string" ? x : x?.note || x?.flag))]
       .filter(Boolean)
       .map(String),
@@ -120,19 +136,28 @@ export function itemToFinding(it: EngineItem): Finding {
 }
 
 export function mergeExplanation(f: Finding, r: ExplainResult): Finding {
+  if (r?.status === "failed") return { ...f, verdict: "LLM 해석 실패", verdictType: "warn",
+    redScenario: `LLM 해석에 실패했습니다 (${r.error_code || "LLM_ERROR"}). 엔진 결과와 기본 수정 안내는 유지됩니다.` };
+  if (r?.status === "skipped") return { ...f, redScenario: `LLM 해석 생략: ${r.reason || "해석 대상이 아닙니다."}` };
   const e = r?.explanation;
   if (!e) return f;
+  const decisions: Record<string, Finding["decision"]> = { act: "act", attend: "attend", "track*": "trackstar", track: "trackstar" };
+  const decision = decisions[e.risk?.decision] || f.decision;
+  const passed = e.red_verdict === "pass" && !e.needs_manual_review;
   const cmds: Record<string, string> = {};
   for (const a of e.guide?.actions || [])
     for (const b of a.commands || []) cmds[b.os] = [cmds[b.os], `# ${a.title}`, ...(b.lines || [])].filter(Boolean).join("\n");
   return {
     ...f,
+    decision,
+    decisionLabel: DECISION_LABEL[decision],
     title: e.summary || f.title,
     desc: e.why_risky || f.desc,
     redScenario: e.attack_scenario || f.redScenario,
-    verdict: e.red_verdict === "pass" ? "Red 통과" : e.red_verdict ? "수동 확인" : "Blue 해석",
-    verdictType: e.red_verdict === "pass" ? "ok" : "warn",
-    why: (e.fix_steps || []).map((s: any) => `${s.title}: ${s.detail}`),
+    verdict: passed ? "Red 통과" : e.needs_manual_review || e.red_verdict ? "수동 확인" : "Blue 해석",
+    verdictType: passed ? "ok" : "warn",
+    why: e.risk?.factors?.length ? e.risk.factors.map((factor: any) => factor.reason)
+      : (e.fix_steps || []).map((s: any) => `${s.title}: ${s.detail}`),
     aiPrompt: e.ai_fix_prompt || f.aiPrompt,
     commands: {
       windows: cmds.windows || f.commands.windows,

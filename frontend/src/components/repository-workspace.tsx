@@ -81,7 +81,7 @@ export default function RepositoryWorkspace() {
   const pending = repository.pendingIds.length;
   return <main id="main" className="workspace container repository-page" tabIndex={-1}>
     <div className="page-heading"><p className="eyebrow">REPOSITORY · ENGINE SCAN</p><h1>내 저장소를 실제로 점검하세요.</h1><p>공개 GitHub 저장소를 엔진으로 검사하고, 근거와 수정 안내를 확인합니다.</p></div>
-    <Notice>웹사이트 URL 체험과 별개의 실제 검사입니다. 실행하면 저장소 주소가 검사 서버로 전송됩니다. 공개 저장소만 입력하세요. 웹사이트 주소만으로 서버 코드나 DB를 검사하지 않습니다.</Notice>
+    <Notice>실행하면 저장소 주소가 검사 서버로 전송됩니다. 서버의 로그인·저장소 접근 정책이 적용됩니다. 공개 저장소만 입력하세요. 웹사이트 주소만으로 서버 코드나 DB를 검사하지 않습니다.</Notice>
     <section className="card form-card repository-input" aria-labelledby="repository-input-title">
       <div className="panel-heading"><Code2 size={22}/><h2 id="repository-input-title">공개 GitHub 저장소</h2></div>
       <form onSubmit={submit} noValidate>
@@ -95,16 +95,16 @@ export default function RepositoryWorkspace() {
     </section>
     <p className="feedback" role="status">{repository.message}</p>
     {repository.result && <>
-      <div className="sample-context"><span className="sample-label">실제 엔진 결과 · 브라우저 보관</span><code>{repository.resultRepo}</code><p>아래 결과는 위 저장소의 마지막 검사입니다. 다른 저장소를 입력해도 새 검사가 완료되기 전에는 이 결과를 유지합니다.</p></div>
+      <div className="result-context"><span className="status-label">실제 엔진 결과 · 브라우저 보관</span><code>{repository.resultRepo}</code><p>아래 결과는 위 저장소의 마지막 검사입니다. 다른 저장소를 입력해도 새 검사가 완료되기 전에는 이 결과를 유지합니다.</p></div>
       <dl className="count-grid"><div><dt>엔진 발견 항목</dt><dd>{repository.findings.length}<small>건</small></dd></div><div><dt>미해결 · 미조치</dt><dd>{repository.findings.length - verified - pending}<small>건</small></dd></div><div><dt>재검증 대기</dt><dd className="accent">{pending}<small>건</small></dd></div><div><dt>엔진 해결 확인</dt><dd>{verified}<small>건</small></dd></div></dl>
     </>}
-    <div className="legacy-workspace"><WorkspaceTab compact hasResult={!!repository.result} pendingIds={repository.pendingIds} findings={repository.findings}
+    <div className="legacy-workspace"><WorkspaceTab compact hasRealScan={!!repository.result} hasResult={!!repository.result} pendingIds={repository.pendingIds} findings={repository.findings}
       onToggleFindingFixed={repository.togglePending} selectedFindingId={repository.selectedFindingId} onSelectFindingId={repository.selectFinding}
       logs={repository.logs} onRunScan={url => { void repository.runScan(url); }} isScanning={repository.isScanning}
       os={repository.os} onChangeOS={repository.setOS} hosting={repository.hosting} onChangeHosting={repository.setHosting} countdown=""
       onShowToast={repository.showMessage} repoInput={repository.repoInput} onChangeRepoInput={repository.setRepoInput}/></div>
     <Notice compact>수정 명령은 자동 실행하지 않습니다. 직접 조치한 항목은 ‘재검증 대기’로 표시하고 같은 저장소를 다시 검사하세요. 엔진의 코드 해결 상태만 ‘해결 확인’으로 집계합니다. 검사 결과와 조치 표시는 이 브라우저에 저장됩니다.</Notice>
     <ActualReport/>
-    <Link className="text-link" href="/"><ArrowLeft size={15}/>웹사이트 URL 샘플 체험으로 돌아가기</Link>
+    <Link className="text-link" href="/"><ArrowLeft size={15}/>GitHub 주소 입력으로 돌아가기</Link>
   </main>;
 }

@@ -1,2 +1,5 @@
 import { redirect } from "next/navigation";
-export default function RepairPage() { redirect("/repair/SEC-001"); }
+
+export default function Page() {
+  redirect("/repository");
+}

@@ -3,43 +3,50 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
-import { ArrowRight, CheckCheck, Code2, Globe2, ShieldCheck } from "lucide-react";
-import { useDemo } from "@/components/demo-provider";
-import FlowSteps from "@/components/flow-steps";
-import { validateWebsite } from "@/lib/sample";
+import { ArrowRight, Code2, LoaderCircle, ShieldCheck, Sparkles, Unplug } from "lucide-react";
+import { normalizeRepositoryUrl, useRepository } from "@/components/repository-provider";
 
 export default function Home() {
-  const demo = useDemo();
+  const repository = useRepository();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   function submit(event: FormEvent) {
     event.preventDefault();
-    const website = validateWebsite(demo.website);
-    if (!website) {
-      setError("공개 도메인의 웹사이트 주소를 입력해 주세요. http(s) 주소만 가능하며 로그인 정보, 쿼리(?)와 해시(#)는 제외해 주세요.");
-      input.current?.focus(); return;
+    if (!repository.restored || repository.isScanning) return;
+    const url = normalizeRepositoryUrl(repository.repoInput);
+    if (!url) {
+      setError("공개 GitHub 저장소의 HTTPS 주소를 입력해 주세요. 예: https://github.com/owner/repository");
+      input.current?.focus();
+      return;
     }
-    setError(""); demo.setWebsite(website); demo.startSimulation(website); router.push("/scan");
+    setError("");
+    void repository.runScan(url);
+    router.push("/repository");
   }
   return <main id="main" className="entry container" tabIndex={-1}>
-    <div className="entry-intro"><p className="eyebrow"><span className="status-dot"/> SECURITY FOR BUILDERS</p><h1>내 서비스의 보안,<br/>URL 하나로 시작하세요.</h1><p className="entry-description">어디부터 고칠지 막막할 때.<br/>위험을 이해하고, 다음 조치를 정하는 첫 단계.</p></div>
-    <section className="entry-panel card" aria-label="웹사이트 URL 입력">
-      <div className="entry-panel-top"><label htmlFor="website">웹사이트 URL</label><span className="sample-label">샘플 체험</span></div>
+    <div className="entry-intro">
+      <p className="eyebrow"><span className="status-dot"/> SECURITY FOR BUILDERS</p>
+      <h1>내 코드의 보안,<br/>GitHub 주소로 점검하세요.</h1>
+      <p className="entry-description">실제 엔진으로 위험의 근거를 찾고,<br/>GPU Red–Blue 해석과 MCP로 다음 조치를 준비하세요.</p>
+    </div>
+    <section className="entry-panel card" aria-label="GitHub 저장소 실제 검사">
+      <div className="entry-panel-top"><label htmlFor="repository">공개 GitHub 저장소</label><span className="status-label">실제 엔진 검사</span></div>
       <form onSubmit={submit} noValidate>
-        <div className="url-form-row"><div className="url-field"><Globe2 size={20}/><input ref={input} id="website" name="website" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="url" placeholder="https://my-service.com" value={demo.website} onChange={e => { demo.setWebsite(e.target.value); if (error) setError(""); }} aria-invalid={!!error} aria-describedby={error ? "website-error website-hint" : "website-hint"}/></div><button className="button primary" type="submit">점검 체험하기 <ArrowRight size={16}/></button></div>
-        {error && <p id="website-error" className="form-error" role="alert">{error}</p>}
-        <p id="website-hint" className="field-hint">도메인만 입력해도 됩니다. 예: my-service.vercel.app</p>
+        <div className="url-form-row">
+          <div className="url-field"><Code2 size={20}/><input ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="https://github.com/owner/repository" value={repository.repoInput} onChange={event => { repository.setRepoInput(event.target.value); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={error ? "repository-error repository-hint" : "repository-hint"}/></div>
+          <button className="button primary" type="submit" disabled={!repository.restored || repository.isScanning}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : null}{repository.isScanning ? "검사 진행 중" : "실제 검사 시작"}<ArrowRight size={16}/></button>
+        </div>
+        {error && <p id="repository-error" className="form-error" role="alert">{error}</p>}
+        <p id="repository-hint" className="field-hint">저장소 루트 주소를 입력하세요. 웹사이트 주소나 파일 경로는 검사할 수 없습니다.</p>
       </form>
-      <div className="entry-disclosure"><ShieldCheck size={17}/><p><strong>웹사이트 URL은 샘플 체험용입니다.</strong><br/>입력한 사이트에 접속하지 않으며, 가상 서비스의 고정 샘플을 보여줍니다.</p></div>
+      <div className="entry-disclosure"><ShieldCheck size={17}/><p><strong>주소를 검사 서버로 보내 실제 코드를 점검합니다.</strong><br/>서버의 로그인·저장소 접근 정책이 적용되며, 검사와 추가 AI 해석은 수 분 걸릴 수 있습니다.</p></div>
     </section>
-    <Link className="sample-shortcut text-link" href="/findings" onClick={demo.showSample}>URL 입력 없이 샘플 먼저 보기 <ArrowRight size={14}/></Link>
-    <div className="repository-entry"><span>내 코드의 실제 결과가 필요하다면</span><Link className="text-link" href="/repository">GitHub 저장소 실제 검사 <ArrowRight size={14}/></Link></div>
-    <FlowSteps step={1}/>
-    <section className="entry-benefits" aria-label="체험에서 할 수 있는 일">
-      <article><ShieldCheck size={20}/><h2>무엇부터 볼지</h2><p>위험의 근거와 우선순위를<br/>한눈에 살펴보세요.</p></article>
-      <article><Code2 size={20}/><h2>어떻게 고칠지</h2><p>단계별 안내를 읽고<br/>AI 수정 요청을 준비하세요.</p></article>
-      <article><CheckCheck size={20}/><h2>무엇을 확인할지</h2><p>수정 뒤에 직접 확인할<br/>체크리스트를 가져가세요.</p></article>
+    <div className="repository-entry"><Link className="text-link" href="/repository">{repository.isScanning ? "진행 중인 검사 보기" : "검사 환경과 저장된 결과 보기"}<ArrowRight size={14}/></Link></div>
+    <section className="entry-benefits" aria-label="실제 검사에서 다음 조치까지">
+      <article><ShieldCheck size={20}/><h2>엔진으로 발견</h2><p>코드·의존성·비밀정보의<br/>실제 관찰 근거를 확인하세요.</p></article>
+      <article><Sparkles size={20}/><h2>GPU로 해석</h2><p>연결 가능한 경우 Red–Blue가<br/>위험과 수정 방향을 설명합니다.</p></article>
+      <article><Unplug size={20}/><h2>MCP로 전달</h2><p>결과를 코딩 도구에 전달하고<br/>수정 후 다시 검사하세요.</p></article>
     </section>
   </main>;
 }

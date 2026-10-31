@@ -24,6 +24,7 @@ interface WorkspaceTabProps {
   logs: LogItem[];
   onRunScan: (repoUrl: string) => void;
   isScanning: boolean;
+  hasRealScan: boolean;
   os: OS;
   onChangeOS: (os: OS) => void;
   hosting: Hosting;
@@ -42,6 +43,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   logs,
   onRunScan,
   isScanning,
+  hasRealScan,
   os,
   onChangeOS,
   hosting,
@@ -104,7 +106,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               바이브코더와 비개발자도 즉시 다음 행동이 보이는 웹사이트 보안 서비스.
               Opengrep·OSV·Gitleaks 및 자체 특화 룰셋으로 진단하고, 로컬 GPU LLM의{" "}
               <strong className="text-white font-medium">Red–Blue 검증 루프</strong>를
-              통과한 안전한 수정 지시만 코딩툴(MCP)로 전달합니다.
+              결과와 수정 지시를 확인하고 AI 코딩툴에 전달할 수 있습니다.
             </p>
           </div>
 
@@ -112,7 +114,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
           <div className="bg-[#111113] border border-[#27272a] rounded-xl p-4 font-mono text-xs shrink-0">
             <div className="text-[#a1a1aa] mb-2.5 flex items-center justify-between">
               <span>MVP 5-STEP PIPELINE</span>
-              <span className="text-[#d4ff3a]">④ MCP Active</span>
+              <span className="text-[#d4ff3a]">④ AI 수정 지시</span>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="step-pill done">① 권한</span>
@@ -313,7 +315,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
             </span>
             <button
               onClick={() => onRunScan(repoInput)}
-              disabled={isScanning}
+              disabled={isScanning || !hasRealScan}
               className="px-2.5 py-1 rounded bg-[#18181b] hover:bg-[#27272a] text-[#fafafa] border border-[#27272a] transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
             >
               <RotateCw className={`w-3 h-3 ${isScanning ? "animate-spin" : ""}`} />
@@ -324,7 +326,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
         <div className="p-5 bg-[#0a0a0a] font-mono text-xs sm:text-[13px] leading-relaxed overflow-x-auto space-y-1">
           {logs.length === 0 && <p className="text-[#a1a1aa]">검사를 시작하면 실제 엔진 진행 기록이 표시됩니다.</p>}
           {logs.map((l, idx) => (
-            <div key={idx} className="flex items-center gap-3">
+            <div key={idx} className="scan-log-row flex items-center gap-3">
               <span className="text-[#71717a] select-none">{l.time}</span>
               <span className="text-[#a1a1aa] font-bold w-20 shrink-0">
                 {l.step}
@@ -435,7 +437,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               </div>
               <button
                 onClick={() => onToggleFindingFixed(selectedFinding.id)}
-                disabled={compact && (selectedFinding.fixed || isScanning)}
+                disabled={isScanning || (compact && selectedFinding.fixed)}
                 className={`px-2.5 py-1 rounded font-mono text-xs transition cursor-pointer flex items-center gap-1 ${
                   selectedFinding.fixed
                     ? "bg-[#27272a] text-[#a1a1aa] hover:text-white"
@@ -444,7 +446,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>
-                  {compact ? selectedFinding.fixed ? "엔진 검증 완료" : pendingIds.includes(selectedFinding.id) ? "조치 표시 취소" : "조치함 · 재검증 대기" : selectedFinding.fixed
+                  {compact ? selectedFinding.fixed ? "엔진 검증 완료" : pendingIds.includes(selectedFinding.id) ? "조치 표시 취소" : "조치함 · 재검증 대기" : hasRealScan ? "조치 후 실제 재검사" : selectedFinding.fixed
                     ? "↺ 미해결 상태로 되돌리기"
                     : "✓ 조치 완료 및 재검사 검증"}
                 </span>

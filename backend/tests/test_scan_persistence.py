@@ -907,13 +907,17 @@ def test_grouped_dependency_preview_overflow_preserves_individual_findings(tmp_p
     result["findings"] = dependencies
     payload = build_llm_input(result, max_items=50)
     assert len(from_engine_payload(payload, group_dependencies=False)) == 5
-    with pytest.raises(ValidationError):
-        from_engine_payload(payload)  # Individually valid titles overflow the group's what field.
+    # #83: individually valid long titles used to overflow the group's what field and drop every package group.
+    [group] = from_engine_payload(payload)
+    assert len(group.what) <= 2000
+    assert set(group.covers) == {item["fingerprint"] for item in dependencies}
     monkeypatch.setattr(security_engine, "scan_repo", lambda *args, **kwargs: result)
     response = asyncio.run(scans._run_scan(scans.ScanRequest(repo_url=URL)))
     assert response["preview_errors"] == []
     assert response["result"] == result
-    assert {item["fingerprint"] for item in response["findings"]} == {item["fingerprint"] for item in dependencies}
+    [package] = response["findings"]
+    assert package["fingerprint"].startswith("pkg:npm:example-package:")
+    assert set(package["covers"]) == {item["fingerprint"] for item in dependencies}
     for item in response["findings"]:
         FindingInput.model_validate(item)
     engine = create_engine(f"sqlite:///{tmp_path / 'group-overflow.sqlite'}")

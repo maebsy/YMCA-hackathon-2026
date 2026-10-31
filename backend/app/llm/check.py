@@ -4,7 +4,6 @@
     python -m app.llm.check                       # Blue(C)와 Red–Blue(D) 둘 다
     python -m app.llm.check --mode blue --repeat 2
     python -m app.llm.check --engine-input llm_input.json   # 보안엔진 출력 그대로
-    python -m app.llm.check --os windows --hosting vercel   # 사용자 환경에 맞춘 가이드
 
 결과 전체는 outputs/llm-check-<시각>.json 에 저장합니다 (커밋되지 않는 폴더).
 하나라도 실패하거나 한자가 섞이면 종료 코드 1을 돌려줍니다.
@@ -22,14 +21,12 @@ from app.config import ROOT_DIR
 from app.llm import create_explainer
 from app.llm.engine_adapter import from_engine_payload
 from app.llm.quality import foreign_script_count, hangul_ratio
-from app.llm.schemas import FindingInput, UserEnvironment
+from app.llm.schemas import FindingInput
 
 DEFAULT_FINDINGS = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "findings.json"
 
 
-async def run(
-    findings: list[FindingInput], modes: list[str], repeat: int, environment: UserEnvironment | None = None
-) -> tuple[dict, bool]:
+async def run(findings: list[FindingInput], modes: list[str], repeat: int) -> tuple[dict, bool]:
     explainer = create_explainer()
     report: dict = {"model": explainer.client.model, "runs": []}
     ok = True
@@ -39,7 +36,7 @@ async def run(
         for mode in modes:
             for i in range(repeat):
                 started = time.perf_counter()
-                results = await explainer.explain_many(findings, mode, environment)
+                results = await explainer.explain_many(findings, mode)
                 wall_ms = int((time.perf_counter() - started) * 1000)
                 ok &= summarize(mode, i, results, wall_ms)
                 report["runs"].append(
@@ -104,8 +101,6 @@ def main() -> None:
     parser.add_argument("--no-group", action="store_true", help="의존성을 패키지 단위로 묶지 않고 건마다 설명 (비교용)")
     parser.add_argument("--mode", choices=["blue", "red_blue", "both"], default="both")
     parser.add_argument("--repeat", type=int, default=1)
-    parser.add_argument("--os", choices=["windows", "macos", "linux"], help="사용자 OS (비우면 세 OS 명령 모두)")
-    parser.add_argument("--hosting", help="배포 플랫폼 (vercel, netlify, ...)")
     args = parser.parse_args()
 
     if args.engine_input:
@@ -114,8 +109,7 @@ def main() -> None:
     else:
         findings = [FindingInput.model_validate(x) for x in json.loads(args.findings.read_text(encoding="utf-8"))]
     modes = ["blue", "red_blue"] if args.mode == "both" else [args.mode]
-    environment = UserEnvironment(os=args.os, hosting=args.hosting) if (args.os or args.hosting) else None
-    report, ok = asyncio.run(run(findings, modes, args.repeat, environment))
+    report, ok = asyncio.run(run(findings, modes, args.repeat))
 
     out_dir = ROOT_DIR / "outputs"
     out_dir.mkdir(exist_ok=True)

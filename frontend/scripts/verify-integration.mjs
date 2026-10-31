@@ -121,11 +121,11 @@ await checkAsync("Scan API surfaces polling failure", async () => {
 await checkAsync("LLM health network failure remains optional", async () => {
   replies = [new Error("offline")]; assert.equal(await api.llmHealthy(), false);
 });
-await checkAsync("LLM requests retain selected OS and engine findings", async () => {
+await checkAsync("LLM requests retain engine findings and omit environment", async () => {
   replies = [{ body: { job_id: "explain-1" } }, { body: { status: "running" } }, { body: { status: "done", result: { results: [] } } }];
-  await api.explain([engineItem], "linux", "netlify");
+  await api.explain([engineItem]);
   assert.equal(requests[0].url, "/api/llm/explain/tasks");
-  assert.deepEqual(JSON.parse(requests[0].options.body), { findings: [engineItem], mode: "red_blue", environment: { os: "linux", hosting: "netlify" } });
+  assert.deepEqual(JSON.parse(requests[0].options.body), { findings: [engineItem], mode: "red_blue" });
   assert.deepEqual(requests.slice(1).map(request => request.url), ["/api/llm/explain/tasks/explain-1", "/api/llm/explain/tasks/explain-1"]);
 });
 await checkAsync("HTML and Markdown reports pass actual scan input to existing API", async () => {

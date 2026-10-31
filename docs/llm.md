@@ -29,7 +29,7 @@ flowchart LR
 | `intel.py` | CISA KEV(실제 공격 사례)·FIRST EPSS(악용 확률) 조회와 캐시, 오프라인이면 "모름"(실패도 5분 기억해 매번 기다리지 않음) | 안 씀 (`LLM_THREAT_INTEL`) |
 | `risk.py` | 위 결과를 CISA SSVC 공식 결정표(v2.0.3)에 넣어 act·attend·track*·track 결정과 근거 | 안 씀 (같은 입력 → 같은 결정) |
 | `remediation.py` | Windows(PowerShell 5.1)·macOS(zsh)·Linux(bash) 명령 템플릿, 패키지 관리자 자동 감지, 키 재발급 링크, RLS SQL | 안 씀 (명령을 지어내지 않음) |
-| `pipeline.py` | ①~⑤를 묶고, Blue·Red 에 `<analysis>`·`<environment>`·`<actions>` 블록으로 근거를 넘김 | 씀 |
+| `pipeline.py` | ①~⑤를 묶고, Blue·Red 에 `<analysis>`·`<actions>` 블록으로 근거를 넘김 | 씀 |
 
 ### 위험도 해석 (SSVC)
 
@@ -48,7 +48,7 @@ flowchart LR
 
 ### OS별 대응 가이드
 
-요청에 `environment`(`os`: windows·macos·linux, `hosting`: vercel·netlify·cloudflare·supabase·render·railway…, `package_manager`)를 넣으면 그 환경의 명령만, 비우면 세 OS 명령을 모두 만듭니다. 명령은 템플릿에서만 나오고, 비밀값은 자리표시자만 넣어 편집기로 채우게 합니다(터미널 기록 방지). Blue 는 명령을 직접 쓰지 않고 "아래 Windows 명령"처럼 가리킵니다.
+사용자 OS·호스팅 입력 없이 항상 Windows·macOS·Linux 명령을 모두 만듭니다. 패키지 관리자는 lockfile과 생태계로 자동 판별합니다. 명령은 템플릿에서만 나오고, 비밀값은 자리표시자만 넣어 편집기로 채우게 합니다(터미널 기록 방지). Blue는 명령을 직접 쓰지 않고 해당 작업을 가리킵니다. 비밀키 안내에는 배포 환경 변수 교체와 재배포도 포함합니다. 해석 요청은 `findings`와 `mode`만 사용하며, 알 수 없는 필드는 기존 Pydantic 기본 정책대로 무시합니다.
 
 ## 모델과 서버
 

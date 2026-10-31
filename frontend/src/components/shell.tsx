@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { Moon, ShieldCheck, Sun } from "lucide-react";
+
+const readSimple = () => document.documentElement.dataset.simple === "on";
+const simpleOff = () => false;
+const subscribeSimple = (onChange: () => void) => {
+  window.addEventListener("72hours-simple-change", onChange);
+  return () => window.removeEventListener("72hours-simple-change", onChange);
+};
 
 export function Brand() {
   return <span className="brand"><ShieldCheck size={28} strokeWidth={1.5}/><span>72<span className="brand-hours">hours</span><span className="accent">.</span></span></span>;
@@ -11,6 +18,7 @@ export function Brand() {
 
 export default function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const simple = useSyncExternalStore(subscribeSimple, readSimple, simpleOff);
   useEffect(() => {
     try { document.documentElement.dataset.theme = localStorage.getItem("72hours-theme") === "light" ? "light" : "dark"; } catch { /* optional storage */ }
   }, []);
@@ -23,6 +31,12 @@ export default function Shell({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem("72hours-theme", theme); } catch { /* theme still works */ }
   }
+  function toggleSimple() {
+    const value = readSimple() ? "off" : "on";
+    document.documentElement.dataset.simple = value;
+    try { localStorage.setItem("72hours-simple", value); } catch { /* simple mode still works */ }
+    window.dispatchEvent(new Event("72hours-simple-change"));
+  }
   return <div className="app-shell">
     <a className="skip-link" href="#main">본문으로 바로가기</a>
     <header className="site-header container">
@@ -33,6 +47,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         <Link href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}>사고 신고</Link>
         <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>도움말</Link>
         <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label="밝은 테마와 어두운 테마 전환"><Sun className="sun-icon" size={18}/><Moon className="moon-icon" size={18}/></button>
+        <button className="icon-button simple-toggle" onClick={toggleSimple} aria-pressed={simple} aria-label={simple ? "간단히 보기 켜짐: 보조 안내 보이기" : "간단히 보기 꺼짐: 보조 안내 숨기기"}>Simple</button>
       </nav>
     </header>
     {children}

@@ -1,0 +1,12 @@
+.repository-small-title { font-size:20px; font-weight:600; margin-block:0 10px; }
+.repository-result-heading,.repository-document-heading { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; }
+.repository-report .repository-document-heading h2 { display:flex; align-items:center; gap:8px; font-size:14px; }
+.repository-document-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; margin-left:auto; color:var(--muted); font-size:11px; }
+.repository-document-actions button { display:inline-flex; align-items:center; gap:4px; padding:6px; color:var(--muted); font:inherit; background:transparent; border:1px solid var(--line); border-radius:5px; cursor:pointer; }
+.repository-document-actions button:hover { color:var(--fg); }
+.repository-document-actions button:disabled { opacity:.5; cursor:not-allowed; }
+
+.repository-page > .repository-report:first-child { margin-top:0; }
+.repository-report .repository-report-frame { display:block; width:100%; border:0; margin-top:12px; background:var(--surface); }
+.repository-result-heading { margin-block:28px 18px; }
+@media(max-width:440px) { .repository-page > .repository-report { padding:14px; } .repository-document-actions { gap:5px; } }

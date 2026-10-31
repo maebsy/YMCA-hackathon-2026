@@ -10,7 +10,7 @@ import re
 from app.llm.schemas import BlueDraft, FindingInput, RedReview
 
 # 프롬프트를 고치면 올립니다. 결과마다 기록돼 평가에서 버전별로 비교할 수 있습니다
-PROMPT_VERSION = "2026-11-01.2"
+PROMPT_VERSION = "2026-11-01.3"
 
 _MASK = "[가림]"
 # (패턴, 바꿀 문자열). 값만 가리고 변수 이름은 남겨 모델이 맥락을 알 수 있게 합니다
@@ -152,9 +152,9 @@ BLUE_SYSTEM = f"""\
   고친 버전이 없는 취약점이 섞여 있으면 그 건은 따로 대처가 필요하다고 씁니다.
 - <analysis> 블록은 문맥 분석(어디서 실행되고 누가 닿는지)과 위험도 결정(SSVC)입니다. why_risky는 이 결정과 근거에 맞춰
   "왜 지금(또는 나중에) 고쳐야 하는지"를 씁니다. 결정을 바꾸거나 다르게 말하지 않습니다.
-- <environment> 블록이 있으면 사용자 OS·배포 환경에 맞춰 씁니다. 명령어는 직접 쓰지 말고, 필요한 단계에서는
-  "아래 Windows 명령을 실행하세요"처럼 <actions>의 작업을 가리킵니다. 명령은 화면에 OS별로 따로 보여 줍니다.
-- ai_fix_prompt 첫 줄에 사용자 OS·패키지 관리자를 적습니다(알 때만). 예) 환경: Windows PowerShell, npm
+- 명령어는 직접 쓰지 말고 <actions>의 작업을 가리킵니다. 명령은 화면에 Windows·macOS·Linux별로 따로 보여 줍니다.
+- 사용자 작업 OS나 호스팅을 추정하지 않습니다. 패키지 관리자는 가이드의 검증된 명령을 따릅니다.
+- 비밀키 수정 안내에는 배포 환경의 환경 변수도 새 키로 바꾸고 다시 배포하는 단계를 포함합니다.
 
 출력 항목과 분량 (넘치면 잘립니다)
 - summary: 무엇이 문제인지 한 문장, 80자 이내
@@ -183,7 +183,7 @@ RED_SYSTEM = f"""\
   키 권한 확인과 (공개용이면) 도메인·인덱스·한도 제한, (권한 있는 키면) 폐기와 서버 경계 뒤로 옮기기가 있는지 확인합니다.
 - flags에 suppressed_by_comment·ignored_by_config가 있으면 숨김 주석·설정을 지우는 단계가 있는지 (없으면 incomplete)
 - <analysis>에서 노출이 public이고 도달 가능하면, 그 경로가 정말 막히는지
-- <environment>의 OS·배포 환경과 맞지 않는 절차가 있는지 (예: Windows 사용자에게 macOS 전용 방법만 안내하면 incomplete)
+- 사용자 작업 OS나 호스팅을 임의로 가정하지 않았는지, 비밀키 안내에 배포 환경 변수 교체·재배포가 포함되는지
 
 규칙
 {_COMMON_RULES}
@@ -234,7 +234,7 @@ def context_messages(finding: FindingInput, signals, scale: float = 1.0) -> list
     ]
 
 
-def render_briefing(analysis, risk, environment=None, guide=None) -> str:
+def render_briefing(analysis, risk, guide=None) -> str:
     """Blue·Red 에 탐지 결과와 함께 넘기는 분석 결과 블록. 데이터로만 다루게 닫는 태그를 이스케이프합니다."""
     block = {
         "context": analysis.model_dump(exclude_none=True),
@@ -248,11 +248,6 @@ def render_briefing(analysis, risk, environment=None, guide=None) -> str:
         },
     }
     parts = ["<analysis>\n" + json.dumps(block, ensure_ascii=False, indent=2).replace("</analysis", "<\\/analysis") + "\n</analysis>"]
-    if environment is not None:
-        env = environment.model_dump(exclude_none=True)
-        if guide is not None and guide.package_manager:
-            env.setdefault("package_manager", guide.package_manager)
-        parts.append("<environment>\n" + json.dumps(env, ensure_ascii=False) + "\n</environment>")
     if guide is not None and guide.actions:
         actions = [{"id": a.id, "title": a.title, "has_commands": bool(a.commands)} for a in guide.actions]
         parts.append("<actions>\n" + json.dumps(actions, ensure_ascii=False) + "\n</actions>")

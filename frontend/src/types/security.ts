@@ -22,6 +22,8 @@ export interface Finding {
     linux: string;
   };
   aiPrompt: string;
+  // 첫 번째 CWE 번호 (예: CWE-89). 실검증으로 재현할 수 있는 종류인지 고를 때 씁니다
+  cwe?: string;
 }
 
 export interface LogItem {

@@ -11,6 +11,9 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Finding, LogItem, OS } from "@/types/security";
+
+// 실검증(/verify)이 실제 공격으로 재현해 보여 주는 종류 (lib/api.ts의 RUNTIME_VERIFIABLE_CWE와 같게 유지)
+const RUNTIME_VERIFIABLE_CWE = new Set(["CWE-89", "CWE-79", "CWE-78", "CWE-77"]);
 import { McpHandoff } from "@/components/McpHandoff";
 
 interface WorkspaceTabProps {
@@ -525,7 +528,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                       </button>
                     </div>
                     <pre className="p-3 rounded bg-[#111113] border border-[#27272a] font-mono text-xs text-[#d4ff3a] overflow-x-auto whitespace-pre-wrap break-all">
-                      {selectedFinding.commands[os] || (compact ? "이 항목에는 터미널 명령이 제공되지 않았습니다. 근거와 수정 요청을 검토하세요." : "")}
+                      {selectedFinding.commands[os] || (compact ? "터미널 명령 없이 코드를 고치는 항목입니다. 아래 'AI 수정 요청'을 코딩 도구에 붙여 넣어 고치세요." : "")}
                     </pre>
                     <button
                       disabled={compact && !selectedFinding.commands[os].trim()}
@@ -580,6 +583,16 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                     <Sparkles className="w-3.5 h-3.5" /> AI 코딩툴에 지시문 복사
                   </button>
                 </div>
+                {compact && selectedFinding.cwe && RUNTIME_VERIFIABLE_CWE.has(selectedFinding.cwe) && !selectedFinding.fixed && (
+                  <div className="p-3 rounded bg-[#111113] border border-[#27272a] flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs text-[#fafafa]/90">
+                      고친 코드가 이 공격({selectedFinding.cwe})을 실제로 막는지 격리 환경에서 수정 전·후를 실행해 확인합니다. 지금은 데모 과녁으로 같은 종류의 공격을 재현합니다.
+                    </span>
+                    <a href="/verify?run=reference" className="px-3 py-1.5 rounded border border-[#d4ff3a] text-[#d4ff3a] font-mono text-xs font-bold hover:bg-[#d4ff3a]/10 transition">
+                      실검증으로 확인하기 →
+                    </a>
+                  </div>
+                )}
                 <McpHandoff os={os} onShowToast={onShowToast} />
               </div>
             </div>

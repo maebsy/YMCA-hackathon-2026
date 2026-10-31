@@ -141,3 +141,19 @@ test('frontend parallelism matches the backend preview queue running slots', () 
   const running = Number(/running=(\d+)/.exec(source)?.[1]);
   assert.equal(LLM_PARALLEL, running);
 });
+
+test('findings without a model explanation get a plain Korean explanation and a clean fix prompt', () => {
+  const sqli = itemToFinding({id:'semgrep:1', kind:'code', severity:'critical', title:'SQL 문을 문자열 이어붙이기로 만들고 있습니다.', status:'code_issue',
+    what:'SQL 문을 문자열 이어붙이기로 만들고 있습니다. 자리표시자로 값을 넘기세요.', where:'server/server.js:42', rule_id:'vibe-coding/sql-string-concat',
+    cwe:['CWE-89'], fix_hint:{kind:'code_change', text:'규칙 설명(what)에 적힌 방법으로 코드를 수정'}});
+  assert.match(sqli.redScenario, /^기본 설명 · .*데이터베이스 명령/);
+  assert.equal(sqli.cwe, 'CWE-89');
+  assert.doesNotMatch(sqli.aiPrompt, /\(what\)/);
+  assert.match(sqli.aiPrompt, /고친 뒤: 기존 기능이 그대로 동작하는지 테스트하고, 72hours에서 재검사하세요\. 같은 종류의 공격 요청을 다시 보내 막히는지 확인하세요\./);
+  const secret = itemToFinding({id:'gitleaks:1', kind:'secret', severity:'high', title:'코드에 비밀값 노출: generic-api-key', status:'code_issue',
+    what:'Detected a Generic API Key, potentially exposing access to various services.', where:'staticman.yml:104', rule_id:'generic-api-key',
+    cwe:['CWE-798'], fix_hint:{kind:'rotate_secret', text:'① 해당 서비스에서 이 키를 즉시 폐기·재발급'}});
+  assert.doesNotMatch(secret.aiPrompt, /Detected/);
+  assert.match(secret.aiPrompt, /문제: 서비스에 들어가는 열쇠/);
+  assert.match(secret.redScenario, /커밋 기록에 남습니다/);
+});

@@ -472,6 +472,47 @@ def test_privacy_report_not_required_still_reminds_notification():
     assert "통지는 필요" in report.status.text
 
 
+# ── #105: 2026년 9·10월 개정 법령 안내 ──
+def test_subject_notice_deadline_is_72_hours_not_just_without_delay():
+    need = filing.privacy_need(IncidentInput.model_validate(incident(personal_info=breach(affected_count=12, external_unauthorized_access=False))), NOW)
+
+    notice = next(r for r in need.reasons if "정보주체" in r)
+    assert "72시간 이내" in notice and "지체 없이" not in notice
+
+
+def test_suspected_leak_mentions_possibility_notice():
+    suspected = IncidentInput.model_validate(incident(personal_info=breach(leaked="suspected")))
+    confirmed = IncidentInput.model_validate(incident(personal_info=breach(leaked="confirmed")))
+
+    assert any("유출 가능성" in r and "제39조의2" in r for r in filing.privacy_need(suspected, NOW).reasons)
+    assert not any("유출 가능성" in r for r in filing.privacy_need(confirmed, NOW).reasons)
+    report = filing.build_privacy_report(FilingRequest.model_validate({"incident": incident(personal_info=breach(leaked="suspected"))}), NOW)
+    notice_section = section(report, "정보주체 통지문 초안")
+    assert any("유출 가능성" in p for p in notice_section.paragraphs)
+    card = notice_section.cards[0]
+    assert card.title.endswith("개인정보 유출 가능성을 알려 드립니다")
+    assert "유출이 확인되면 다시 알려 드리고" in card.paragraphs[-1]  # 시행령 제39조의2 제2항: 확정 시 추가 통지
+
+
+def test_privacy_report_states_current_fines_and_leak_scope():
+    report = filing.build_privacy_report(FilingRequest.model_validate({"incident": incident(personal_info=breach())}), NOW)
+    todo = section(report, "꼭 할 일").bullets
+
+    assert any("900만 원" in b and "1,800만 원" in b and "3,000만 원" in b for b in todo)
+    assert not any("3,000만 원 이하 과태료" in b for b in todo)  # 예전 문구
+    assert any("위조·변조·훼손" in b for b in todo)
+    intro = section(report, "정보주체 통지문 초안").paragraphs[0]
+    assert "72시간 이내" in intro and "30일" in intro
+
+
+def test_incident_report_reminds_user_notification_duty():
+    report = filing.build_incident_report(FilingRequest(incident=incident()), NOW)
+    todo = section(report, "신고 전후로 꼭 할 일").bullets
+
+    assert any("이용자" in b and "제58조의9" in b and "2시간" in b for b in todo)
+    assert any("5천만 원 이하" in b for b in todo)  # 침해사고 미신고 과태료: KISA 안내 기준(#82)
+
+
 # ── API ──
 
 

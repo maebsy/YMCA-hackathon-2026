@@ -625,3 +625,35 @@ def test_basic_explanation_code_uses_glossary_and_korean_rule_text():
                       what="SQL 문을 문자열 이어붙이기로 만들고 있습니다.")
     assert "데이터베이스 명령" in paras[0]
     assert paras[-1] == "SQL 문을 문자열 이어붙이기로 만들고 있습니다."
+
+
+# ── 2026-10-01 개정 반영: 이용자 통지·보호나라 유형·보완 신고·14일 제출 (#incident-from-scan) ──
+
+
+def test_incident_report_adds_user_notice_boho_type_and_relief_deadline():
+    report = filing.build_incident_report(FilingRequest.model_validate({"incident": incident(incident_types=["hacking", "malware"])}), NOW)
+    assert "시행령 제58조의8" in report.deadline.basis
+    assert field(section(report, "① 발생 일시 · 원인 · 피해 내용"), "보호나라 신고 유형").value == "랜섬웨어"
+    notice = section(report, "이용자 통지문 초안").cards[0]
+    assert notice.title == "[데모커머스] 보안 사고를 알려 드립니다"
+    assert [p[:2] for p in notice.paragraphs[:5]] == ["① ", "② ", "③ ", "④ ", "⑤ "]
+    assert "운영팀" in notice.paragraphs[4] and "브라우저 코드에 들어간 관리자 키" in notice.paragraphs[0]
+    bullets = " ".join(section(report, "신고 전후로 꼭 할 일").bullets)
+    assert "14일 이내" in bullets and "취약점이 발견된 것만으로는 침해사고가 아닙니다" in bullets
+    other = filing.build_incident_report(FilingRequest.model_validate({"incident": incident(incident_types=["account_takeover"])}), NOW)
+    assert field(section(other, "① 발생 일시 · 원인 · 피해 내용"), "보호나라 신고 유형").value == "그 밖의 해킹"
+
+
+def test_supplement_filing_asks_for_first_receipt_number():
+    first = filing.build_incident_report(FilingRequest.model_validate({"incident": incident()}), NOW)
+    assert all(f.label != "최초 신고 접수번호·일시" for f in section(first, "기본 정보").fields)
+    supplement = filing.build_incident_report(FilingRequest.model_validate({"incident": incident(is_supplement=True)}), NOW)
+    assert section(supplement, "기본 정보").fields[1].label == "최초 신고 접수번호·일시"
+
+
+def test_privacy_items_warn_against_lumping_with_deung():
+    vague = filing.build_privacy_report(FilingRequest.model_validate({"incident": incident(personal_info=breach(items=["이름", "연락처 등"]))}), NOW)
+    assert "'등'으로 묶지 말고" in field(section(vague, "유출신고서 항목"), "유출된 개인정보 항목").hint
+    clear = filing.build_privacy_report(FilingRequest.model_validate({"incident": incident(personal_info=breach())}), NOW)
+    assert field(section(clear, "유출신고서 항목"), "유출된 개인정보 항목").hint is None
+    assert "제34조 제4항" in clear.deadline.basis

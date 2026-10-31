@@ -16,7 +16,7 @@
 
 ## 격리 근거
 
-아래 네 값은 probe가 샌드박스 안에서 읽은 상태입니다. 수정 전·후 **각각 모두 `true`**여야 `isolation_confirmed=true`입니다([schemas.py:69](../backend/app/verify/schemas.py#L69), [합산:150](../backend/app/verify/verifier.py#L150)).
+아래 네 값은 probe가 샌드박스 안에서 읽은 상태입니다. 수정 전·후 **각각 모두 `true`**여야 `isolation_confirmed=true`입니다([schemas.py:79](../backend/app/verify/schemas.py#L79), [합산:150](../backend/app/verify/verifier.py#L150)).
 
 | 항목 | 어떻게 막나·무엇을 재나 | 코드 위치 | 테스트 |
 |---|---|---|---|

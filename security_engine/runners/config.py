@@ -40,75 +40,55 @@ LOCKFILES = ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "b
 DB_PUBLIC_EXT = (".sql", ".sqlite", ".sqlite3", ".db", ".bak", ".dump", ".backup")
 DB_COMMITTED_EXT = (".sqlite", ".sqlite3", ".db")
 
-MESSAGES = {
+# 규칙별 위험도, 제목, CWE, 설명을 같은 곳에서 관리한다.
+_RULES = {
     "env-file-committed": (
-        "high",
+        "high", "환경 변수 파일(.env)이 저장소에 올라감", ["CWE-538"],
         "환경 변수 파일({file})이 저장소에 올라가 있습니다. 보통 DB 비밀번호·API 키가 들어 있어서, 저장소를 본 사람은 누구나 쓸 수 있습니다. "
         "① 안에 든 키를 모두 폐기·재발급 ② 파일을 저장소에서 지우고 .gitignore에 .env* 추가 ③ 배포 환경(Vercel 등) 설정 화면에 값을 넣으세요.",
     ),
     "gitignore-missing-env": (
-        "medium",
+        "medium", ".gitignore에 .env가 없음", ["CWE-538"],
         ".env 파일을 쓰는 프로젝트인데 .gitignore에 .env가 없습니다. 실수로 키가 든 .env를 올리기 쉽습니다. .gitignore에 '.env*'와 '!.env.example'을 추가하세요.",
     ),
     "db-file-public": (
-        "high",
+        "high", "공개 폴더에 DB·백업 파일", ["CWE-530"],
         "누구나 내려받을 수 있는 공개 폴더({dir})에 DB·백업 파일({file})이 있습니다. 사이트 주소 뒤에 파일 이름만 붙이면 회원 정보 등을 통째로 가져갈 수 있습니다. "
         "파일을 지우고, 백업은 공개 폴더가 아닌 비공개 저장소에 두세요.",
     ),
     "db-file-committed": (
-        "medium",
+        "medium", "DB 파일이 저장소에 올라감", ["CWE-538"],
         "DB 파일({file})이 저장소에 올라가 있습니다. 실제 데이터가 들어 있다면 저장소를 본 사람에게 그대로 노출됩니다. 저장소에서 지우고 .gitignore에 추가하세요.",
     ),
     "sourcemap-public": (
-        "medium",
+        "medium", "공개 폴더에 소스맵 파일", ["CWE-540"],
         "공개 폴더({dir})에 소스맵(.map) 파일이 {count}개 있습니다. 소스맵이 있으면 방문자가 압축 전 원본 코드(주석·내부 API 주소 포함)를 그대로 볼 수 있습니다. "
         "배포 결과물에서 .map 파일을 빼세요.",
     ),
     "nextjs-browser-sourcemaps": (
-        "medium",
+        "medium", "운영 사이트에서 소스맵 공개 설정", ["CWE-540"],
         "next.config에서 productionBrowserSourceMaps가 켜져 있어 운영 사이트에서 원본 코드가 공개됩니다. 디버깅이 끝났다면 false로 바꾸세요.",
     ),
     "supabase-rls-not-enabled": (
-        "high",
+        "high", "Supabase 테이블 RLS 미설정", ["CWE-284"],
         "Supabase 테이블 '{table}'을(를) 만들고 RLS(행 단위 보안)를 켜지 않았습니다. Supabase는 브라우저에서 바로 DB에 접근하므로, "
         "RLS가 꺼져 있으면 anon 키만으로 누구나 이 테이블을 읽고 고칠 수 있습니다. "
         "'alter table {table} enable row level security;'와 본인 데이터만 허용하는 policy를 추가하세요.",
     ),
     "missing-security-headers": (
-        "low",
+        "low", "보안 헤더 설정 없음", ["CWE-693"],
         "Next.js 사이트에 보안 헤더(Content-Security-Policy, X-Frame-Options 등) 설정이 보이지 않습니다. 없으면 XSS·클릭재킹 피해가 커집니다. "
         "next.config의 headers() 또는 middleware에서 보안 헤더를 추가하세요.",
     ),
     "django-debug-true": (
-        "medium",
+        "medium", "Django DEBUG 모드 켜짐", ["CWE-489"],
         "Django settings에 DEBUG = True가 있습니다. 운영 서버에서 켜져 있으면 오류 화면에 설정값·코드·환경 변수가 그대로 보입니다. 환경 변수로 운영에서는 False가 되게 하세요.",
     ),
     "lockfile-missing": (
-        "low",
+        "low", "lockfile 없음", ["CWE-1104"],
         "package.json은 있는데 lockfile(package-lock.json 등)이 없습니다. 설치할 때마다 부품 버전이 달라질 수 있고, 외부 부품 취약점 검사(OSV)도 할 수 없습니다. "
         "'npm install'로 lockfile을 만들어 함께 올리세요.",
     ),
-}
-
-_TITLES = {
-    "env-file-committed": "환경 변수 파일(.env)이 저장소에 올라감",
-    "gitignore-missing-env": ".gitignore에 .env가 없음",
-    "db-file-public": "공개 폴더에 DB·백업 파일",
-    "db-file-committed": "DB 파일이 저장소에 올라감",
-    "sourcemap-public": "공개 폴더에 소스맵 파일",
-    "nextjs-browser-sourcemaps": "운영 사이트에서 소스맵 공개 설정",
-    "supabase-rls-not-enabled": "Supabase 테이블 RLS 미설정",
-    "missing-security-headers": "보안 헤더 설정 없음",
-    "django-debug-true": "Django DEBUG 모드 켜짐",
-    "lockfile-missing": "lockfile 없음",
-}
-
-_CWE = {
-    "env-file-committed": ["CWE-538"], "gitignore-missing-env": ["CWE-538"],
-    "db-file-public": ["CWE-530"], "db-file-committed": ["CWE-538"],
-    "sourcemap-public": ["CWE-540"], "nextjs-browser-sourcemaps": ["CWE-540"],
-    "supabase-rls-not-enabled": ["CWE-284"], "missing-security-headers": ["CWE-693"],
-    "django-debug-true": ["CWE-489"], "lockfile-missing": ["CWE-1104"],
 }
 
 
@@ -123,7 +103,7 @@ def _walk(root: Path):
 
 
 def _finding(check: str, file: str, line: int | None, snippet: str, key: str = "", **fmt) -> dict:
-    severity, msg = MESSAGES[check]
+    severity, title, cwe, msg = _RULES[check]
     message = msg.format(file=file, **fmt)
     rule_id = f"{TOOL}/{check}"
     return {
@@ -131,13 +111,13 @@ def _finding(check: str, file: str, line: int | None, snippet: str, key: str = "
         "tool": TOOL,
         "category": "config",
         "rule_id": rule_id,
-        "title": _TITLES[check],
+        "title": title,
         "message": message,
         "severity": severity,
         "location": {"file": file, "start_line": line, "end_line": line},
         "package": None,
         "evidence": {"snippet": snippet, "context": None},
-        "cwe": _CWE[check],
+        "cwe": cwe,
         "aliases": [],
         "references": [],
         "published": None,

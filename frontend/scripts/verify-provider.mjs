@@ -122,7 +122,7 @@ function mountProvider({ saved = null, browser = {}, scan = async url => result(
       "next/navigation": { useRouter: () => ({ push() {} }) }, "lucide-react": icon,
       "@/components/tabs/WorkspaceTab": { WorkspaceTab: "workspace" }, "@/components/repository-provider": { useRepository: () => view },
       "@/lib/report-document": { mountReportDocument: () => () => {}, reportDocumentHtml: html => html },
-      "@/components/report-scorecard": { default: "scorecard" }, "@/components/finding-detail": { default: "finding-detail" },
+      "@/components/report-scorecard": { default: "scorecard" },
       "@/lib/report-scorecard": { scoreRows: () => [] }, "@/lib/repository-routes": { REPOSITORY_PROGRESS_PATH: "/repository" },
       "./repository-result.css": {},
     });
@@ -279,7 +279,8 @@ await check("Delayed AI enrichment preserves selection and display OS without se
   assert.equal(provider.value.phase, "done"); assert.equal(provider.value.explained.done, 5);
   assert.equal(peak, realAPI.LLM_PARALLEL, "Never more than LLM_PARALLEL explanation requests at once");
   assert.ok(provider.calls.explanations.every(call => call.findings.length === 1));
-  assert.ok(provider.calls.explanations.every(call => call.args.length === 1));
+  assert.ok(provider.calls.explanations.every(call => call.args.length === 2 && typeof call.args[1] === "function"),
+    "Only findings and the live-status callback are passed; display OS stays local");
   assert.ok(provider.calls.explanations[0].findings.every(finding => finding.status !== "code_resolved"));
   provider.value.selectFinding("opengrep:3"); provider.flush(); await provider.run(repoA);
   assert.equal(provider.value.selectedFindingId, "opengrep:3", "Same-repository rescan should preserve a surviving selection");
@@ -480,6 +481,24 @@ await check("A report resolving after unmount cannot publish documents or readin
   const pending = provider.value.runScan(repoA); provider.flush();
   await provider.until(() => provider.value.phase === "reporting"); provider.unmount();
   html.resolve("<html>late</html>"); await pending;
+});
+
+await check("Consumed navigation stays cleared until a new scan completes", async () => {
+  const engine = deferred(); let scans = 0;
+  const provider = mountProvider({ scan: url => ++scans === 1 ? result(url) : engine.promise });
+  await provider.run(repoA);
+  assert.equal(provider.value.resultReady, true);
+  provider.value.consumeResultReady(); provider.flush();
+  assert.equal(provider.value.resultReady, false);
+  provider.value.showMessage("Returned to progress"); provider.flush();
+  assert.equal(provider.value.resultReady, false, "unrelated updates cannot resurrect consumed navigation");
+  const running = provider.value.runScan(repoA); provider.flush();
+  assert.equal(provider.value.resultReady, false, "a rescan clears navigation while in flight");
+  engine.resolve(result(repoA)); await running; provider.flush();
+  assert.equal(provider.value.resultReady, true, "each new completed scan can navigate once");
+  provider.value.consumeResultReady(); provider.flush();
+  assert.equal(provider.value.resultReady, false);
+  provider.unmount();
 });
 
 console.log(`Verified ${checks} real provider orchestration scenarios with controlled hook commits and API fixtures. No browser or external repository scan was used.`);

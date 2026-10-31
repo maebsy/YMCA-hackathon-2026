@@ -34,6 +34,9 @@ export default function RepositoryWorkspace() {
       resultHref={repository.result ? REPOSITORY_RESULT_PATH : undefined}
       onRetry={() => { if (repository.reportError) void repository.prepareReport(true); else void repository.runScan(progressRepo); }}/>
     }
+    {repository.phase === "done" && repository.result && <div className="repository-progress-result-action">
+      <Link className="button primary" href={REPOSITORY_RESULT_PATH}>결과 보기 <ArrowRight size={16} aria-hidden="true"/></Link>
+    </div>}
     {repository.restored && !repository.result && repository.phase === "idle" && <p className="field-hint">홈에서 검사할 GitHub 주소를 입력하세요. <Link className="text-link" href="/">홈으로 가기<ArrowRight size={14}/></Link></p>}
     {!showProgress && repository.error && <p className="form-error" role="alert">{repository.error}</p>}
   </main>;

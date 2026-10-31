@@ -1,19 +1,26 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type FormEvent } from "react";
-import { ArrowRight, Code2, LoaderCircle, ShieldCheck, Sparkles, Unplug } from "lucide-react";
+import { useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { ArrowRight, Code2, LoaderCircle } from "lucide-react";
 import { normalizeRepositoryUrl, useRepository } from "@/components/repository-provider";
 import { useRepoAutocomplete } from "@/lib/use-repo-autocomplete";
+import { repositoryInputUrl, showGithubPrefix } from "@/lib/repo-suggest";
+import McpConnect from "@/components/mcp-connect";
 import "./repo-suggest.css";
+
+const noSubscribe = () => () => {};
+const readMcpInline = () => new URLSearchParams(window.location.search).get("mcp") === "inline";
 
 export default function Home() {
   const repository = useRepository();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
+  // 비교용 배치: /?mcp=inline 이면 MCP 연결을 검사 카드 안에 함께 보여 줍니다.
+  const mcpInline = useSyncExternalStore(noSubscribe, readMcpInline, () => false);
   const autocomplete = useRepoAutocomplete({ value: repository.repoInput, setValue: repository.setRepoInput, inputRef: input });
+  const prefixVisible = showGithubPrefix(repository.repoInput);
   function submit(event: FormEvent) {
     event.preventDefault();
     if (repository.isScanning) {
@@ -21,9 +28,9 @@ export default function Home() {
       return;
     }
     if (!repository.restored) return;
-    const url = normalizeRepositoryUrl(repository.repoInput);
+    const url = normalizeRepositoryUrl(repositoryInputUrl(repository.repoInput));
     if (!url) {
-      setError("github.com/owner/repository 또는 owner.github.io 형식의 공개 GitHub 주소를 입력해 주세요.");
+      setError("owner/repository 또는 owner.github.io 형식의 공개 GitHub 주소를 입력해 주세요.");
       input.current?.focus();
       return;
     }
@@ -35,13 +42,14 @@ export default function Home() {
     <div className="entry-intro">
       <p className="eyebrow"><span className="status-dot"/> SECURITY FOR BUILDERS</p>
       <h1>내 코드의 보안,<br/>GitHub 주소로 점검하세요.</h1>
-      <p className="entry-description">실제 엔진으로 위험의 근거를 찾고,<br/>GPU Red–Blue 해석과 MCP로 다음 조치를 준비하세요.</p>
     </div>
     <section className="entry-panel card" aria-label="GitHub 저장소 실제 검사">
       <div className="entry-panel-top"><label htmlFor="repository">공개 GitHub 저장소</label></div>
       <form onSubmit={submit} noValidate>
         <div className="url-form-row">
-          <div className="url-field rs-field"><Code2 size={20}/><input {...autocomplete.inputProps} ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="github.com/owner/repository" onChange={event => { autocomplete.inputProps.onChange(event); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={error ? "repository-error repository-hint" : "repository-hint"}/>
+          <div className="url-field rs-field"><Code2 size={20} aria-hidden="true"/>
+            {prefixVisible && <span id="repository-prefix" className="rs-prefix" onClick={() => input.current?.focus()}>https://github.com/</span>}
+            <input {...autocomplete.inputProps} ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="owner/repository" onChange={event => { autocomplete.inputProps.onChange(event); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={[prefixVisible && "repository-prefix", error && "repository-error", "repository-hint"].filter(Boolean).join(" ")}/>
             <ul {...autocomplete.listProps} className="rs-list" hidden={!autocomplete.open}>
               {autocomplete.loading ? <li className="rs-loading" role="presentation">불러오는 중…</li> : autocomplete.suggestions.map((name, index) => {
                 const match = autocomplete.partial ? name.toLowerCase().indexOf(autocomplete.partial.toLowerCase()) : -1;
@@ -56,17 +64,10 @@ export default function Home() {
         </div>
         {error && <p id="repository-error" className="form-error" role="alert">{error}</p>}
         <p className="sr-only" aria-live="polite" aria-atomic="true">{autocomplete.announcement}</p>
-        <p id="repository-hint" className="field-hint">github.com/owner/repository 또는 owner.github.io를 입력하세요.<br/>GitHub Pages는 해당 저장소로 변환해 검사합니다.</p>
+        <p id="repository-hint" className="field-hint">owner/repository 또는 owner.github.io를 입력하세요.<br/>GitHub Pages는 해당 저장소로 변환해 검사합니다.</p>
       </form>
-      <div className="entry-disclosure"><ShieldCheck size={17}/><p><strong>주소를 검사 서버로 보내 실제 코드를 점검합니다.</strong><br/>서버의 로그인·저장소 접근 정책이 적용되며, 검사와 추가 AI 해석은 수 분 걸릴 수 있습니다.</p></div>
+      {mcpInline && <McpConnect embedded/>}
     </section>
-    <div className="repository-entry" data-simple-hide><Link className="text-link" href="/repository">{repository.isScanning ? "진행 중인 검사 보기" : "검사 환경과 저장된 결과 보기"}<ArrowRight size={14}/></Link></div>
-    <p className="incident-home-entry" data-simple-hide><Link className="text-link" href="/incident">사고가 의심되면, 검사 없이 신고 준비<ArrowRight size={14}/></Link></p>
-    <p className="incident-home-entry" data-simple-hide><Link className="text-link" href="/verify">고친 코드가 공격을 막는지 실제 실행으로 확인 (Red–Blue 실검증)<ArrowRight size={14}/></Link></p>
-    <section className="entry-benefits" aria-label="실제 검사에서 다음 조치까지">
-      <article><ShieldCheck size={20}/><h2>보안엔진으로 발견</h2><p data-simple-hide>코드·의존성·비밀정보의<br/>실제 관찰 근거를 확인하세요.</p></article>
-      <article><Sparkles size={20}/><h2>언어모델로 쉬운 설명</h2><p data-simple-hide>연결 가능한 경우 Red–Blue가<br/>위험과 수정 방향을 설명합니다.</p></article>
-      <article><Unplug size={20}/><h2>MCP로 편리한 접근</h2><p data-simple-hide>결과를 코딩 도구에 전달하고<br/>수정 후 다시 검사하세요.</p></article>
-    </section>
+    {!mcpInline && <McpConnect/>}
   </main>;
 }

@@ -65,6 +65,12 @@ export function RepositoryReport() {
 export default function RepositoryResult() {
   const repository = useRepository();
   const router = useRouter();
+  const { resultReady, consumeResultReady } = repository;
+  // Also consume arrivals via the header or a manual link, including readiness
+  // published after the user has already opened this page.
+  useEffect(() => {
+    if (resultReady) consumeResultReady();
+  }, [resultReady, consumeResultReady]);
   const verified = repository.findings.filter(finding => finding.fixed).length;
   const pending = repository.pendingIds.length;
   function rescan(url = repository.resultRepo) {

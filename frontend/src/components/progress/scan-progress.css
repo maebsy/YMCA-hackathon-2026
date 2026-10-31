@@ -103,3 +103,5 @@
 .repository-progress-heading h1 { font-size:20px; font-weight:600; margin-bottom:10px; }
 .repository-progress-heading p { color:var(--muted); font-size:12px; line-height:1.8; }
 .repository-progress-heading p:last-child { font-size:11px; margin-top:6px; }
+.repository-progress-result-action { display:flex; justify-content:flex-end; margin-top:16px; }
+@media(max-width:440px) { .repository-progress-result-action > a { width:100%; } }

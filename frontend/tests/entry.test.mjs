@@ -35,75 +35,6 @@ function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
   return [tree, ...nodes(tree.props?.children)];
 }
-function simpleShell(stored = null, blocked = false) {
-  const storage = new Map(stored === null ? [] : [["72hours-simple", stored]]);
-  const document = { documentElement: { dataset: {} } };
-  const localStorage = {
-    getItem(key) { if (blocked) throw new Error("Storage blocked"); return storage.get(key) ?? null; },
-    setItem(key, value) { if (blocked) throw new Error("Storage blocked"); storage.set(key, value); },
-  };
-  const runtime = { document, localStorage, window: new EventTarget(), Event };
-  const jsx = { jsx: element, jsxs: element };
-  const { default: Layout } = load("../src/app/layout.tsx", {
-    "react/jsx-runtime": jsx, "@/components/incident-provider": {}, "@/components/repository-provider": {},
-    "@/components/shell": {}, "./globals.css": {}, "./flow.css": {}, "./incident.css": {},
-  });
-  const layout = nodes(Layout({ children: null }));
-  const head = layout.find(node => node.type === "head");
-  const script = nodes(head).find(node => node.type === "script");
-  // The head script runs before the body can display marked elements.
-  vm.runInNewContext(script.props.dangerouslySetInnerHTML.__html, runtime);
-  let subscriptions = 0;
-  const cleanups = [];
-  const { default: Shell } = load("../src/components/shell.tsx", {
-    react: { useEffect() {}, useSyncExternalStore(subscribe, read, serverRead) {
-      assert.equal(serverRead(), false);
-      cleanups.push(subscribe(() => subscriptions++));
-      return read();
-    } },
-    "react/jsx-runtime": jsx, "next/link": { default: "a" },
-    "next/navigation": { usePathname: () => "/" },
-  }, runtime);
-  return { document, storage, render: () => nodes(Shell({ children: null })),
-    notifications: () => subscriptions, cleanup: () => cleanups.forEach(fn => fn()) };
-}
-test("Simple toggles immediately after theme, persists and restores before body display", () => {
-  const ui = simpleShell();
-  assert.equal(ui.document.documentElement.dataset.simple, "off");
-  const tree = ui.render();
-  const buttons = tree.filter(node => node.type === "button");
-  assert.match(buttons.at(-2).props.className, /theme-toggle/);
-  const simple = buttons.at(-1);
-  assert.equal(simple.props.children, "Simple");
-  assert.equal(simple.props["aria-pressed"], false);
-  simple.props.onClick();
-  assert.equal(ui.document.documentElement.dataset.simple, "on");
-  assert.equal(ui.storage.get("72hours-simple"), "on");
-  assert.equal(ui.notifications(), 1);
-  assert.equal(ui.render().find(node => node.props.children === "Simple").props["aria-pressed"], true);
-  const restored = simpleShell(ui.storage.get("72hours-simple"));
-  assert.equal(restored.document.documentElement.dataset.simple, "on");
-  const restoredButton = restored.render().find(node => node.props.children === "Simple");
-  assert.equal(restoredButton.props["aria-pressed"], true);
-  restoredButton.props.onClick();
-  assert.equal(restored.document.documentElement.dataset.simple, "off");
-  assert.equal(restored.storage.get("72hours-simple"), "off");
-  ui.cleanup(); restored.cleanup();
-});
-test("Simple defaults off for invalid preferences and works when storage is blocked", () => {
-  for (const stored of [null, "off", "invalid"]) {
-    const ui = simpleShell(stored);
-    assert.equal(ui.document.documentElement.dataset.simple, "off");
-    ui.cleanup();
-  }
-  const ui = simpleShell("on", true);
-  const button = ui.render().find(node => node.props.children === "Simple");
-  assert.equal(button.props["aria-pressed"], false);
-  button.props.onClick();
-  assert.equal(ui.document.documentElement.dataset.simple, "on");
-  assert.equal(ui.notifications(), 1);
-  ui.cleanup();
-});
 function entry(overrides = {}) {
   const calls = [], navigation = [], errors = [], events = [];
   let focusCount = 0;
@@ -111,12 +42,13 @@ function entry(overrides = {}) {
     setRepoInput: value => { repository.repoInput = value; },
     runScan: value => { calls.push(value); events.push("scan"); return Promise.resolve(); }, ...overrides };
   const { default: Home } = load("../src/app/page.tsx", {
-    react: { useState: () => ["", value => errors.push(value)], useRef: () => ({ current: { focus: () => focusCount++ } }) },
+    react: { useState: () => ["", value => errors.push(value)], useRef: () => ({ current: { focus: () => focusCount++ } }), useSyncExternalStore: (_subscribe, _client, server) => server() },
     "react/jsx-runtime": { jsx: element, jsxs: element },
     "next/link": { default: "a" },
     "next/navigation": { useRouter: () => ({ push: path => { navigation.push(path); events.push("navigate"); } }) },
     "@/components/repository-provider": { useRepository: () => repository, normalizeRepositoryUrl },
-    "./repo-suggest.css": {},
+    "@/lib/repo-suggest": load("../src/lib/repo-suggest.ts"),
+    "./repo-suggest.css": {}, "@/components/mcp-connect": { default: "mcp-connect" },
     "@/lib/use-repo-autocomplete": { useRepoAutocomplete: ({ value, setValue }) => ({
       inputProps: { value, role: "combobox", "aria-autocomplete": "both", "aria-expanded": true, "aria-controls": "repo-options", onChange: event => setValue(event.currentTarget.value) },
       listProps: { role: "listbox", id: "repo-options" }, suggestions: ["function-face"],
@@ -246,10 +178,10 @@ test("home sends a Pages site's repository URL and shows both supported input fo
   assert.deepEqual(ui.calls, ["https://github.com/alice/project"]);
   assert.deepEqual(ui.navigation, ["/repository"]);
   const input = ui.tree.find(node => node.type === "input");
-  assert.equal(input.props.placeholder, "github.com/owner/repository");
+  assert.equal(input.props.placeholder, "owner/repository");
   assert.equal(input.props["aria-describedby"], "repository-hint");
   const hint = ui.tree.find(node => node.props.id === "repository-hint");
-  assert.equal(hint.props.children[0], "github.com/owner/repository 또는 owner.github.io를 입력하세요.");
+  assert.equal(hint.props.children[0], "owner/repository 또는 owner.github.io를 입력하세요.");
   assert.equal(hint.props.children[1].type, "br");
   assert.equal(hint.props.children[2], "GitHub Pages는 해당 저장소로 변환해 검사합니다.");
   assert.equal(ui.tree.some(node => node.type === "span" && node.props.children === "실제 엔진 검사"), false);
@@ -260,34 +192,6 @@ test("website and malformed repository inputs stay on the form without engine re
     assert.equal(ui.calls.length, 0); assert.equal(ui.navigation.length, 0);
     assert.ok(ui.errors.some(Boolean)); assert.equal(ui.focused(), 1);
   }
-});
-test("Simple hides three home links and card descriptions while keeping icons, titles and the form", () => {
-  const ui = entry();
-  const marked = ui.tree.filter(node => node.props["data-simple-hide"] === true);
-  assert.equal(marked.length, 6);
-  const links = marked.flatMap(nodes).filter(node => node.props.href).map(node => node.props.href);
-  assert.deepEqual(links, ["/repository", "/incident", "/verify"]);
-  const benefits = ui.tree.find(node => node.props.className === "entry-benefits");
-  assert.equal(benefits.props["data-simple-hide"], undefined);
-  const cards = nodes(benefits).filter(node => node.type === "article");
-  assert.equal(cards.length, 3);
-  assert.deepEqual(nodes(benefits).filter(node => node.type === "h2").map(node => node.props.children),
-    ["보안엔진으로 발견", "언어모델로 쉬운 설명", "MCP로 편리한 접근"]);
-  const descriptions = [
-    ["코드·의존성·비밀정보의", "실제 관찰 근거를 확인하세요."],
-    ["연결 가능한 경우 Red–Blue가", "위험과 수정 방향을 설명합니다."],
-    ["결과를 코딩 도구에 전달하고", "수정 후 다시 검사하세요."],
-  ];
-  cards.forEach((card, index) => {
-    const children = card.props.children;
-    assert.equal(card.props["data-simple-hide"], undefined);
-    assert.ok(children[0].type, "card keeps its icon");
-    assert.equal(children[0].props["data-simple-hide"], undefined);
-    assert.equal(children[1].props["data-simple-hide"], undefined);
-    assert.equal(children[2].props["data-simple-hide"], true);
-    assert.deepEqual(Array.from(children[2].props.children).filter(child => typeof child === "string"), descriptions[index]);
-  });
-  assert.equal(marked.some(node => nodes(node).some(child => child.type === "form")), false);
 });
 test("restoration blocks home submissions", () => {
   const ui = entry({ restored: false }); ui.submit();
@@ -429,7 +333,8 @@ test("progress navigates to /report only after a scan observed on this page sign
   const navigation = [], effects = [];
   const observed = { current: false };
   let consumed = 0;
-  let repository = { phase: "running", result: null, repoInput: "github.com/acme/app", findings: [], logs: [], isScanning: true, consumeResultReady: () => consumed++ };
+  let repository = { phase: "running", result: null, repoInput: "github.com/acme/app", findings: [], logs: [], isScanning: true,
+    consumeResultReady: () => { consumed++; repository = { ...repository, resultReady: false }; } };
   const { default: Progress } = load("../src/components/repository-workspace.tsx", {
     react: { useEffect: effect => effects.push(effect), useRef: () => observed }, "react/jsx-runtime": { jsx: element, jsxs: element },
     "next/link": { default: "a" }, "next/navigation": { useRouter: () => ({ replace: path => navigation.push(path) }) },
@@ -442,4 +347,79 @@ test("progress navigates to /report only after a scan observed on this page sign
   Progress(); effects.splice(0).forEach(effect => effect()); assert.deepEqual(navigation, ["/report"]); assert.equal(consumed, 1);
   navigation.length = 0; observed.current = false;
   Progress(); effects.splice(0).forEach(effect => effect()); assert.deepEqual(navigation, [], "a restored or previously finished result must not auto-navigate");
+  assert.equal(consumed, 1, "the consumed signal must stay cleared on re-entry");
+  repository = { ...repository, phase: "running", isScanning: true };
+  Progress(); effects.splice(0).forEach(effect => effect());
+  repository = { ...repository, phase: "done", isScanning: false, resultReady: true };
+  Progress(); effects.splice(0).forEach(effect => effect());
+  assert.deepEqual(navigation, ["/report"], "a new scan gets one new navigation"); assert.equal(consumed, 2);
+});
+
+test("completed progress exposes a manual result link with or without a prepared report", () => {
+  for (const reportHtml of ["", "<html>Ready</html>"]) {
+    const tree = repositoryView({ phase: "done", result: {}, resultRepo: "github.com/acme/app", reportHtml });
+    const action = tree.find(node => node.type === "a" && node.props.className === "button primary");
+    assert.equal(action?.props.href, "/report");
+    assert.equal(action.props.children[0], "결과 보기 ");
+    assert.equal(action.props.disabled, undefined);
+  }
+  const busy = repositoryView({ phase: "running", result: {}, isScanning: true });
+  assert.equal(busy.some(node => node.props.className === "repository-progress-result-action"), false);
+});
+
+test("report entry consumes a fresh navigation signal, including a late arrival", () => {
+  let consumed = 0;
+  for (const resultReady of [false, true]) {
+    const ui = resultView({ resultReady, consumeResultReady: () => consumed++ });
+    ui.effects.forEach(effect => effect());
+    assert.equal(consumed, resultReady ? 1 : 0);
+  }
+});
+
+test("header destination, label and aria-current follow scanning, result and empty state", () => {
+  let repository = { isScanning: false, result: null };
+  let pathname = "/";
+  const { default: Shell } = load("../src/components/shell.tsx", {
+    react: { useEffect() {} }, "react/jsx-runtime": { jsx: element, jsxs: element },
+    "next/link": { default: "a" }, "next/navigation": { usePathname: () => pathname },
+    "@/components/repository-provider": { useRepository: () => repository },
+    "@/lib/repository-routes": { REPOSITORY_PROGRESS_PATH: "/repository", REPOSITORY_RESULT_PATH: "/report" },
+  });
+  function headerLink() {
+    const nav = nodes(Shell({ children: null })).find(node => node.type === "nav");
+    return nav.props.children[0];
+  }
+  // The server and first client render use the provider's empty default.
+  assert.equal(headerLink().props.href, "/");
+  assert.equal(headerLink().props.children, "GitHub 실제 검사");
+  for (const [state, href, label] of [
+    [{ isScanning: true, result: null }, "/repository", "검사 진행"],
+    [{ isScanning: true, result: {} }, "/repository", "검사 진행"],
+    [{ isScanning: false, result: {} }, "/report", "검사 결과"],
+    [{ isScanning: false, result: null }, "/", "GitHub 실제 검사"],
+  ]) {
+    repository = state; pathname = href;
+    assert.equal(headerLink().props.href, href); assert.equal(headerLink().props.children, label);
+    assert.equal(headerLink().props["aria-current"], "page");
+    pathname = "/help";
+    assert.equal(headerLink().props["aria-current"], undefined);
+  }
+});
+
+
+test("short entries submit canonical URLs and expose the accessible fixed prefix", () => {
+  for (const repoInput of ["acme/app", " acme/app/ "]) {
+    const ui = entry({ repoInput });
+    const prefix = ui.tree.find(node => node.props.id === "repository-prefix");
+    assert.equal(prefix.props.children, "https://github.com/");
+    prefix.props.onClick(); assert.equal(ui.focused(), 1);
+    assert.equal(ui.tree.find(node => node.type === "input").props["aria-describedby"], "repository-prefix repository-hint");
+    ui.submit(); assert.deepEqual(ui.calls, ["https://github.com/acme/app"]);
+  }
+  for (const repoInput of ["https://github.com/acme/app", "github.com/acme/app", "alice.github.io"]) {
+    assert.equal(entry({ repoInput }).tree.some(node => node.props.id === "repository-prefix"), false);
+  }
+  for (const repoInput of ["example.com/repo", "-alice/repo", "a--b/repo", "alice/../repo", "alice/repo?x=1"]) {
+    const ui = entry({ repoInput }); ui.submit(); assert.deepEqual(ui.calls, [], repoInput);
+  }
 });

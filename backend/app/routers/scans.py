@@ -110,6 +110,22 @@ def _report_scan(result: dict, llm_input: dict, repo_url: str) -> dict:
     }
 
 
+def clone_message(raw: str) -> str:
+    """git clone 실패 원문을 사용자 문장으로 바꿉니다. 원문은 서버 로그에만 남깁니다.
+
+    시간 초과·용량 초과처럼 엔진이 이미 한국어로 만든 문장은 그대로 둡니다.
+    """
+    if not raw.startswith("git clone 실패"):
+        return raw
+    logger.info("clone failed: %s", raw[:400])
+    lowered = raw.lower()
+    if "not found" in lowered or "could not read username" in lowered or "authentication failed" in lowered:
+        return "저장소를 찾을 수 없습니다. 주소가 맞는지, 공개 저장소인지 확인해 주세요."
+    if "could not resolve host" in lowered or "unable to access" in lowered:
+        return "GitHub에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
+    return "저장소를 받지 못했습니다. 주소와 공개 여부를 확인한 뒤 다시 시도해 주세요."
+
+
 async def _run_scan(body: "ScanRequest") -> dict:
     try:
         from security_engine import CloneError, build_llm_input, scan_repo
@@ -122,7 +138,7 @@ async def _run_scan(body: "ScanRequest") -> dict:
     try:
         result = await run_in_threadpool(scan_repo, repo_url, prev)
     except CloneError as exc:
-        raise HTTPException(400, detail={"code": "CLONE_FAILED", "message": str(exc)}) from exc
+        raise HTTPException(400, detail={"code": "CLONE_FAILED", "message": clone_message(str(exc))}) from exc
     llm_input = build_llm_input(result, max_items=50)
     valid_items, validated, preview_errors = [], [], []
     for item in llm_input["items"]:

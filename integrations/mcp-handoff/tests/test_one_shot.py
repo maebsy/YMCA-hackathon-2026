@@ -153,7 +153,22 @@ class OneShotTests(unittest.TestCase):
         self.verify_state = 'running'
         out = asyncio.run(self.api.verify_demo('ai', wait_seconds=0))
         self.assertEqual(out['status'], 'running')
-        self.assertIn('다시 호출', out['next'])
+        self.assertIn('verify_job_id', out['next'])
+
+    def test_verify_demo_recall_while_running_reuses_same_job(self):
+        # 리뷰 #141: 백엔드는 끝난 결과만 재사용하므로, 진행 중 재호출이 새 작업을 접수하면 안 된다.
+        self.verify_state = 'running'
+        posts = lambda: [c for c in self.calls if c[:2] == ('POST', '/api/verify')]
+        first = asyncio.run(self.api.verify_demo('reference', wait_seconds=0))
+        again = asyncio.run(self.api.verify_demo('reference', wait_seconds=0))
+        follow = self.call('verify_demo', mode='reference', verify_job_id=first['verify_job_id'])
+        self.assertEqual({first['verify_job_id'], again['verify_job_id'], follow['verify_job_id']}, {'7' * 32})
+        self.assertEqual(len(posts()), 1)
+        self.assertIn('verify_job_id', self.call('verify_demo', error=True, verify_job_id='not-a-job'))
+        self.verify_state = 'done'
+        asyncio.run(self.api.verify_demo('reference', wait_seconds=0))
+        asyncio.run(self.api.verify_demo('reference', wait_seconds=0))
+        self.assertEqual(len(posts()), 3)  # 끝난 작업의 영수증은 버리고 백엔드에 맡김(최근 결과 재사용은 백엔드 정책)
 
     def test_prompts_are_listed_and_never_ask_to_print_secrets(self):
         listed = self.client.post('/mcp/service/rpc', headers={'Accept': 'application/json, text/event-stream'},

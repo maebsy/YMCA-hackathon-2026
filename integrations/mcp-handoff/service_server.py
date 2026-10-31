@@ -40,7 +40,7 @@ Clients that only support stdio need a separate transport bridge; remote HTTP su
 - audit_status(workspace_token, scan_id): scan summary, each analysis status, and which fix prompts are ready.
 - After the user approves and pushes fixes: check_fix(workspace_token, scan_id, request_id, authorized=true)
   rescans and lists resolved / still open / new / key-reissue-needed items.
-- verify_demo(mode): runtime proof in an isolated sandbox (before: attack succeeds, after: blocked, tests pass).
+- verify_demo(mode, verify_job_id): runtime proof in an isolated sandbox (before: attack succeeds, after: blocked, tests pass).
   Demo target only for now; say so to the user.
 - Prompts: security_audit(repository_url), fix_and_verify(workspace_token, scan_id).
 
@@ -165,10 +165,11 @@ def create_service_server(api, origin, port):
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True,
                                              openWorldHint=False))
-    async def verify_demo(mode: str = 'reference') -> dict:
+    async def verify_demo(mode: str = 'reference', verify_job_id: str = '') -> dict:
         """Runtime proof on the DEMO target only: isolated sandbox replays attacks before/after the fix and runs
-        functional tests. mode: reference (human fix) or ai (Red/Blue generated attacks and fix). Not the user's repo."""
-        return await api.verify_demo(mode)
+        functional tests. mode: reference (human fix) or ai (Red/Blue generated attacks and fix). Not the user's repo.
+        If a previous call returned status queued/running, pass its verify_job_id to keep polling the same job."""
+        return await api.verify_demo(mode, verify_job_id=verify_job_id)
 
     @server.prompt()
     def security_audit(repository_url: str) -> str:

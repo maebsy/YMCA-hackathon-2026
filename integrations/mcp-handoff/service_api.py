@@ -51,6 +51,8 @@ def repository_url(value):
 class ServiceAPI:
     def __init__(self, store, client):
         self.store, self.client = store, client
+        # 진행 중인 실검증 영수증(mode별). 백엔드는 끝난 결과만 재사용하므로, 재호출이 새 작업을 접수하지 않게 보존한다.
+        self.verify_running, self.verify_lock = {}, asyncio.Lock()
 
     async def request(self, method, path, body=None):
         # Paths are constructed exclusively here; no caller can select a network destination.
@@ -318,15 +320,17 @@ class ServiceAPI:
             out['warning'] = '재검사한 커밋이 직전 검사와 같습니다. 고친 코드를 push 했는지 확인하세요.'
         return out
 
-    async def verify_demo(self, mode='reference', wait_seconds=MAX_WAIT_SECONDS * 2,
+    async def verify_demo(self, mode='reference', wait_seconds=MAX_WAIT_SECONDS * 2, verify_job_id='',
                           sleep=asyncio.sleep, clock=time.monotonic):
         """실검증: 격리 샌드박스에서 수정 전 공격 성공 → 수정 후 차단 + 기능 테스트 통과를 실행으로 확인 (데모 과녁 전용)."""
         if mode not in ('reference', 'ai'):
             raise ValueError("mode는 reference(사람이 쓴 기준 수정본) 또는 ai(Red·Blue가 만든 공격·수정본)입니다.")
-        started = await self.request('POST', '/api/verify', {'target': 'demo', 'mode': mode})
-        job = started.get('job_id', '')
-        if not re.fullmatch(r'[a-f0-9]{32}', job):
-            raise ValueError('실검증 작업 식별자를 확인할 수 없습니다.')
+        if verify_job_id:
+            if not re.fullmatch(r'[a-f0-9]{32}', verify_job_id):
+                raise ValueError('verify_job_id 형식이 올바르지 않습니다.')
+            job = verify_job_id  # 이어서 보기: 조회만 하고 새로 접수하지 않음
+        else:
+            job = await self.verify_job(mode)
         deadline = clock() + max(0, min(int(wait_seconds), MAX_WAIT_SECONDS * 2))
         while True:
             state = await self.request('GET', f'/api/verify/{job}')
@@ -344,5 +348,26 @@ class ServiceAPI:
                                        'before': (a.get('before_evidence') or '')[:160],
                                        'after': (a.get('after_evidence') or '')[:160]}) for a in r.get('attacks') or []])
         if state.get('status') not in ('done', 'failed'):
-            out['next'] = '실검증이 아직 진행 중입니다. 잠시 뒤 같은 mode로 다시 호출하면 최근 결과를 재사용합니다.'
+            out['next'] = (f'실검증이 아직 진행 중입니다. 잠시 뒤 verify_demo(verify_job_id="{job}")로 이어서 확인하세요. '
+                           '같은 mode로 다시 불러도 새로 접수하지 않고 이 작업을 이어 봅니다.')
         return out
+
+    async def verify_job(self, mode):
+        """진행 중인 같은 mode 작업이 있으면 그 영수증을 쓰고, 없을 때만 POST로 접수한다."""
+        async with self.verify_lock:
+            job = self.verify_running.get(mode)
+            if job:
+                try:
+                    state = await self.request('GET', f'/api/verify/{job}')
+                except ValueError:
+                    state = {}
+                if state.get('status') in ('queued', 'running'):
+                    return job
+                self.verify_running.pop(mode, None)
+            started = await self.request('POST', '/api/verify', {'target': 'demo', 'mode': mode})
+            job = started.get('job_id', '')
+            if not re.fullmatch(r'[a-f0-9]{32}', job):
+                raise ValueError('실검증 작업 식별자를 확인할 수 없습니다.')
+            if started.get('status') in ('queued', 'running'):
+                self.verify_running[mode] = job
+            return job

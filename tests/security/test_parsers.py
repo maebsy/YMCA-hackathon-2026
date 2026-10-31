@@ -4,6 +4,7 @@ from pathlib import Path
 
 from conftest import fake_stripe_key
 
+from security_engine import fingerprint as fp
 from security_engine.models import FLAG_ROTATE_SECRET, FLAG_SUPPRESSED_COMMENT
 from security_engine.normalize import (
     mask_secret,
@@ -144,6 +145,45 @@ def test_gitleaks_masks_multiline_private_key_with_crlf(tmp_path):
         assert line[:20] not in dumped
 
 
+def _fake_pem(seed: int, newline: str) -> str:
+    import random
+    import string
+
+    rnd = random.Random(seed)
+    body = ["".join(rnd.choice(string.ascii_letters + string.digits + "+/") for _ in range(64)) for _ in range(3)]
+    head, foot = "-----BEGIN RSA " + "PRIVATE KEY-----", "-----END RSA " + "PRIVATE KEY-----"
+    return newline.join([head, *body, foot])
+
+
+def _pem_fingerprint(tmp_path, key: str, name: str) -> str:
+    (tmp_path / name).write_bytes((key + "\n").encode())
+    items = [{"RuleID": "private-key", "Description": "Private Key", "File": name,
+              "StartLine": 1, "EndLine": 5, "Secret": key, "Match": key}]
+    [f] = gitleaks.parse(items, tmp_path)[0]
+    assert key not in repr(f)
+    return f["fingerprint"]
+
+
+def test_gitleaks_fingerprint_ignores_line_endings(tmp_path):
+    """같은 개인키는 Windows(\\r\\n)·Linux(\\n)·구형 Mac(\\r) 줄바꿈과 관계없이 같은 지문이어야 한다 (#58)."""
+    lf = _pem_fingerprint(tmp_path, _fake_pem(7, "\n"), "k.key")
+    assert _pem_fingerprint(tmp_path, _fake_pem(7, "\r\n"), "k.key") == lf
+    assert _pem_fingerprint(tmp_path, _fake_pem(7, "\r"), "k.key") == lf
+
+
+def test_gitleaks_fingerprint_still_tells_different_secrets_apart(tmp_path):
+    """줄바꿈만 통일하므로 실제 값이 바뀌면 다른 지문이다. 기존 \\n 결과의 지문도 바뀌지 않는다 (#58)."""
+    a = _pem_fingerprint(tmp_path, _fake_pem(7, "\r\n"), "k.key")
+    b = _pem_fingerprint(tmp_path, _fake_pem(8, "\r\n"), "k.key")
+    assert a != b
+    key = _fake_pem(7, "\n")
+    old = fp.make("gitleaks", "private-key", "k.key", fp.secret_hash(key))  # 이 변경 전 계산 방식
+    assert _pem_fingerprint(tmp_path, key, "k.key") == old
+    # 한 줄짜리 키 안의 공백 같은 내용은 그대로 구분한다
+    one = _pem_fingerprint(tmp_path, "sk_live_" + "A" * 24, "c.txt")
+    assert _pem_fingerprint(tmp_path, "sk_live_" + "A" * 23 + " ", "c.txt") != one
+
+
 def test_gitleaks_public_key_is_downgraded_not_hidden(tmp_path):
     """검색 전용 키·reCAPTCHA siteKey는 원래 공개되는 키 → 숨기지 않고 low + likely_public_key (블로그 실검사에서 발견)."""
     key = "9d50" + "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
@@ -191,3 +231,24 @@ def test_clone_only_accepts_github(monkeypatch):
         assert not _ALLOWED_URL.match(bad), bad
         with pytest.raises(CloneError):
             clone_repo(bad)
+
+
+def test_clone_keeps_repository_line_endings(monkeypatch, tmp_path):
+    """검사 서버의 core.autocrlf 설정이 줄바꿈을 바꾸지 못하게 clone 때 끈다 (#58)."""
+    import subprocess
+
+    import pytest
+
+    from security_engine import git
+    seen = []
+
+    def fake_git(args, cwd=None, timeout=180):
+        seen.append(args)
+        return subprocess.CompletedProcess(args, 1, "", "stop here")
+
+    monkeypatch.setattr(git, "_git", fake_git)
+    with pytest.raises(git.CloneError):
+        git.clone_repo("https://github.com/o/r", dest=tmp_path / "repo")
+    args = seen[0]
+    assert ["-c", "core.autocrlf=false"] == args[args.index("core.autocrlf=false") - 1:args.index("core.autocrlf=false") + 1]
+    assert args.index("core.autocrlf=false") < args.index("clone")

@@ -155,8 +155,11 @@ class RiskFactor(BaseModel):
 
 class ThreatIntelRecord(BaseModel):
     cve: str
-    kev: bool = False  # CISA KEV: 실제 공격에 쓰인 것이 확인됨
+    # CISA KEV: True=실제 공격에 쓰인 것이 확인됨, False=목록을 받아 확인했는데 없음, None=목록을 받지 못해 모름 (#93)
+    kev: bool | None = False
     kev_date_added: str | None = None
+    kev_checked_at: str | None = None  # 판정에 쓴 KEV 목록을 받은 시각 (UTC, ISO 8601)
+    kev_stale: bool = False  # 새로 받지 못해 보관 기간이 지난 목록으로 판정했는지
     epss: float | None = None  # FIRST EPSS: 30일 안에 악용될 확률 (0~1)
     epss_percentile: float | None = None
 

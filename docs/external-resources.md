@@ -46,7 +46,12 @@
 | OWASP NodeGoat | c5cb68a7084e4ae7dcc60e6a98768720a81841e8 | 공개 취약 앱 소스의 스캐너·OSV 온라인·마스킹 검증 (앱 실행 없음) | Apache-2.0 | https://github.com/OWASP/NodeGoat |
 | CERT/CC SSVC 결정표 (CISA Coordinator v2.0.3) | 커밋 c5be80f180f0 | 위험도 해석의 결정표 (`backend/app/llm/data/` 사본) | MIT (SEI) 계열, 전문은 `backend/app/llm/data/SSVC-LICENSE.txt` | https://github.com/CERTCC/SSVC |
 | OpenVEX 명세 (용어만 사용) | v0.2.0 | 문맥 분석 결과의 상태·사유 용어 | CC0-1.0 | https://github.com/openvex/spec |
-| MCP Python SDK (`mcp`) | 1.30.0 | 독립 stdio MCP 서버에서 로컬 LLM 수정 제안을 사용자 AI 에이전트에 전달 | MIT | https://github.com/modelcontextprotocol/python-sdk |
+| MCP Python SDK (`mcp`) | 1.30.0 | 독립 stdio 및 Streamable HTTP MCP로 로컬 LLM 수정 제안을 사용자 AI 에이전트에 전달 | MIT | https://github.com/modelcontextprotocol/python-sdk |
+| Starlette | 1.10.0 | 원격 MCP 연결 안내 HTTP 응답 및 HTTP 경계 테스트 (기존 SDK 의존성을 명시 고정) | BSD-3-Clause | https://github.com/encode/starlette |
+| Express | 4.21.2 | 실검증용 데모 취약 사이트(`demo-vulnerable-site/`)의 웹 서버 | MIT | https://github.com/expressjs/express |
+| jsonwebtoken | 9.0.2 | 데모 취약 사이트의 토큰 발급 (하드코딩 키 취약점 재현) | MIT | https://github.com/auth0/node-jsonwebtoken |
+| lodash | 4.17.11 | 데모 취약 사이트에 일부러 넣은 오래된 라이브러리 (OSV 탐지 재현용, 실행 코드에서 사용 안 함) | MIT | https://github.com/lodash/lodash |
+| Node.js 공식 Docker 이미지 | 22-slim | Red–Blue 실검증 샌드박스 컨테이너 기반 (`--network none`으로 실행) | MIT (포함 Debian 패키지는 각 라이선스) | https://hub.docker.com/_/node |
 
 ## 외부 API
 
@@ -71,11 +76,16 @@
 
 ## 기타 (AI 도구, 디자인 에셋, 폰트 등)
 
+전체 서비스 MCP(#75)는 기존 HTTPX 0.28.1(BSD-3-Clause, https://www.python-httpx.org/)를
+독립 어댑터의 직접 의존성으로 고정합니다. 기존 backend API만 호출하며 추가 외부 분석 서비스를 사용하지 않습니다.
+웹 연결 버튼은 [Cursor 공식 MCP install links](https://prod.cursor.com/docs/mcp/install-links)와
+[VS Code 공식 MCP URL handler](https://code.visualstudio.com/api/extension-guides/ai/mcp)를 따릅니다.
+
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
-| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조, AI 협업 규칙(AGENTS.md)·제출 계획 문서 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
+| Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조, AI 협업 규칙(AGENTS.md)·제출 계획 문서 작성 보조, Red–Blue 실검증 모듈·데모 취약 사이트 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |
 | Codex (OpenAI) | 일반 서버·독립 MCP·비동기 LLM 큐·인증 경계·DB 스키마·프론트 Compose 통합과 테스트·연결 문서 작성 및 PR 병합 오류 수정 보조 | OpenAI 이용약관 | https://openai.com/codex/ |
-| Docker Engine · Docker Compose | 개발 환경 컨테이너 실행 | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |
+| Docker Engine · Docker Compose | 개발 환경 컨테이너 실행, Red–Blue 실검증 샌드박스(네트워크 차단 컨테이너) | Apache-2.0 (Docker Desktop은 Docker 구독 약관, 개인·교육용 무료) | https://docs.docker.com/compose/ |
 | GitHub Actions 공식 액션 (`actions/checkout@v4`·`actions/setup-python@v5`·`actions/github-script@v7`) | CI 실행, 이슈 양식 자동 라벨 | MIT | https://github.com/actions |
 | gitleaks-action (`gitleaks/gitleaks-action@v2`) | CI `secret-scan`: PR의 비밀값 유출 검사 | Gitleaks-Action EULA (개인 계정 저장소는 라이선스 키 불필요) | https://github.com/gitleaks/gitleaks-action |
 | Claude (Anthropic) | 보안엔진(`security_engine/`) 설계·코드·Semgrep 규칙 작성 보조 | Anthropic 이용약관 | https://claude.ai |

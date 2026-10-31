@@ -43,6 +43,7 @@ export default function Home() {
       <div className="entry-disclosure"><ShieldCheck size={17}/><p><strong>주소를 검사 서버로 보내 실제 코드를 점검합니다.</strong><br/>서버의 로그인·저장소 접근 정책이 적용되며, 검사와 추가 AI 해석은 수 분 걸릴 수 있습니다.</p></div>
     </section>
     <div className="repository-entry"><Link className="text-link" href="/repository">{repository.isScanning ? "진행 중인 검사 보기" : "검사 환경과 저장된 결과 보기"}<ArrowRight size={14}/></Link></div>
+    <p className="incident-home-entry"><Link className="text-link" href="/incident">사고가 의심되면, 검사 없이 신고 준비<ArrowRight size={14}/></Link></p>
     <section className="entry-benefits" aria-label="실제 검사에서 다음 조치까지">
       <article><ShieldCheck size={20}/><h2>엔진으로 발견</h2><p>코드·의존성·비밀정보의<br/>실제 관찰 근거를 확인하세요.</p></article>
       <article><Sparkles size={20}/><h2>GPU로 해석</h2><p>연결 가능한 경우 Red–Blue가<br/>위험과 수정 방향을 설명합니다.</p></article>

@@ -30,6 +30,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       <span className="header-note">만드는 사람 곁의 보안 가이드</span>
       <nav className="header-actions" aria-label="보조 메뉴">
         <Link href="/repository" aria-current={pathname === "/repository" ? "page" : undefined}>GitHub 실제 검사</Link>
+        <Link href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}>사고 신고</Link>
         <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>도움말</Link>
         <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label="밝은 테마와 어두운 테마 전환"><Sun className="sun-icon" size={18}/><Moon className="moon-icon" size={18}/></button>
       </nav>

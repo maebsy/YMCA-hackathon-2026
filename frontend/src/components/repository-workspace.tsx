@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, Clipboard, Code2, Download, FileText, LoaderCircle, Play } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clipboard, Code2, Download, FileText, LoaderCircle, Play, ShieldAlert } from "lucide-react";
 import { WorkspaceTab } from "@/components/tabs/WorkspaceTab";
 import { normalizeRepositoryUrl, useRepository } from "@/components/repository-provider";
 import { Notice } from "@/components/ui/notice";
@@ -105,6 +105,7 @@ export default function RepositoryWorkspace() {
       onShowToast={repository.showMessage} repoInput={repository.repoInput} onChangeRepoInput={repository.setRepoInput}/></div>
     <Notice compact>수정 명령은 자동 실행하지 않습니다. 직접 조치한 항목은 ‘재검증 대기’로 표시하고 같은 저장소를 다시 검사하세요. 엔진의 코드 해결 상태만 ‘해결 확인’으로 집계합니다. 검사 결과와 조치 표시는 이 브라우저에 저장됩니다.</Notice>
     <ActualReport/>
+    <section className="card incident-entry"><ShieldAlert size={22}/><div><h2>실제 사고가 의심되나요?</h2><p className="muted">확인한 사실을 기록하고 신고 대상·기한과 두 신고서 초안을 준비하세요. 검사 발견은 선택해서 연결할 수 있습니다.</p><Link className="text-link" href="/incident">사고 신고 준비하기 <ArrowRight size={15}/></Link></div></section>
     <Link className="text-link" href="/"><ArrowLeft size={15}/>GitHub 주소 입력으로 돌아가기</Link>
   </main>;
 }

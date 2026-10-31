@@ -1,0 +1,48 @@
+# 영역별 담당자에게 PR 리뷰를 자동으로 요청합니다. 영역 설명은 AGENTS.md 2장에 있습니다.
+# 아래쪽 줄이 위쪽 줄보다 우선합니다. 담당을 바꾸면 AGENTS.md 표도 같이 고칩니다.
+# 줄마다 두 번째 사람은 보조 리뷰어입니다. 담당자 본인이 PR을 올려도 리뷰 요청이 가고,
+# 둘 중 깨어 있는 사람이 승인하면 됩니다.
+
+# 공용 진입점·설정·규칙
+/AGENTS.md                         @maebsy @papawolf42
+/CLAUDE.md                         @maebsy @papawolf42
+/CONTRIBUTING.md                   @maebsy @papawolf42
+/.env.example                      @maebsy @papawolf42
+
+# 인프라·CI
+/.github/                          @maebsy @papawolf42
+/.githooks/                        @maebsy @papawolf42
+/scripts/                          @maebsy @papawolf42
+/deploy/                           @maebsy @papawolf42
+/compose*.yaml                     @maebsy @papawolf42
+
+# 보안엔진
+/security_engine/                  @surilog @maebsy
+/tests/security/                   @surilog @maebsy
+
+# 백엔드
+/backend/                          @maebsy @papawolf42
+/backend/app/reports/              @SeouliteParker @papawolf42
+/backend/app/routers/reports.py    @SeouliteParker @papawolf42
+/backend/app/routers/scans.py      @papawolf42 @maebsy
+/backend/app/scan_store.py         @papawolf42 @maebsy
+
+# DB
+/docs/db-*                         @papawolf42 @maebsy
+/docs/migrations/                  @papawolf42 @maebsy
+/docs/scan-persistence.md          @papawolf42 @maebsy
+/tests/db/                         @papawolf42 @maebsy
+
+# 프론트
+/frontend/                         @nick19850906-debug @SeouliteParker
+
+# MCP
+/integrations/mcp-handoff/         @maebsy @SeouliteParker
+
+# 기획·발표·제출
+/docs/system-flow.*                @SeouliteParker @papawolf42
+/docs/competitors*.md              @SeouliteParker @papawolf42
+/docs/roadmap.md                   @SeouliteParker @papawolf42
+/docs/submission/                  @SeouliteParker @papawolf42
+
+# docs/external-resources.md는 모든 PR이 고치므로 담당자를 두지 않습니다.

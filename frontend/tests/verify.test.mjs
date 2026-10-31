@@ -84,7 +84,7 @@ test('runVerify submits the demo target and polls until done', async () => {
   const seen = [];
   const job = await runVerify({intervalMs: 0, onStatus: s => seen.push(s)});
   assert.equal(job.result.status, 'verified');
-  assert.deepEqual(JSON.parse(calls[0].body), {target: 'demo'});
+  assert.deepEqual(JSON.parse(calls[0].body), {target: 'demo', mode: 'reference'});
   assert.equal(calls[0].method, 'POST');
   assert.equal(calls[1].url, '/api/verify/j1');
   assert.deepEqual(seen, ['queued', 'running']);
@@ -110,4 +110,32 @@ test('runVerify shows the server message when the server cannot run it', async (
 test('runVerify reports a failed job with its message', async () => {
   fakeFetch([[202, {job_id: 'j2', status: 'queued'}], [200, {job_id: 'j2', status: 'failed', reused: false, error: {code: 'VERIFY_ERROR', message: '실검증 실행 중 오류가 났습니다.'}}]]);
   await assert.rejects(runVerify({intervalMs: 0}), /실검증 실행 중 오류/);
+});
+
+test('ai mode keeps Red reasons, Blue summaries and skipped items; old responses default to reference', () => {
+  const job = parseVerifyJob({...doneJob, target: 'demo-ai', mode: 'ai', ai: {
+    attack_fingerprints: {a: 'f'}, red_reasons: {'sqli-orders': '조건이 항상 참', bad: 3},
+    patch_summaries: {'server.js': '자리표시자로 고침'},
+    skipped: [{fingerprint: 'demo:x', stage: 'blue', reason: '범위 밖'}, {stage: 'red'}]}});
+  assert.equal(job.mode, 'ai');
+  assert.deepEqual(job.ai.red_reasons, {'sqli-orders': '조건이 항상 참'});
+  assert.deepEqual(job.ai.patch_summaries, {'server.js': '자리표시자로 고침'});
+  assert.equal(job.ai.skipped.length, 1);
+  const old = parseVerifyJob(doneJob);
+  assert.equal(old.mode, 'reference');
+  assert.equal(old.ai, null);
+});
+
+test('runVerify sends the chosen mode', async () => {
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (init?.method === 'POST') { sent.push(JSON.parse(init.body)); return new Response(JSON.stringify({job_id: 'b'.repeat(32), status: 'done', reused: true})); }
+    return new Response(JSON.stringify({...doneJob, mode: 'ai'}));
+  };
+  try {
+    const job = await runVerify({mode: 'ai', intervalMs: 0});
+    assert.equal(job.mode, 'ai');
+    assert.deepEqual(sent, [{target: 'demo', mode: 'ai'}]);
+  } finally { globalThis.fetch = realFetch; }
 });

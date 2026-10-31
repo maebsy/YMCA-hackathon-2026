@@ -12,11 +12,12 @@
   자리만 비어 다음 작업이 같은 포트로 겹쳐 뜨기 때문입니다.
 """
 import asyncio
+import inspect
 import logging
 import time
 import uuid
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from datetime import datetime, timezone
 
@@ -26,6 +27,9 @@ from fastapi.concurrency import run_in_threadpool
 from .schemas import VerifyResult
 
 log = logging.getLogger(__name__)
+
+# async 작업이 돌려주는 값: 결과만, 또는 (결과, 조회 응답에 덧붙일 필드)
+Work = VerifyResult | tuple[VerifyResult, dict]
 
 
 class VerifyJobs:
@@ -45,8 +49,10 @@ class VerifyJobs:
         for k in finished[:max(0, len(finished) - self.kept)]:
             del self.jobs[k]
 
-    def submit(self, work: Callable[[], VerifyResult], *, owner=None, extra: dict | None = None) -> dict:
-        """work는 스레드에서 도는 동기 함수입니다(verify()가 subprocess를 기다리므로). extra는 조회 응답에 그대로 붙입니다."""
+    def submit(self, work: Callable[[], VerifyResult | Awaitable[Work]], *, owner=None, extra: dict | None = None) -> dict:
+        """work는 스레드에서 도는 동기 함수(verify()가 subprocess를 기다리므로) 또는 async 함수입니다.
+        async 함수는 같은 이벤트 루프에서 기다리고(LLM 연결을 같이 쓰므로), (결과, 추가 필드)를 돌려주면
+        추가 필드를 조회 응답에 덧붙입니다. extra는 조회 응답에 그대로 붙입니다."""
         self._prune()
         if sum(job["finished"] is None for job in self.jobs.values()) >= self.capacity:
             raise HTTPException(429, detail={"code": "VERIFY_QUEUE_FULL",
@@ -76,12 +82,18 @@ class VerifyJobs:
         self._prune()
         return {"job_id": key, "status": "done", "reused": True}
 
-    async def _run(self, key: str, work: Callable[[], VerifyResult]) -> None:
+    async def _run(self, key: str, work: Callable) -> None:
         job = self.jobs[key]
         try:
             async with self.slots:
                 job["status"] = "running"
-                result = await run_in_threadpool(work)
+                if inspect.iscoroutinefunction(work):
+                    result = await work()
+                else:
+                    result = await run_in_threadpool(work)
+                if isinstance(result, tuple):
+                    result, more = result
+                    job.update(more)
                 job["result"] = result.model_dump(mode="json")
                 job["status"] = "done"
         except asyncio.CancelledError:

@@ -22,7 +22,22 @@ export interface VerifyJob {
   job_id: string; status: "queued" | "running" | "done" | "failed";
   reused: boolean; finished_at?: string;
   result: VerifyResult | null; error: { code?: string; message?: string } | null;
-  target?: string; attacks: AttackDefinition[]; patched_files: string[]; patch_diff: string;
+  target?: string; mode: VerifyMode; attacks: AttackDefinition[]; patched_files: string[]; patch_diff: string;
+  ai: AiPlan | null;
+}
+/** reference: 사람이 쓴 기준 수정본, ai: GPU Red·Blue가 만든 공격·수정본 (Docker 격리에서만 실행) */
+export type VerifyMode = "reference" | "ai";
+export interface AiSkipped { fingerprint: string; stage: string; reason: string }
+export interface AiPlan { red_reasons: Record<string, string>; patch_summaries: Record<string, string>; skipped: AiSkipped[] }
+
+const stringMap = (v: unknown): Record<string, string> => record(v)
+  ? Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === "string")) : {};
+
+function parseAi(v: unknown): AiPlan | null {
+  if (!record(v)) return null;
+  const skipped = Array.isArray(v.skipped) ? v.skipped.filter((s): s is AiSkipped => record(s)
+    && typeof s.fingerprint === "string" && typeof s.stage === "string" && typeof s.reason === "string") : [];
+  return { red_reasons: stringMap(v.red_reasons), patch_summaries: stringMap(v.patch_summaries), skipped };
 }
 
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -54,9 +69,11 @@ export function parseVerifyJob(v: unknown): VerifyJob | null {
     result: v.status === "done" ? v.result as VerifyResult : null,
     error: record(v.error) ? { code: typeof v.error.code === "string" ? v.error.code : undefined, message: typeof v.error.message === "string" ? v.error.message : undefined } : null,
     target: typeof v.target === "string" ? v.target : undefined,
+    mode: v.mode === "ai" ? "ai" : "reference",
     attacks,
     patched_files: Array.isArray(v.patched_files) ? v.patched_files.filter((f): f is string => typeof f === "string") : [],
     patch_diff: typeof v.patch_diff === "string" ? v.patch_diff : "",
+    ai: parseAi(v.ai),
   };
 }
 
@@ -102,9 +119,9 @@ function apiError(data: unknown, fallback: string): Error {
 }
 
 /** 실검증을 접수하고 끝날 때까지 조회합니다. onStatus로 queued·running 을 알려 줍니다. */
-export async function runVerify(options: { onStatus?: (status: VerifyJob["status"]) => void; intervalMs?: number; timeoutMs?: number; isCancelled?: () => boolean } = {}): Promise<VerifyJob> {
-  const { onStatus, intervalMs = 2000, timeoutMs = 10 * 60 * 1000, isCancelled } = options;
-  const res = await fetch("/api/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: "demo" }) });
+export async function runVerify(options: { mode?: VerifyMode; onStatus?: (status: VerifyJob["status"]) => void; intervalMs?: number; timeoutMs?: number; isCancelled?: () => boolean } = {}): Promise<VerifyJob> {
+  const { mode = "reference", onStatus, intervalMs = 2000, timeoutMs = 10 * 60 * 1000, isCancelled } = options;
+  const res = await fetch("/api/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: "demo", mode }) });
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw apiError(data, `실검증 접수 실패 (${res.status})`);
   const jobId = record(data) && typeof data.job_id === "string" ? data.job_id : null;

@@ -140,3 +140,45 @@ async def test_one_llm_call_per_package(fake_vllm, payload):
     lodash = next(r for r in results if r.fingerprint.startswith("pkg:"))
     assert lodash.status == "done" and lodash.covers == ["osv:a1", "osv:a2", "osv:a3"]
     assert next(r for r in results if r.fingerprint == "osv:a4").status == "skipped"
+
+
+# ── #83: 긴 설명이 몰린 패키지도 묶음이 깨지지 않아야 합니다 ──
+def long_payload(count: int, title_len: int) -> dict:
+    items = []
+    for i in range(count):
+        item = dep(f"l{i}", "big-lib", f"CVE-2026-{2000 + i}", "high", "9.9.9")
+        item["title"] = (f"big-lib: CVE-2026-{2000 + i} " + "아주 긴 취약점 설명 " * 60)[:title_len]  # 개별 제목은 한도(500자) 안
+        items.append(item)
+    return {"items": items, "dependency_upgrades": []}
+
+
+@pytest.mark.parametrize(("count", "title_len"), [(12, 400), (15, 490), (40, 490), (3, 490)])
+def test_long_member_titles_keep_the_package_group(count, title_len):
+    findings = from_engine_payload(long_payload(count, title_len))
+
+    [group] = findings  # 실패하거나 개별 항목으로 풀리지 않고 한 묶음
+    assert group.fingerprint.startswith("pkg:npm:big-lib:")
+    assert len(group.what) <= 2000
+    assert group.what.startswith(f"같은 패키지의 취약점 {count}건:")
+    # 목록을 줄여도 원본 연결과 CVE는 모두 남습니다
+    assert len(group.covers) == count
+    assert len(group.refs.cve) == min(count, 30)
+    listed = group.what.count("\n- CVE-")
+    if listed < count:
+        assert f"외 {count - listed}건" in group.what
+
+
+def test_long_titles_say_why_members_were_left_out():
+    group = from_engine_payload(long_payload(12, 400))[0]
+
+    assert "설명이 길어 생략" in group.what
+    assert "CVE-2026-2000" in group.what  # 앞 항목은 그대로 보입니다
+
+
+def test_short_titles_are_listed_as_before(payload):
+    # 기존 짧은 설명 묶음의 문장은 바뀌지 않습니다 (최대 15건 나열 + '외 N건')
+    payload["items"] = [dep(f"m{i}", "lodash", f"CVE-2021-{1000 + i}", "low", "4.17.21") for i in range(20)]
+    lodash = from_engine_payload(payload)[0]
+
+    assert lodash.what.count("\n- CVE-") == 15
+    assert lodash.what.endswith("\n- 외 5건")

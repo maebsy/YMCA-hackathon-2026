@@ -401,7 +401,7 @@ def test_osv_parse_keeps_upgrades_for_numbered_maven_short_qualifiers():
 
 # ── #101 재리뷰: Maven 정식 별칭 뒤 숫자·점 구분은 (순위, 정수)로 비교할 수 없어 보류 ──
 MAVEN_UNSAFE = [("1.0-final1", "1.0-sp1"), ("1.0-ga1", "1.0-sp1"), ("1.0-release1", "1.0-sp1"),
-                ("1.0-alpha.1", "1.0-alpha2")]
+                ("1.0-alpha.1", "1.0-alpha2"), ("1.0.alpha-1", "1.0-alpha2")]
 
 
 @pytest.mark.parametrize(("current", "fixed"), MAVEN_UNSAFE)
@@ -431,6 +431,21 @@ def test_maven_supported_forms_still_compare():
     assert pick("1.0-alpha2", ["1.0-alpha10"], "Maven") == "1.0-alpha10"  # 숫자가 바로 붙으면 정수 비교
     assert pick("1.0-rc1", ["1.0", "1.0-sp1"], "Maven") == "1.0"
     assert pick("1.0-final", ["1.0-sp1"], "Maven") == "1.0-sp1"  # 숫자 없는 정식 별칭은 정식과 같음
+
+
+@pytest.mark.parametrize("qualifier", ["alpha", "beta", "milestone", "rc", "cr", "sp"])
+def test_maven_dot_qualifier_with_hyphen_number_is_not_comparable(qualifier):
+    from security_engine.normalize import version_key
+
+    unsupported = f"1.0.1.{qualifier}-2"
+    supported = f"1.0.1-{qualifier}1"
+    assert version_key(unsupported, "Maven") is None
+    assert pick_fix_version(supported, [unsupported], "Maven") is None
+    assert pick_fix_version(unsupported, [supported], "Maven") is None
+    assert pick_fix_version(None, [unsupported], "Maven") is None
+    # 숫자가 바로 붙는 점 한정자와 하이픈 한정자는 기존 Maven 비교를 유지한다.
+    key = _key("Maven")
+    assert key(f"1.0.1.{qualifier}1") == key(supported) == key(f"1.0.1-{qualifier}-1")
 
 
 def test_upgrade_hint_tells_lower_fix_apart_from_uncomparable():

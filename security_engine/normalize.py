@@ -275,9 +275,13 @@ def _maven_key(v: str) -> tuple | None:
     if qualifier not in _MAVEN_QUALIFIER:
         return None  # 모르는 한정자는 비교하지 않는다
     if m[3]:
-        # Maven은 정식 별칭(ga·final·release)·snapshot 뒤 숫자, 한정자와 숫자 사이의 '.'을 별도 목록 구조로 비교해
-        # (순위, 정수) 키로는 순서가 뒤집힌다(1.0-final1 > 1.0-sp1, 1.0-alpha.1 > 1.0-alpha2). 정확히 못 따르는 형태는 보류한다.
-        if qualifier in {"", "ga", "final", "release", "snapshot"} or v[m.end(2):m.start(3)] == ".":
+        # 정식 별칭·snapshot 뒤 숫자와 점/하이픈이 섞인 한정자는 Maven의 목록 구조가 필요하다.
+        # (순위, 정수)로 비교하면 final1 > sp1, alpha.1 > alpha2, 1.0.alpha-1 > 1.0-alpha2 순서가 뒤집힌다.
+        qualifier_separator = v[m.end(1):m.start(2)]
+        number_separator = v[m.end(2):m.start(3)]
+        if qualifier in {"", "ga", "final", "release", "snapshot"}:
+            return None
+        if number_separator == "." or (qualifier_separator == "." and number_separator == "-"):
             return None
     return (_trim([int(x) for x in m[1].split(".")]), _MAVEN_QUALIFIER[qualifier], int(m[3] or 0))
 

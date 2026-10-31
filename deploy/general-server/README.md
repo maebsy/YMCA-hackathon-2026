@@ -143,8 +143,7 @@ journalctl --user -u 72hours-quick-tunnel -n 80 --no-pager
 1. 팀이 ngrok 계정을 만들고 대시보드 **Domains**에서 무료 고정 도메인을 받습니다. 계정 토큰은 운영자가 서버에서 직접 넣습니다(채팅·저장소에 올리지 않음).
    ```bash
    ~/.local/share/72hours/bin/ngrok config add-authtoken <토큰>
-   printf 'NGROK_DOMAIN=%s
-' '<도메인>' > ~/.config/72hours/ngrok.env && chmod 600 ~/.config/72hours/ngrok.env
+   printf 'NGROK_DOMAIN=%s\n' '<도메인>' > ~/.config/72hours/ngrok.env && chmod 600 ~/.config/72hours/ngrok.env
    ```
 2. ngrok 에이전트는 공식 배포 파일을 `~/.local/share/72hours/ngrok-<버전>/`에 두고 `~/.local/share/72hours/bin/ngrok`로 링크합니다(시스템 설치 없음). 버전·SHA-256은 외부 자원 표에 적습니다.
 3. 서비스를 켭니다. 토큰(`~/.config/ngrok/ngrok.yml`)이나 `ngrok.env`가 없으면 시작하지 않습니다.

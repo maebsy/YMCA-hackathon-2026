@@ -49,6 +49,12 @@ test("home submit starts the actual scan once with the normalized explicit URL",
   assert.deepEqual(ui.calls, ["https://github.com/acme/app"]);
   assert.deepEqual(ui.navigation, ["/repository"]);
 });
+test("home submit prepends https:// when github.com URL is entered without scheme", () => {
+  const ui = entry({ repoInput: "github.com/papawolf42/kdfakdff" });
+  ui.submit();
+  assert.deepEqual(ui.calls, ["https://github.com/papawolf42/kdfakdff"]);
+  assert.deepEqual(ui.navigation, ["/repository"]);
+});
 test("website and malformed repository inputs stay on the form without engine requests", () => {
   for (const repoInput of ["", "https://example.com", "https://github.com/acme/app/tree/main", "https://github.com/acme/app?token=x"]) {
     const ui = entry({ repoInput }); ui.submit();

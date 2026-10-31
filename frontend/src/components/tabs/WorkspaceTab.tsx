@@ -62,13 +62,16 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
     findings.find((f) => f.id === selectedFindingId) || findings[0];
 
   const handleScanSubmit = () => {
+    const trimmed = repoInput.trim();
+    const normalized = /^github\.com\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
     const regex = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
-    if (!regex.test(repoInput.trim())) {
+    if (!regex.test(normalized)) {
       setRepoError(true);
       return;
     }
     setRepoError(false);
-    onRunScan(repoInput.trim());
+    if (normalized !== repoInput) onChangeRepoInput(normalized);
+    onRunScan(normalized);
   };
 
   const copyToClipboard = async (text: string, msg: string) => {

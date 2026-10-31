@@ -127,3 +127,50 @@ class LiveTests(unittest.TestCase):
         self.store.limit = 1
         self.issue()
         self.assertEqual(self.client.post("/mcp/links", json=export(), headers={"Origin": ORIGIN}).status_code, 429)
+
+
+class MultiOriginTests(unittest.TestCase):
+    """고정 주소(대표) + 웹에 함께 쓰는 임시 주소를 모두 받되, 연결 주소는 항상 대표 주소로 만듭니다 (#136)."""
+    FIXED = "https://fixed.example.dev"
+    TEMP = "https://temp-words.trycloudflare.com"
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.store = LinkStore(Path(self.directory.name) / "links.sqlite3", ttl=60)
+        self.app = create_live_app(self.store, f"{self.FIXED}, {self.TEMP}")
+
+    def test_link_created_from_second_origin_uses_fixed_origin(self):
+        with TestClient(self.app, base_url=self.TEMP) as client:
+            response = client.post("/mcp/links", json=export(), headers={"Origin": self.TEMP})
+        self.assertEqual(response.status_code, 201, response.text)
+        link = response.json()
+        self.assertTrue(link["endpoint"].startswith(self.FIXED + "/mcp/h/"))
+        self.assertTrue(link["guide_url"].startswith(self.FIXED + "/mcp/h/"))
+
+    def test_mcp_answers_on_both_hosts_but_not_others(self):
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_findings", "arguments": {}}}
+        # MCP 세션 관리자는 앱마다 한 번만 띄울 수 있어 클라이언트는 하나로 두고 Host 만 바꿉니다
+        with TestClient(self.app, base_url=self.FIXED) as client:
+            link = client.post("/mcp/links", json=export(), headers={"Origin": self.FIXED}).json()
+            path = link["endpoint"].removeprefix(self.FIXED)
+            for host, ok in (("fixed.example.dev", True), ("temp-words.trycloudflare.com", True), ("evil.example", False)):
+                response = client.post(path, json=body, headers={"Host": host, "Accept": "application/json, text/event-stream"})
+                self.assertEqual(response.status_code == 200, ok, (host, response.status_code))
+
+    def test_other_origins_are_still_rejected(self):
+        with TestClient(self.app, base_url=self.FIXED) as client:
+            response = client.post("/mcp/links", json=export(), headers={"Origin": "https://evil.example"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_every_listed_origin_is_validated(self):
+        for bad in (f"{self.FIXED},http://plain.example", f"{self.FIXED},https://a.example/path", " , "):
+            with self.assertRaises(ValueError):
+                create_live_app(self.store, bad)
+
+    def test_single_origin_still_works(self):
+        app = create_live_app(self.store, self.FIXED)
+        with TestClient(app, base_url=self.FIXED) as client:
+            ok = client.post("/mcp/links", json=export(), headers={"Origin": self.FIXED})
+            other = client.post("/mcp/links", json=export(), headers={"Origin": self.TEMP})
+        self.assertEqual((ok.status_code, other.status_code), (201, 403))

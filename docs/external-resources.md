@@ -68,6 +68,11 @@
 
 ## 기타 (AI 도구, 디자인 에셋, 폰트 등)
 
+전체 서비스 MCP(#75)는 기존 HTTPX 0.28.1(BSD-3-Clause, https://www.python-httpx.org/)를
+독립 어댑터의 직접 의존성으로 고정합니다. 기존 backend API만 호출하며 추가 외부 분석 서비스를 사용하지 않습니다.
+웹 연결 버튼은 [Cursor 공식 MCP install links](https://prod.cursor.com/docs/mcp/install-links)와
+[VS Code 공식 MCP URL handler](https://code.visualstudio.com/api/extension-guides/ai/mcp)를 따릅니다.
+
 | 명칭 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|
 | Claude Code (Anthropic) | 백엔드 골격·Docker 개발 환경·LLM 해석 모듈·리포트와 신고서 초안 코드 작성 보조 | Anthropic 이용약관 | https://claude.com/claude-code |

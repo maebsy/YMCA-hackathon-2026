@@ -1,4 +1,42 @@
-# 72hours MCP 결과 전달
+# 72hours MCP — AI 대화로 서비스 이용
+
+운영 중인 서비스의 `/mcp/service`에서 **연결·검사 요청 복사**를 누르고 코딩 에이전트에게
+붙여 넣습니다. Cursor·VS Code는 같은 화면의 연결 버튼도 사용할 수 있습니다.
+원격 주소는 `/mcp/service/rpc`, 에이전트용 안내는 `/mcp/service/agent.txt`입니다.
+Python·CMD·결과 파일 설치 없이 원격 HTTP MCP를 지원하는 클라이언트에서 사용합니다.
+클라이언트 자체의 연결 승인·재접속은 필요할 수 있으며, stdio 전용 앱은 별도 브리지가 필요합니다.
+
+`create_workspace → start_scan → get_scan → start_analysis → get_analysis → get_fix_prompt`
+순으로 실제 서버 API를 호출합니다. 수정은 사용자 AI의 작업본에서 수행합니다.
+`rescan`은 같은 저장소의 **게시된 기본 브랜치**를 이전 결과와 비교합니다. 미게시 로컬 수정이나
+PR 브랜치를 확인하지 못하므로 커밋이 같으면 수정 검증 완료로 표시하면 안 됩니다.
+`generate_report`와 `incident_report`는 기존 서비스의 점검 리포트·사고 평가·신고서 초안을
+제공합니다. 신고 자동 제출·계정 관리·과금·임의 셸 실행·배포 도구는 제공하지 않습니다.
+
+기존 `/mcp/connect`는 웹에서 이미 검사한 결과의 전용 연결 기능으로 유지됩니다.
+전체 서비스 MCP는 브라우저 결과를 신뢰하거나 업로드받지 않고, **자기가 접수한 서버 작업**의
+실제 저장소·커밋·FindingInput을 연결합니다. GPU 키는 전달받지 않습니다.
+
+운영 실행은 기존 `live_server.py --database /absolute/private/links.sqlite3 --public-origin https://HOST`
+명령을 사용합니다. 같은 디렉터리의 `workspaces.sqlite3`에 만료 시간·capability 해시·접수 ID만
+보관하며, 원본 코드·분석 전문·비밀키는 저장하지 않습니다. backend는 고정 loopback `127.0.0.1:8000`을
+호출하고 기존 인증·allowlist·queue 정책을 그대로 따릅니다. 인증이 필요한 환경에서는 정책 오류를
+반환하며 우회하지 않습니다. 이 구성은 인증 없는 공개 데모 API가 이미 허용된 배포용입니다.
+
+capability는 24시간, 작업 공간은 최대 128개, 전체 접수 256건, 공간별 16건입니다
+(`WorkspaceStore` 운영 설정). 같은 scan request_id 및 같은 분석 입력은 중복 접수하지 않습니다.
+응답이 불명확한 POST는 `not_confirmed`로 남겨 자동 재접수를 막습니다. 서버가 접수했을 가능성이
+있으므로 운영자가 확인하기 전 새 request_id로 무작정 반복하지 마세요.
+폐기는 MCP 접근을 제거하며 이미 백엔드에 접수된 작업을 취소하지는 않습니다.
+DB를 유지한 프로세스 재시작 후에도 ID가 유지되지만, backend 결과 보관 기간이 지나면 새 검사가 필요합니다.
+
+검증: `python -m unittest discover -s integrations/mcp-handoff/tests -v`.
+HTTP MCP 초기화·전체 API 계약·두 작업 공간 격리·동시 중복 요청·만료/폐기·인증/오류·Red 게이트를
+합성 테스트로 확인하고, 배포 후 공개 HTTPS에서 실제 검사→GPU 분석→리포트→재검사를 별도 확인합니다.
+
+---
+
+# 기존 로컬 결과 전달 모드
 
 기존 서비스 옆에서 별도 프로세스로 실행하는 읽기 전용 MCP 서버입니다. 로컬 LLM이 이미 만든 `ai_fix_prompt`에 저장소 확인·최소 수정·테스트·재검사 지침을 붙여 사용자 AI 코딩 에이전트에 제공합니다. 백엔드를 import하지 않고 API·DB·GPU·compose·서비스 의존성을 바꾸지 않습니다.
 

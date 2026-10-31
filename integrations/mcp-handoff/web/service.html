@@ -1,0 +1,24 @@
+<!doctype html><html lang="ko"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>72hours · AI에서 서비스 시작</title>
+<style>
+:root{color-scheme:dark}body{margin:0;background:#0b1120;color:#e8edf8;font:16px/1.7 system-ui,sans-serif}main{max-width:860px;margin:4vh auto;padding:24px}h1{font-size:clamp(30px,5vw,44px);line-height:1.25}h2{font-size:22px}section{background:#151f33;border:1px solid #30405e;border-radius:18px;padding:24px;margin:24px 0}a{color:#9ec5ff}button,.button{display:inline-block;border:0;border-radius:8px;padding:12px 18px;background:#8ab8ff;color:#10192b;cursor:pointer;font:600 16px system-ui;text-decoration:none;margin:4px}textarea,input{box-sizing:border-box;width:100%;background:#0b1120;color:#e8edf8;border:1px solid #506080;border-radius:8px;padding:14px;font:15px/1.6 system-ui}textarea{min-height:160px;margin:12px 0}small,.muted{color:#aabbda}code{overflow-wrap:anywhere}nav{display:flex;gap:20px;flex-wrap:wrap}.steps{display:flex;flex-wrap:wrap;gap:10px}.steps span{border:1px solid #506080;border-radius:20px;padding:4px 12px}
+</style><main>
+<nav><a href="/">72hours 웹 서비스</a><a href="/mcp/connect">웹에서 검사한 결과 가져오기</a></nav>
+<p class="muted">72HOURS × YOUR AI</p><h1>내 AI와 대화하며<br>검사부터 수정 확인까지.</h1>
+<p>웹에서 먼저 검사할 필요 없이, AI 에이전트가 72hours의 보안 검사와 GPU 분석을 직접 이용합니다.</p>
+<div class="steps"><span>저장소 검사</span><span>GPU 분석</span><span>코드 수정</span><span>재검사</span><span>리포트</span></div>
+<section><h2>1. 연결 문장을 AI에게 보내세요</h2>
+<p>Claude Code·Codex 등 사용 중인 코딩 에이전트의 프로젝트 대화에 붙여 넣으세요.</p>
+<textarea id="request" readonly aria-label="AI에게 보낼 서비스 연결 요청">{{ORIGIN}}/mcp/service/agent.txt 를 읽고 72hours 원격 MCP를 연결해줘. 현재 프로젝트의 GitHub 저장소와 내 작업 변경사항을 확인하고, 내가 관리하는 저장소를 실제로 검사해줘. GPU 분석으로 수정 가능한 항목을 받아 기존 작업을 보존하며 수정하고 테스트해줘. 게시된 커밋만 원격 재검사할 수 있다는 점을 확인하고, 재검사 결과와 리포트까지 정리해줘. 연결 승인이나 다시 연결이 필요하면 정확히 안내해줘.</textarea>
+<button id="copy-request">연결·검사 요청 복사</button><p id="notice" role="status" aria-live="polite"></p>
+<small>별도의 프로그램 다운로드나 VPN은 필요 없습니다. AI 앱의 최초 연결 승인은 직접 눌러야 할 수 있습니다.</small></section>
+<section><h2>2. 앱에서 바로 연결하기</h2><p>Cursor 또는 VS Code가 설치된 PC에서는 아래 버튼으로 설정을 열 수 있습니다.</p>
+<a class="button" href="{{CURSOR}}">Cursor에 연결</a><a class="button" href="{{VSCODE}}">VS Code에 연결</a>
+<details><summary>다른 MCP 클라이언트 · 연결 주소</summary><p>원격 HTTP MCP를 지원하는 앱의 서버 추가 화면에 입력하세요.</p>
+<input id="endpoint" value="{{ORIGIN}}/mcp/service/rpc" readonly aria-label="원격 MCP 주소"><button id="copy-url">주소 복사</button>
+<p><a href="/mcp/service/config.json" download="72hours-mcp.json">설정 파일 받기</a> · <a href="/mcp/service/agent.txt">AI용 연결 안내</a></p>
+<small>설정 파일은 참고용입니다. 기존 MCP 설정을 덮어쓰지 마세요. 로컬 stdio만 지원하는 앱은 별도 브리지가 필요합니다.</small></details></section>
+<section><h2>어디에서 무엇이 실행되나요?</h2><p>검사·GPU 분석·리포트는 72hours 서버에서 실행되고, 코드는 본인 AI 에이전트의 프로젝트에서 수정됩니다. 검사 결과를 내려받아 다시 올릴 필요가 없습니다.</p>
+<p>공개 GitHub 저장소의 기본 브랜치를 검사합니다. 원격 재검사는 GitHub에 게시된 커밋을 확인하므로, 아직 내 PC에만 있는 수정은 로컬 테스트로 검증합니다.</p>
+<small>GPU 분석에는 몇 분이 걸릴 수 있습니다. 작업 공간은 24시간 유지되며 최대 16건의 검사·분석을 접수할 수 있습니다. 시연 주소는 터널 재시작 시 변경될 수 있습니다.</small></section>
+</main><script src="/mcp/service/connect.js" defer></script></html>

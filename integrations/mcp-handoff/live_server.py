@@ -1,6 +1,6 @@
 """Same-origin web-result handoff with scoped, expiring remote MCP URLs."""
 import argparse
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from contextvars import ContextVar
 import json
 from pathlib import Path
@@ -12,11 +12,15 @@ from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 import uvicorn
+import httpx
 
 from handoff import HandoffError, _unique_keys
 from http_server import public_origin
 from live_store import LinkStore, MAX_BODY, normalize
 from server import create_server
+from service_api import ServiceAPI
+from service_store import WorkspaceStore
+from service_server import create_service_server
 
 CURRENT = ContextVar("72hours_snapshot")
 HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
@@ -72,12 +76,14 @@ Expired/revoked connections return 404: return to {origin}/mcp/connect to issue 
 """
 
 
-def create_live_app(store, origin, port=8765):
+def create_live_app(store, origin, port=8765, service=None):
     origin = public_origin(origin)
     server = create_server(RequestSnapshot(), stateless_http=True, json_response=True,
         max_request_body_size=65536, transport_security=TransportSecuritySettings(
             allowed_hosts=[urlsplit(origin).netloc, f"127.0.0.1:{port}"], allowed_origins=[origin]))
     transport = server.streamable_http_app()
+    full_service = create_service_server(service, origin, port) if service else None
+    service_transport = full_service.streamable_http_app() if full_service else None
 
     async def read_body(request):
         if request.headers.get("origin") != origin:
@@ -145,7 +151,11 @@ def create_live_app(store, origin, port=8765):
 
     @asynccontextmanager
     async def lifespan(app):
-        async with server.session_manager.run():
+        async with AsyncExitStack() as stack:
+            await stack.enter_async_context(server.session_manager.run())
+            if full_service:
+                await stack.enter_async_context(full_service.session_manager.run())
+                await stack.enter_async_context(service.client)
             yield
 
     app = Starlette(routes=[Route("/mcp/connect", connect), Route("/mcp/connect.js", javascript),
@@ -156,6 +166,14 @@ def create_live_app(store, origin, port=8765):
 
     class ScopedTransport:
         async def __call__(self, scope, receive, send):
+            if scope['type'] == 'http' and service_transport and (
+                    scope.get('path') == '/mcp/service' or scope.get('path', '').startswith('/mcp/service/')):
+                async def service_send(message):
+                    if message['type'] == 'http.response.start':
+                        message['headers'] = list(message.get('headers', [])) + [
+                            (key.lower().encode(), value.encode()) for key, value in HEADERS.items()]
+                    await send(message)
+                return await service_transport(scope, receive, service_send)
             match = re.fullmatch(r"/mcp/h/([A-Za-z0-9_-]{43})/?", scope.get("path", ""))
             if scope["type"] != "http" or not match:
                 return await app(scope, receive, send)
@@ -185,7 +203,10 @@ def main():
     args = parser.parse_args()
     if not args.database.is_absolute() or not 1024 <= args.port <= 65535:
         parser.error("absolute database path and port 1024..65535 required")
-    app = create_live_app(LinkStore(args.database), args.public_origin, args.port)
+    service = ServiceAPI(WorkspaceStore(args.database.with_name('workspaces.sqlite3')),
+        httpx.AsyncClient(base_url='http://127.0.0.1:8000', timeout=20, trust_env=False,
+                          follow_redirects=False, limits=httpx.Limits(max_connections=8)))
+    app = create_live_app(LinkStore(args.database), args.public_origin, args.port, service)
     # Capability URLs must never appear in access logs.
     uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False, limit_concurrency=32)
 

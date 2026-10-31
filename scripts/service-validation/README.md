@@ -1,5 +1,24 @@
 # 실제 서비스 반복 검증
 
+## 지속 운영과 팀 공유
+
+이 작업은 Codex의 현재 대화에 연결된 **30분 간격 반복 작업**으로 운영합니다. 운영자는 PC와 Codex 앱을 켜 두고, 서버 진단·게시가 필요하면 VPN을 유지해야 합니다. 반복 작업은 직접 결과를 비교하고 검증 도구를 보강합니다. 같은 실패로 중복 이슈를 만들지 않고, 새 실패·원인 확정·해결 확인·실행 차단처럼 필요한 변화만 알립니다. 예약은 OS 서비스/cron이 아니라 Codex에서 관리합니다.
+
+- `/validation/`: 마지막 게시 실행, 실패 단계·작업 ID·확인된 원인·다음 조치.
+- `/validation/history.html`: 최근 100개 게시 실행 및 동일 증상의 반복 횟수. 재게시한 동일 실행은 중복 집계하지 않습니다.
+- `/validation/runs/<게시ID>/index.html`: 고정된 실행별 상세 화면. 해당 폴더의 `results.json`, `failures.json`, `handoff.md`를 개발자·AI 에이전트가 활용할 수 있습니다.
+- `handoff.md`: 재현 요청, 실제 확인된 커밋(실패 전에 확인 못했으면 미확인), job ID, 진단 근거, 다음 수정 위치, 관련 이슈를 모은 인계문서입니다.
+
+관리형 실행은 프로젝트 루트에서 다음 명령을 사용합니다. 통상적으로는 Codex 반복 작업이 직접 실행합니다.
+
+```powershell
+outputs/validation-runtime/.venv/Scripts/python.exe scripts/service-validation/campaign.py --base-url https://YOUR-SERVICE-ORIGIN --archive outputs/validation-history --server-ssh hk-server --gpu-ssh hk-gpu --discover --publish
+```
+
+회차마다 공개 저장소 최대 4개, LLM 2묶음/저장소, 실행 20분 상한입니다. LLM 표본과 공개 웹 소스 후보를 순환하고, 캠페인 프로세스 잠금으로 중복 실행을 막습니다. 본체 검사 실패 시에도 결과를 보관·게시합니다. 검색 실패는 `campaign.discovery`에 남기고 기존 후보만 검사합니다. 공개 저장소의 기본 브랜치가 바뀔 수 있으므로 실제 검사 결과의 커밋을 기준으로 비교하세요. GPU의 다른 작업이 계속 바쁘면 Codex가 새 검사 접수를 미룹니다.
+
+로그 진단은 일반 서버의 `server_diagnose.py`가 요청한 **job ID가 일치하는 예외**만 대조합니다. #83은 `_package_finding`, `FindingInput.what`, `string_too_long`, 2000자 제한 표식까지 일치할 때만 확정합니다. 원문 로그·코드·입력값을 내려받아 공개하지 않습니다. SSH 실패, 로그 만료, 알 수 없는 예외는 원인 미확정으로 기록합니다. 단순히 비슷한 API 오류라는 이유로 기존 원인에 연결하지 않습니다. 서버를 수정하거나 장애가 재등장하지 않았다는 이유만으로 해결됐다고 자동 표시하지 않습니다.
+
 서비스 코드를 import하거나 수정하지 않고 공개 웹/API로 검사합니다. 실제 엔진 결과, GPU Blue·Red 응답, 리포트 입력/출력, 재검사, 검사별 MCP 전달을 연결하고 `public/index.html`에 표시합니다. Playwright는 새 브라우저에서 주소 입력 → 검사 클릭 → 실제 리포트 표시까지 확인합니다. 영상은 녹화하지 않습니다.
 
 ## Windows 한 번 실행
@@ -59,7 +78,7 @@ python -m unittest discover -s scripts/service-validation -p test_validation.py 
 
 ```powershell
 ssh hk-server 'mkdir -p apps/72hours/validation/code'
-scp scripts/service-validation/serve.py scripts/service-validation/install_server.py scripts/service-validation/enable_route.py hk-server:apps/72hours/validation/code/
+scp scripts/service-validation/serve.py scripts/service-validation/history.html scripts/service-validation/server_diagnose.py scripts/service-validation/install_server.py scripts/service-validation/enable_route.py hk-server:apps/72hours/validation/code/
 python scripts/service-validation/publish.py --ssh hk-server --output outputs/my-validation
 ssh hk-server 'python3 apps/72hours/validation/code/install_server.py && python3 apps/72hours/validation/code/enable_route.py'
 ```

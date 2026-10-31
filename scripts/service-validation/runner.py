@@ -36,7 +36,16 @@ def mcp_handoff(client, evidence, case, scan, analyses):
         listed = json.loads(listed['content'][0]['text'])
         if listed['source']['scan_id'] != scan['scan_id'] or listed['source']['revision'] != case['source']['revision']:
             raise CheckError('MCP가 다른 검사 결과를 반환했습니다.')
-        client.rpc(path, 'tools/call', {'name': 'get_fix_prompt', 'arguments': {'fingerprint': good[0]['fingerprint']}})
+        prompt_result = client.rpc(path, 'tools/call', {'name': 'get_fix_prompt', 'arguments': {'fingerprint': good[0]['fingerprint']}})
+        try:
+            prompt_text = prompt_result['content'][0]['text']
+            prompt_data = json.loads(prompt_text.split('<local_llm_proposal>\n', 1)[1].rsplit('\n</local_llm_proposal>', 1)[0])
+            if (prompt_data['fingerprint'] != good[0]['fingerprint'] or not prompt_data.get('ai_fix_prompt')
+                    or prompt_data['source']['revision'] != case['source']['revision']
+                    or prompt_data['source']['scan_id'] != scan['scan_id']):
+                raise CheckError('MCP 수정 프롬프트의 실제 검사·항목 연결이 다릅니다.')
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise CheckError('MCP 수정 프롬프트에서 구조화된 실제 결과를 확인할 수 없습니다.') from None
         evidence.check(case, '실제 결과 MCP 전달', 'pass', '검사 ID·커밋 일치 및 실제 수정 프롬프트 수신. 결과별 연결은 검증 후 폐기합니다.')
     finally:
         client.request('POST', '/mcp/links/revoke', {'token': link['token'], 'revoke_token': link['revoke_token']},
@@ -51,6 +60,7 @@ def mcp_handoff(client, evidence, case, scan, analyses):
 
 def case_run(client, evidence, case, args, model):
     prefix = case['key']
+    case['stage'] = 'scan'
     evidence.event(prefix, '실제 검사 접수 및 대기')
     case['scan_job'] = {}
     scan = client.job(prefix + '-scan', '/api/scans', {'repo_url': case['repository']}, args.scan_timeout, case['scan_job'])
@@ -63,11 +73,15 @@ def case_run(client, evidence, case, args, model):
         if match:
             selected.append(match)
     selected += [f for f in eligible if f not in selected]
+    if selected:
+        offset = args.sample_offset % len(selected)
+        selected = selected[offset:] + selected[:offset]
     selected = selected[:args.llm_per_repo]
     analyses = []
     if not selected:
         evidence.check(case, 'GPU Blue·Red 분석', 'skipped', '실제 검사에 분석 대상이 없어 모델을 호출하지 않았습니다. 성공으로 가장하지 않습니다.')
     for index, finding in enumerate(selected):
+        case['stage'] = 'llm'
         case.setdefault('llm_jobs', []).append({'fingerprint': finding['fingerprint']})
         evidence.event(prefix, f'GPU Red/Blue 실제 분석 {index+1}/{len(selected)}')
         try:
@@ -77,6 +91,7 @@ def case_run(client, evidence, case, args, model):
             analyses.append(llm_checks(evidence, case, finding, batch, model))
         except CheckError as exc:
             evidence.check(case, 'GPU 분석 실패', 'fail', str(exc))
+    case['stage'] = 'report'
     payload = {'scan': scan['report_scan'], 'findings': scan['findings'], 'explain_results': analyses}
     report = client.request('POST', '/api/reports/plain?format=json', payload)
     report_checks(evidence, case, scan, analyses, report)
@@ -86,6 +101,7 @@ def case_run(client, evidence, case, args, model):
         evidence.check(case, fmt + ' 리포트 출력', 'pass' if expected in mime and scan['report_scan']['site_name'] in body else 'fail',
                        {'content_type': mime, 'characters': len(body)})
     if args.incident_drafts:
+        case['stage'] = 'incident_draft'
         # Explicitly synthetic workflow input. NEVER represents an actual incident or sends a filing.
         incident = {'organization': {'name': '검증용 가상 기관', 'service_name': '자동화 검증용'},
                     'discovered_at': now(), 'incident_types': ['data_leak'],
@@ -100,6 +116,7 @@ def case_run(client, evidence, case, args, model):
                            {'synthetic_incident': True, 'missing_fields': len(draft.get('missing', []))})
             case['reports'].append({'label': kind + ' 가상 사고 초안', 'path': evidence.report(prefix + '-' + kind, draft)})
     if args.mcp:
+        case['stage'] = 'mcp'
         try:
             mcp_handoff(client, evidence, case, scan, analyses)
         except CheckError as exc:
@@ -107,6 +124,7 @@ def case_run(client, evidence, case, args, model):
     else:
         evidence.check(case, 'MCP 전달', 'skipped', '--mcp를 지정하지 않았습니다.')
     if args.rescan:
+        case['stage'] = 'rescan'
         case['rescan_job'] = {}
         current = client.job(prefix + '-rescan', '/api/scans', {'repo_url': case['repository'], 'previous': scan['result']},
                              args.scan_timeout, case['rescan_job'])
@@ -130,6 +148,7 @@ def main():
     p.add_argument('--repeat', type=int, default=1)
     p.add_argument('--interval', type=int, default=60)
     p.add_argument('--llm-per-repo', type=int, default=1)
+    p.add_argument('--sample-offset', type=int, default=0, help='반복 실행마다 LLM 표본을 순환시키는 시작 위치')
     p.add_argument('--scan-timeout', type=int, default=600)
     p.add_argument('--llm-timeout', type=int, default=900)
     p.add_argument('--max-run-seconds', type=int, default=3600)
@@ -201,7 +220,7 @@ def main():
                 old = next((c for c in evidence.data['cases'] if c['key'] == key), None)
                 if old and old.get('finished_at') and old['status'] in ('passed', 'review_required'):
                     continue
-                case = {'key': key, 'repository': url, 'cycle': cycle, 'status': 'running', 'checks': []}
+                case = {'key': key, 'repository': url, 'cycle': cycle, 'status': 'running', 'checks': [], 'started_at': now()}
                 if old:
                     evidence.data['cases'].remove(old)
                 evidence.data['cases'].append(case)
@@ -210,6 +229,15 @@ def main():
                     case_run(client, evidence, case, args, model)
                 except (CheckError, KeyError, TypeError, ValueError) as exc:
                     evidence.check(case, '실행 중단 단계', 'fail', str(exc) if isinstance(exc, CheckError) else '서버 응답 계약 불일치: ' + type(exc).__name__)
+                if args.server_ssh and case.get('scan_job', {}).get('error_code') == 'SCAN_ERROR':
+                    from probe import ssh
+                    try:
+                        job_id = case['scan_job']['job_id']
+                        case['server_diagnosis'] = json.loads(ssh(args.server_ssh,
+                            'python3 apps/72hours/validation/code/server_diagnose.py ' + job_id))
+                    except (RuntimeError, OSError, ValueError, subprocess.TimeoutExpired):
+                        case['server_diagnosis'] = {'code': 'DIAGNOSTIC_UNAVAILABLE',
+                            'notice': '서버 진단 조회 실패. 원인을 단정하지 않습니다.'}
                 case['status'] = outcome(case['checks'])
                 case['finished_at'] = now()
                 evidence.event(key, case['status'])

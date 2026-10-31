@@ -105,6 +105,7 @@ class Client:
                 return result['result']
             if status == 'failed':
                 code = (result.get('error') or {}).get('code', 'JOB_FAILED')
+                target['error_code'] = str(code)[:80]
                 raise CheckError('서버 작업 실패: ' + str(code)[:80])
             time.sleep(min(self.interval, max(0, limit-time.monotonic())))
         target['status'] = 'timeout'

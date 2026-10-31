@@ -37,6 +37,7 @@
 | Playwright Chromium | 156.0.8078.4 (build 1248) | 사용자 프로필과 분리된 브라우저 검증, 영상 녹화 없음 | BSD 및 포함 구성요소별 라이선스 | https://github.com/microsoft/playwright |
 | Start Bootstrap Clean Blog / Freelancer Jekyll | 검사 시 커밋을 산출물에 기록 | 공개 웹 소스의 실제 서비스 반복 검사 대상, 앱 실행 없음 | MIT | https://github.com/StartBootstrap/startbootstrap-clean-blog / https://github.com/StartBootstrap/freelancer-jekyll |
 | octocat/Spoon-Knife | d0dd1f61b33d64e29d8bc1372a94ef6a2fee76a9 (실제 검사 커밋 별도 기록) | 공개 HTML 소스 주소를 입력하는 브라우저 검증 대상, 소스 재배포 없음 | 저장소에 명시된 라이선스 없음 | https://github.com/octocat/Spoon-Knife |
+| geekan/HowToLiveLonger | 실제 검사 커밋을 산출물에 기록 | GitHub API로 찾은 공개 Pages HTML 소스의 서비스 검사 대상, 문서 내용의 검증·앱 실행 없음 | Unlicense (GitHub API 메타데이터 기준) | https://github.com/geekan/HowToLiveLonger |
 | vLLM | 0.32.0 | GPU 서버 LLM 서빙 (OpenAI 호환 API) | Apache-2.0 | https://github.com/vllm-project/vllm |
 | Qwen3.8-27B (모델) | 2026-08 공개본 | Blue·Red 해석 LLM의 원본 모델 | Apache-2.0 | https://huggingface.co/Qwen/Qwen3.8-27B |
 | Qwen3.8-27B AWQ INT4 (양자화 체크포인트) | 커밋 5a2ee524cbc9 | L4 24GB에 올리기 위한 4비트 모델 | Apache-2.0 | https://huggingface.co/avyukth/Qwen3.8-27B-AWQ-INT4 |

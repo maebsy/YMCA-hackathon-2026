@@ -13,6 +13,12 @@ from evidence import Evidence
 from checks import report_checks, llm_checks
 from probe import Monitor
 from serve import handler
+from serve import history
+from server_diagnose import diagnose
+from diagnostics import failures
+from campaign import lock
+import subprocess
+import sys
 
 
 class ValidationTests(unittest.TestCase):
@@ -99,6 +105,52 @@ class ValidationTests(unittest.TestCase):
         for value in ('https://user:password@example.com', 'http://example.com', 'https://example.com/private'):
             with self.assertRaises(ValueError):
                 origin(value)
+
+    def test_diagnosis_requires_matching_job_and_full_evidence(self):
+        job = 'a'*32
+        records = [{'MESSAGE': 'scan '+job+' failed', '__REALTIME_TIMESTAMP': '1000000'},
+                   {'MESSAGE': 'in _package_finding\nValidationError FindingInput\nwhat\n2000 [type=string_too_long]', '__REALTIME_TIMESTAMP': '1000001'}]
+        self.assertEqual(diagnose(records, job)['code'], 'FINDING_WHAT_TOO_LONG')
+        self.assertEqual(diagnose(records, 'b'*32)['code'], 'CAUSE_NOT_CONFIRMED')
+        records[1]['__REALTIME_TIMESTAMP'] = '5000000'
+        self.assertEqual(diagnose(records, job)['code'], 'CAUSE_NOT_CONFIRMED')
+
+    def test_wrong_job_cannot_confirm_cause_and_no_raw_log_leaks(self):
+        case = {'key': 'x', 'repository': 'https://github.com/a/b', 'stage': 'scan',
+                'scan_job': {'job_id': 'a'*32, 'error_code': 'SCAN_ERROR'},
+                'server_diagnosis': {'job_id': 'b'*32, 'code': 'FINDING_WHAT_TOO_LONG'},
+                'checks': [{'name': 'scan', 'status': 'fail', 'detail': 'SCAN_ERROR'}]}
+        data = {'cases': [case], 'checks': []}
+        self.assertEqual(failures(data)[0]['cause_status'], 'unconfirmed')
+        case['server_diagnosis']['job_id'] = 'a'*32
+        self.assertEqual(failures(data)[0]['cause_status'], 'confirmed')
+
+    def test_archive_deduplicates_republication_and_rejects_unsafe_names(self):
+        archives = Path(self.tmp.name)/'releases'
+        for name in ('1000000000000000001', '1000000000000000002', 'private'):
+            folder = archives/name
+            folder.mkdir(parents=True)
+            (folder/'results.json').write_text(json.dumps(self.e.data), encoding='utf-8')
+            (folder/'index.html').write_text('ok')
+        rows = history(archives)['runs']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['id'], '1000000000000000002')
+
+    def test_campaign_excludes_concurrent_process(self):
+        path = Path(self.tmp.name)/'campaign.lock'
+        code = 'import sys; from pathlib import Path; from campaign import lock; ctx=lock(Path(sys.argv[1])); ctx.__enter__()'
+        with lock(path):
+            result = subprocess.run([sys.executable, '-c', code, str(path)], cwd=Path(__file__).parent,
+                                    capture_output=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_failures_export_survives_without_server_access(self):
+        self.e.data['cases'] = [{'key': 'x', 'stage': 'scan', 'repository': 'https://github.com/a/b',
+            'scan_job': {'job_id': 'a'*32}, 'checks': [{'name': 'scan', 'status': 'fail', 'detail': 'SCAN_ERROR'}]}]
+        self.e.save()
+        public = json.loads((self.e.public/'failures.json').read_text(encoding='utf-8'))
+        self.assertEqual(public[0]['cause_status'], 'unconfirmed')
+        self.assertIn('POST', (self.e.public/'handoff.md').read_text(encoding='utf-8'))
 
 
 if __name__ == '__main__':

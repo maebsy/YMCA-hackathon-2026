@@ -14,7 +14,7 @@ def browser_check(client, evidence, repository, timeout):
     cache = Path.cwd() / 'outputs/validation-runtime/browsers'
     if cache.exists() and 'PLAYWRIGHT_BROWSERS_PATH' not in os.environ:
         os.environ['PLAYWRIGHT_BROWSERS_PATH'] = str(cache.resolve())
-    data = {'repository': repository, 'checks': [], 'screenshots': []}
+    data = {'repository': repository, 'stage': 'browser', 'checks': [], 'screenshots': []}
     evidence.data['browser'] = data
     captured, errors = {}, []
     limit = min(client.deadline, time.monotonic() + timeout)

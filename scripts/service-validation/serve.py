@@ -1,9 +1,42 @@
 """검증 산출물만 제공하는 읽기 전용 서버. private/와 디렉터리 목록은 노출하지 않습니다."""
 import argparse
+import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
 from urllib.parse import urlsplit, unquote
+
+
+def history(archives):
+    runs = []
+    seen = set()
+    if not archives.is_dir():
+        return {'runs': runs}
+    for directory in sorted(archives.iterdir(), reverse=True):
+        if len(runs) >= 100:
+            break
+        if not re.fullmatch(r'\d{16,22}', directory.name) or directory.is_symlink() or not directory.is_dir():
+            continue
+        path = directory/'results.json'
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > 8*1024*1024:
+            continue
+        try:
+            data = json.loads(path.read_text(encoding='utf-8'))
+            identity = data.get('run_id') or data.get('started_at')
+            if identity in seen:
+                continue
+            # A partially uploaded release has no index until all publication files arrive.
+            if not (directory/'index.html').is_file():
+                continue
+            seen.add(identity)
+            checks = data.get('checks', []) + [x for c in data.get('cases', []) for x in c.get('checks', [])] + data.get('browser', {}).get('checks', [])
+            runs.append({'id': directory.name, 'started_at': data.get('started_at'), 'finished_at': data.get('finished_at'),
+                'status': data.get('status'), 'cases': len(data.get('cases', [])),
+                'counts': {k: sum(c['status'] == k for c in checks) for k in ('pass', 'fail', 'warn', 'skipped')},
+                'failures': data.get('failures', []), 'path': '/validation/runs/'+directory.name+'/index.html'})
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return {'runs': runs, 'notice': '최근 100개 게시 실행. 같은 증상의 반복 관측이며, 재등장하지 않았다는 이유만으로 해결 처리하지 않습니다.'}
 
 
 def handler(public):
@@ -17,25 +50,34 @@ def handler(public):
                 self.send_header('Content-Length', '0')
                 self.end_headers()
                 return
-            if path in ('/validation', '/validation/'):
-                name = 'index.html'
-            elif path.startswith('/validation/'):
-                name = path.removeprefix('/validation/')
-            elif path == '/':
-                name = 'index.html'
+            if path == '/validation/history.json':
+                body = json.dumps(history(public.parent/'releases'), ensure_ascii=False).encode()
+                return self.respond(body, '.json')
+            if path == '/validation/history.html':
+                return self.respond(Path(__file__).with_name('history.html').read_bytes(), '.html')
+            archive = re.fullmatch(r'/validation/runs/(\d{16,22})/([a-z0-9-]+\.(?:html|json|png|md))', path)
+            if archive:
+                root = public.parent/'releases'/archive[1]
+                if root.is_symlink() or not root.is_dir():
+                    self.send_error(404)
+                    return
+                root, name = root.resolve(), archive[2]
             else:
-                name = path.lstrip('/')
-            if not re.fullmatch(r'[a-z0-9-]+\.(html|json|png)', name):
+                root = public.resolve()
+                name = path.removeprefix('/validation/').lstrip('/') or 'index.html'
+            if not re.fullmatch(r'[a-z0-9-]+\.(html|json|png|md)', name):
                 self.send_error(404)
                 return
-            root = public.resolve()
             target = (root/name).resolve()
             if target.parent != root or not target.is_file():
                 self.send_error(404)
                 return
             body = target.read_bytes()
+            self.respond(body, target.suffix)
+
+        def respond(self, body, suffix):
             self.send_response(200)
-            self.send_header('Content-Type', {'.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png'}[target.suffix])
+            self.send_header('Content-Type', {'.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.md': 'text/plain; charset=utf-8'}[suffix])
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')

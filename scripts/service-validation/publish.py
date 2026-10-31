@@ -11,7 +11,7 @@ def publish(alias, output):
         raise ValueError('SSH config 별칭만 허용합니다.')
     public = output.resolve()/'public'
     files = sorted(p for p in public.iterdir() if p.is_file() and not p.is_symlink()
-                   and re.fullmatch(r'[a-z0-9-]+\.(html|json|png)', p.name))
+                   and re.fullmatch(r'[a-z0-9-]+\.(html|json|png|md)', p.name))
     if not {'index.html', 'results.json'} <= {p.name for p in files}:
         raise ValueError('완성된 public 산출물이 없습니다.')
     remote = 'apps/72hours/validation/releases/' + str(time.time_ns())

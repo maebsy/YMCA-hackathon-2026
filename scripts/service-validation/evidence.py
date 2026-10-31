@@ -65,10 +65,15 @@ class Evidence:
         self.save()
 
     def save(self):
+        from diagnostics import failures, handoff
+        self.data.setdefault('run_id', digest({'started_at': self.data['started_at'], 'settings': self.state['settings']})[:20])
         self.data['updated_at'] = now()
+        self.data['failures'] = scrub(failures(self.data))
         atomic_json(self.state_path, self.state)
         self.state_path.chmod(0o600)
         atomic_json(self.path, scrub(self.data))
+        atomic_json(self.public / 'failures.json', self.data['failures'])
+        (self.public / 'handoff.md').write_text(scrub(handoff(self.data, self.data['failures'])), encoding='utf-8')
         page = (Path(__file__).parent / 'dashboard.html').read_text(encoding='utf-8')
         # Also opens directly from disk, while HTTP viewers refresh results.json.
         payload = json.dumps(scrub(self.data), ensure_ascii=False).replace('<', '\\u003c').replace('&', '\\u0026')
@@ -82,7 +87,10 @@ class Evidence:
         print(f'[{stage}] {message}', flush=True)
 
     def check(self, target, name, status, detail):
-        target.setdefault('checks', []).append({'name': name, 'status': status, 'detail': scrub(detail)})
+        stage = target.get('stage', 'service')
+        job = (target.get('llm_jobs') or [{}])[-1] if stage == 'llm' else target.get('rescan_job' if stage == 'rescan' else 'scan_job', {})
+        target.setdefault('checks', []).append({'name': name, 'status': status, 'detail': scrub(detail),
+                                               'stage': stage, 'job_id': job.get('job_id')})
         self.save()
 
     def report(self, name, report):

@@ -1,7 +1,9 @@
 # 72hours MCP — AI 대화로 서비스 이용
 
-운영 중인 서비스의 `/mcp/service`에서 **연결·검사 요청 복사**를 누르고 코딩 에이전트에게
-붙여 넣습니다. Cursor·VS Code는 같은 화면의 연결 버튼도 사용할 수 있습니다.
+운영 중인 서비스의 `/mcp/service`에서 서버 URL을 복사해 Claude의 custom connector,
+ChatGPT의 custom MCP server 또는 기타 AI의 원격 MCP 설정에 등록합니다. 현재 데모 인증은 None입니다.
+Cursor·VS Code는 같은 화면의 연결 버튼도 사용할 수 있습니다. 등록 후 `service_info` 호출로 연결을 확인합니다.
+웹 채팅은 저장소 URL로 서비스를 이용하며, 직접 코드 수정은 파일 접근 권한이 있는 코딩 에이전트에서 수행합니다.
 원격 주소는 `/mcp/service/rpc`, 에이전트용 안내는 `/mcp/service/agent.txt`입니다.
 Python·CMD·결과 파일 설치 없이 원격 HTTP MCP를 지원하는 클라이언트에서 사용합니다.
 클라이언트 자체의 연결 승인·재접속은 필요할 수 있으며, stdio 전용 앱은 별도 브리지가 필요합니다.

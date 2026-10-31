@@ -1,6 +1,7 @@
 # 대화에서 사용하는 전체 서비스 MCP (#75)
 
-웹: `/mcp/service` — 연결 문장 복사, Cursor·VS Code 설치 링크, 선택적 JSON 설정 다운로드.
+웹: `/mcp/service` — Claude·ChatGPT·기타 AI별 서버 URL 등록 안내, Cursor·VS Code 설치 링크, 선택적 JSON 설정 다운로드.
+연결 완료는 클라이언트에서 `service_info`를 호출해 확인합니다. 웹 채팅에 로컬 파일 수정 권한이 생기는 것은 아닙니다.
 AI 안내: `/mcp/service/agent.txt`. 원격 MCP: `/mcp/service/rpc` (Streamable HTTP, stateless JSON).
 기존 `/mcp/connect`와 검사별 `/mcp/h/...`는 유지합니다.
 

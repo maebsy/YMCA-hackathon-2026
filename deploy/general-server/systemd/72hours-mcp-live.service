@@ -1,0 +1,16 @@
+[Unit]
+Description=72hours private per-scan MCP handoff
+After=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/72hours/mcp.env
+ExecStart=%h/apps/72hours/mcp/.venv/bin/python %h/apps/72hours/mcp/live-current/live_server.py --database %h/apps/72hours/mcp/private/links.sqlite3 --public-origin ${MCP_PUBLIC_ORIGIN}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

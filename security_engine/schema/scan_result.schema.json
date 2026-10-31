@@ -1,0 +1,617 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/maebsy/YMCA-hackathon-2026/security_engine/schema/scan_result.schema.json",
+  "title": "보안엔진 검사 결과 (schema_version 1.0)",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "engine",
+    "scan_id",
+    "scanned_at",
+    "duration_sec",
+    "target",
+    "status",
+    "coverage",
+    "suppressions",
+    "summary",
+    "comparison",
+    "dependency_upgrades",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "engine": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "scan_id": {
+      "type": "string",
+      "description": "이번 검사 고유 ID (uuid4 hex)"
+    },
+    "scanned_at": {
+      "type": "string",
+      "description": "UTC ISO 8601, 예: 2026-10-30T14:20:49Z"
+    },
+    "duration_sec": {
+      "type": "number"
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "path",
+        "repo_url",
+        "commit_sha"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "repo_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commit_sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial",
+        "failed"
+      ],
+      "description": "complete: 모든 도구 정상(또는 대상 없음) / partial: 일부 도구 실패·미설치 / failed: 정상 실행된 도구 없음"
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "osv",
+        "semgrep",
+        "gitleaks"
+      ],
+      "additionalProperties": {
+        "$ref": "#/$defs/coverage"
+      },
+      "description": "osv·semgrep·gitleaks·config. semgrep = 코드 검사기(Opengrep 우선, 실제 프로그램은 engine)"
+    },
+    "suppressions": {
+      "type": "array",
+      "description": "저장소에 있는 검사 예외 설정 (엔진은 무시하고 검사함). '고친 척' 탐지용",
+      "items": {
+        "type": "object",
+        "required": [
+          "tool",
+          "file",
+          "kind",
+          "detail"
+        ],
+        "properties": {
+          "tool": {
+            "enum": [
+              "osv",
+              "semgrep",
+              "gitleaks",
+              "config"
+            ]
+          },
+          "file": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "ignore_config",
+              "ignore_file",
+              "custom_config"
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "open",
+        "by_severity",
+        "by_category",
+        "by_status",
+        "by_change",
+        "flagged"
+      ],
+      "properties": {
+        "open": {
+          "type": "integer",
+          "description": "status가 code_issue인 개수"
+        },
+        "by_severity": {
+          "type": "object",
+          "description": "열린 문제만 집계"
+        },
+        "by_category": {
+          "type": "object",
+          "description": "열린 문제만 집계"
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "by_change": {
+          "type": "object"
+        },
+        "flagged": {
+          "type": "integer"
+        }
+      }
+    },
+    "comparison": {
+      "description": "previous를 줬을 때만 채움. 첫 검사면 null",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "base_scan_id",
+            "base_scanned_at",
+            "base_commit_sha",
+            "new",
+            "persisting",
+            "resolved",
+            "unverifiable"
+          ],
+          "properties": {
+            "base_scan_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "base_scanned_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "base_commit_sha": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "new": {
+              "type": "integer"
+            },
+            "persisting": {
+              "type": "integer"
+            },
+            "resolved": {
+              "type": "integer"
+            },
+            "unverifiable": {
+              "type": "integer"
+            }
+          }
+        }
+      ]
+    },
+    "dependency_upgrades": {
+      "type": "array",
+      "description": "패키지별 업그레이드 묶음: target_version으로 올리면 fixes의 문제들이 해결됨",
+      "items": {
+        "type": "object",
+        "required": [
+          "ecosystem",
+          "name",
+          "current_version",
+          "lockfile",
+          "target_version",
+          "fixes",
+          "unfixable",
+          "max_severity"
+        ],
+        "properties": {
+          "ecosystem": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "current_version": {
+            "type": "string"
+          },
+          "lockfile": {
+            "type": "string"
+          },
+          "target_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fixes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "unfixable": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_severity": {
+            "$ref": "#/$defs/severity"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "$defs": {
+    "severity": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "unknown"
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "status",
+        "state",
+        "category",
+        "message",
+        "version",
+        "count",
+        "duration_sec"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "not_installed",
+            "no_target",
+            "error",
+            "skipped"
+          ]
+        },
+        "state": {
+          "enum": [
+            "checked",
+            "out_of_scope"
+          ]
+        },
+        "category": {
+          "enum": [
+            "dependency",
+            "code",
+            "secret",
+            "config"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": "integer"
+        },
+        "duration_sec": {
+          "type": "number"
+        },
+        "engine": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "실제 실행한 프로그램 (semgrep 항목: opengrep 또는 semgrep, config: builtin)"
+        },
+        "registry_used": {
+          "type": "boolean",
+          "description": "semgrep: 이번 검사에서 레지스트리 규칙(p/default 등)을 실제로 썼는지. false면 지난번 레지스트리 규칙 결과는 재검사에서 '확인 불가'로 둔다"
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "fingerprint",
+        "tool",
+        "category",
+        "rule_id",
+        "title",
+        "message",
+        "severity",
+        "status",
+        "status_label",
+        "change",
+        "first_seen",
+        "location",
+        "package",
+        "evidence",
+        "cwe",
+        "aliases",
+        "references",
+        "published",
+        "flags",
+        "remediation"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string",
+          "description": "같은 문제 식별자. 예: semgrep:3f2a…, 중복이면 #2"
+        },
+        "tool": {
+          "enum": [
+            "osv",
+            "semgrep",
+            "gitleaks",
+            "config"
+          ]
+        },
+        "category": {
+          "enum": [
+            "dependency",
+            "code",
+            "secret",
+            "config"
+          ]
+        },
+        "rule_id": {
+          "type": "string",
+          "description": "osv: CVE/GHSA ID, semgrep: 규칙 ID(vibe-coding/… = 우리 규칙), gitleaks: 규칙 ID, config: config/… (자체 설정 검사기)"
+        },
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "status": {
+          "enum": [
+            "code_issue",
+            "code_resolved",
+            "runtime_check_needed",
+            "out_of_scope"
+          ]
+        },
+        "status_label": {
+          "type": "string"
+        },
+        "change": {
+          "enum": [
+            "new",
+            "persisting",
+            "resolved",
+            "unverifiable"
+          ]
+        },
+        "first_seen": {
+          "type": "string"
+        },
+        "resolved_at": {
+          "type": "string"
+        },
+        "location": {
+          "type": "object",
+          "required": [
+            "file",
+            "start_line",
+            "end_line"
+          ],
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "검사 폴더 기준 상대 경로, '/' 구분"
+            },
+            "start_line": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "end_line": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "package": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "name",
+                "version",
+                "ecosystem",
+                "fixed_versions"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "ecosystem": {
+                  "type": "string"
+                },
+                "fixed_versions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "required": [
+            "snippet",
+            "context"
+          ],
+          "properties": {
+            "snippet": {
+              "type": "string",
+              "description": "문제 코드 (비밀값은 가려짐)"
+            },
+            "context": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "start_line",
+                    "lines"
+                  ],
+                  "properties": {
+                    "start_line": {
+                      "type": "integer"
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "masked_secret": {
+              "type": "string"
+            },
+            "entropy": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "cwe": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "published": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "suppressed_by_comment",
+              "ignored_by_config",
+              "file_removed",
+              "lockfile_removed",
+              "rotate_secret",
+              "likely_public_key",
+              "third_party_code"
+            ]
+          }
+        },
+        "remediation": {
+          "type": "object",
+          "required": [
+            "kind",
+            "target_version",
+            "autofix"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "upgrade_dependency",
+                "no_fix_available",
+                "code_change",
+                "rotate_secret",
+                "config_change"
+              ]
+            },
+            "target_version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "autofix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "raw": {
+          "description": "--include-raw일 때만. 스캐너 원본 (비밀값은 가려짐)"
+        }
+      }
+    }
+  }
+}

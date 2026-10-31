@@ -1,6 +1,6 @@
 -- REVIEW REQUIRED: apply AFTER the reviewed #7 schema, never automatically at app startup.
--- Compatible with docs/7-db-design db-schema.sql blob 4e04ffaecb5c34306b886603e41855c049fc1345.
--- No table/data deletion. The owning DB reviewer must reconcile these additions into #7.
+-- Apply after docs/db-schema.sql; also compatible with the original #7 six-table draft.
+-- No table/data deletion. Shared fields remain idempotent for existing installations.
 begin;
 
 alter table public.finding drop constraint if exists finding_explain_status_check;
@@ -34,6 +34,17 @@ create table if not exists public.llm_job (
 create index if not exists llm_job_queue_idx on public.llm_job(created_at) where status = 'queued';
 create index if not exists llm_job_lease_idx on public.llm_job(lease_until) where status = 'running';
 alter table public.llm_job enable row level security;
+-- db-schema.sql 과 같은 이유로 Supabase 클라이언트 역할의 기본 권한을 회수합니다 (TRUNCATE는 RLS를 우회)
+do $$
+declare client text;
+begin
+  foreach client in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = client) then
+      execute format('revoke all on public.llm_job from %I', client);
+      execute format('revoke all on all sequences in schema public from %I', client);
+    end if;
+  end loop;
+end $$;
 -- Match #7: no anon/authenticated policies; access goes through FastAPI owner checks.
 revoke all on public.llm_job from public;
 

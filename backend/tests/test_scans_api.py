@@ -191,3 +191,78 @@ def test_auth_off_by_default(fake_scan_repo):
     assert not job_settings.llm_jobs_enabled and not job_settings.scan_require_auth
     with TestClient(app) as client:
         assert client.post("/api/scans", json={"repo_url": URL}).status_code == 202
+
+
+# ── 대기열 상한의 동시성 (#55 리뷰): 정원 확인과 접수가 원자적이어야 합니다 ──
+import asyncio  # noqa: E402
+import threading  # noqa: E402
+
+from fastapi import Response  # noqa: E402
+
+
+class SlowStore:
+    """DB 저장이 늦는 상황(20ms). fail=True 이면 저장이 실패합니다."""
+
+    def __init__(self):
+        self.rows, self.fail, self.lock = [], False, threading.Lock()
+
+    def create(self, job_id, repo_url, user):
+        time.sleep(0.02)
+        if self.fail:
+            raise RuntimeError("db down")
+        with self.lock:
+            self.rows.append(job_id)
+
+
+@pytest.mark.anyio
+async def test_concurrent_posts_never_exceed_queue_cap(monkeypatch):
+    release = asyncio.Event()
+
+    async def stuck_worker(job_id, body, store):  # 끝나지 않는 검사
+        await release.wait()
+
+    monkeypatch.setattr(scans, "_worker", stuck_worker)
+    monkeypatch.setattr(scans, "_active", 0)
+    monkeypatch.setattr(scans, "_tasks", set())
+    store = SlowStore()
+
+    async def post():
+        try:
+            return await scans.start_scan(scans.ScanRequest(repo_url=URL), Response(), store, None)
+        except HTTPException as exc:
+            return exc.status_code
+
+    results = await asyncio.gather(*(post() for _ in range(25)))
+    accepted = [r for r in results if isinstance(r, dict)]
+    assert len(accepted) == scans.MAX_ACTIVE
+    assert results.count(429) == 25 - scans.MAX_ACTIVE
+    assert len(store.rows) == scans.MAX_ACTIVE  # 거절된 요청은 DB 행을 만들지 않음
+    assert scans._active == scans.MAX_ACTIVE
+
+    release.set()  # 검사가 끝나면 자리가 모두 돌아옴
+    await asyncio.gather(*list(scans._tasks))
+    await asyncio.sleep(0)
+    assert scans._active == 0 and not scans._tasks
+
+
+@pytest.mark.anyio
+async def test_storage_failure_and_cancel_return_the_slot(monkeypatch):
+    monkeypatch.setattr(scans, "_active", 0)
+    monkeypatch.setattr(scans, "_tasks", set())
+    monkeypatch.setattr(scans, "MAX_ACTIVE", 1)
+    store = SlowStore()
+    store.fail = True
+
+    with pytest.raises(HTTPException) as caught:
+        await scans.start_scan(scans.ScanRequest(repo_url=URL), Response(), store, None)
+    assert caught.value.status_code == 503
+    assert scans._active == 0  # 저장 실패 → 자리 반환
+
+    store.fail = False
+    pending = asyncio.ensure_future(scans.start_scan(scans.ScanRequest(repo_url=URL), Response(), store, None))
+    await asyncio.sleep(0.005)  # DB 저장 도중 요청이 끊김
+    assert scans._active == 1
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert scans._active == 0  # 요청 취소 → 자리 반환

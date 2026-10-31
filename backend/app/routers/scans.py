@@ -37,6 +37,25 @@ MAX_RUNNING = 2
 MAX_ACTIVE = 10  # 이 프로세스에서 실행 중 + 대기 중인 검사. 넘으면 429로 거절해 대기열이 끝없이 쌓이지 않게 합니다
 _slots = asyncio.Semaphore(MAX_RUNNING)
 _tasks: set[asyncio.Task] = set()
+_active = 0  # 예약 + 실행 중 + 대기 중. 이벤트 루프 안에서만 바꾸므로 락 없이 원자적입니다
+
+
+def _reserve_slot() -> None:
+    global _active
+    if _active >= MAX_ACTIVE:
+        raise HTTPException(429, detail={"code": "SCAN_QUEUE_FULL", "message": "검사가 몰려 있습니다. 1~2분 뒤 다시 시도해 주세요."},
+                            headers={"Retry-After": "60"})
+    _active += 1
+
+
+def _release_slot() -> None:
+    global _active
+    _active -= 1
+
+
+def _release_task(task: asyncio.Task) -> None:
+    _tasks.discard(task)
+    _release_slot()
 logger = logging.getLogger(__name__)
 PERSIST_RETRY_DELAYS = (1, 2)
 
@@ -258,18 +277,22 @@ async def start_scan(body: ScanRequest, response: Response, store: StoreDep, use
         if previous is None:
             raise HTTPException(404, "PREVIOUS_SCAN_NOT_FOUND")
         body = body.model_copy(update={"previous": previous})
-    if len(_tasks) >= MAX_ACTIVE:
-        raise HTTPException(429, detail={"code": "SCAN_QUEUE_FULL", "message": "검사가 몰려 있습니다. 1~2분 뒤 다시 시도해 주세요."},
-                            headers={"Retry-After": "60"})
-    job_id = uuid.uuid4().hex
-    response.headers["Cache-Control"] = "no-store"
+    # 정원 확인과 예약 사이에 await가 없어야 동시 요청이 같은 빈자리를 함께 보지 않습니다 (#55 리뷰)
+    _reserve_slot()
+    task = None
     try:
-        await run_in_threadpool(store.create, job_id, body.repo_url.strip(), user)
-    except Exception:
-        raise HTTPException(503, "SCAN_STORAGE_UNAVAILABLE") from None
-    task = asyncio.create_task(_worker(job_id, body, store))
-    _tasks.add(task)
-    task.add_done_callback(_tasks.discard)
+        job_id = uuid.uuid4().hex
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            await run_in_threadpool(store.create, job_id, body.repo_url.strip(), user)
+        except Exception:
+            raise HTTPException(503, "SCAN_STORAGE_UNAVAILABLE") from None
+        task = asyncio.create_task(_worker(job_id, body, store))
+        _tasks.add(task)
+        task.add_done_callback(_release_task)
+    finally:
+        if task is None:  # 저장 실패·요청 취소: 예약한 자리를 돌려줍니다
+            _release_slot()
     return {"job_id": job_id, "status": "queued"}
 
 

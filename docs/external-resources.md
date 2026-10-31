@@ -70,6 +70,7 @@
 | Semantic Versioning 2.0.0 | 사전 출시 버전과 정식 버전의 비교 정답 근거(본문 미복제) | CC BY 3.0 | https://semver.org/ |
 | CISA KEV 카탈로그 | 실제 공격에 쓰인 취약점 목록 조회 (위험도 해석) | 미국 정부 공개 자료 | https://www.cisa.gov/known-exploited-vulnerabilities-catalog |
 | FIRST EPSS API | CVE별 30일 내 악용 확률 조회 (위험도 해석) | 무료 공개, 등록 불필요 | https://www.first.org/epss/api |
+| Algolia DocSearch 공식 문서 | 브라우저 검색 전용 키의 공개 정책과 LLM 수정 제안의 독립 의미 검토 근거(#100) | 문서 링크 참조(본문·SDK·키 원문 미복제) | https://docsearch.algolia.com/docs/docsearch-program/ |
 
 ## 사전 보유 코드
 

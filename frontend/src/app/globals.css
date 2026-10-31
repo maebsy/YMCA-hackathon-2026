@@ -1,0 +1,209 @@
+:root {
+  --bg: #0a0a0a;
+  --surface: #111113;
+  --surface-2: #18181b;
+  --line: #27272a;
+  --fg: #fafafa;
+  --muted: #a1a1aa;
+  --accent: #d4ff3a;
+  --act: #ff5f56;
+  --attend: #ff9f43;
+  --trackstar: #ffd43b;
+  --track: #71717a;
+  --mono: "JetBrains Mono", monospace;
+  --sans: "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  margin: 0;
+}
+
+.font-mono {
+  font-family: var(--mono);
+}
+
+/* 미세한 배경 코드 에디터 그리드 */
+.bg-grid {
+  background-size: 36px 36px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+}
+
+.glow-orb {
+  background: radial-gradient(circle, rgba(212, 255, 58, 0.09) 0%, rgba(10, 10, 10, 0) 70%);
+}
+
+/* 브라우저/터미널 크롬 상단바 */
+.chrome-bar {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  background: #0e0e10;
+  border-bottom: 1px solid var(--line);
+}
+
+.chrome-bar .dots {
+  display: flex;
+  gap: 6px;
+}
+
+.chrome-bar .dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--line);
+  display: inline-block;
+}
+
+.chrome-bar .dots i:nth-child(1) { background: #ff5f5688; }
+.chrome-bar .dots i:nth-child(2) { background: #ffbd2e88; }
+.chrome-bar .dots i:nth-child(3) { background: #27c93f88; }
+
+/* 네비게이션 탭 활성 상태 */
+.nav-btn.active {
+  background: var(--accent) !important;
+  color: #0a0a0a !important;
+  font-weight: 700 !important;
+}
+
+/* 5단계 미니 파이프라인 배지 */
+.step-pill {
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--bg);
+}
+
+.step-pill.done {
+  color: var(--fg);
+  border-color: #3f3f46;
+}
+
+.step-pill.hl {
+  color: #0a0a0a;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+/* 환경 선택 칩 */
+.os-chip, .host-chip {
+  padding: 3px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--bg);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.os-chip:hover, .host-chip:hover {
+  color: var(--fg);
+}
+
+.active-chip {
+  color: var(--fg) !important;
+  border-color: var(--accent) !important;
+  background: rgba(212, 255, 58, 0.08) !important;
+}
+
+/* SSVC 위험도 알약 배지 (프론트 레퍼런스 1:1 매칭) */
+.pill-act {
+  font: 700 11px var(--mono);
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--act);
+  border: 1px solid var(--act);
+  background: rgba(255, 95, 86, 0.1);
+}
+
+.pill-attend {
+  font: 700 11px var(--mono);
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--attend);
+  border: 1px solid var(--attend);
+  background: rgba(255, 159, 67, 0.1);
+}
+
+.pill-trackstar {
+  font: 700 11px var(--mono);
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--trackstar);
+  border: 1px solid var(--trackstar);
+  background: rgba(255, 212, 59, 0.1);
+}
+
+.pill-ok {
+  font: 700 11px var(--mono);
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  background: rgba(212, 255, 58, 0.12);
+}
+
+/* 목록 행 선택 스타일 */
+.finding-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.finding-row:hover {
+  background-color: #16161a;
+}
+
+.finding-row.selected {
+  background-color: #18181d;
+  border-left: 3px solid var(--accent);
+}
+
+/* 3D 카드 틸트 효과 */
+.tilt-card {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+  transform-style: preserve-3d;
+}
+
+/* 라이트 모드 테마 토큰 */
+:root[data-theme="light"] {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --line: #e4e4e7;
+  --fg: #09090b;
+  --muted: #71717a;
+  --accent: #4d7c0f;
+  --act: #dc2626;
+  --attend: #c2410c;
+  --trackstar: #a16207;
+}
+
+:root[data-theme="light"] body,
+:root[data-theme="light"] .bg-\[\#0a0a0a\] {
+  background-color: #fafafa !important;
+  color: #09090b !important;
+}
+
+:root[data-theme="light"] .bg-\[\#111113\] {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+}
+
+:root[data-theme="light"] .border-\[\#27272a\] {
+  border-color: #e4e4e7 !important;
+}
+
+:root[data-theme="light"] .text-white,
+:root[data-theme="light"] .text-\[\#fafafa\] {
+  color: #09090b !important;
+}
+
+:root[data-theme="light"] .chrome-bar {
+  background-color: #f4f4f5 !important;
+}

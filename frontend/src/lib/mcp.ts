@@ -1,7 +1,8 @@
 // 웹 검사 결과 → MCP 전달 (integrations/mcp-handoff).
-// MCP 서버는 `/api/llm/explain` 응답 형식의 JSON 파일과 검사 대상 저장소·커밋을 실행 인자로 받습니다.
-// 여기서는 그 파일과 클라이언트 설정을 만듭니다. 전달 조건은 서버(handoff.py `_reason`)와 같게 계산해
-// 화면의 "전달 가능 N건"이 실제 서버 동작과 어긋나지 않게 합니다. 서버가 최종 판정을 다시 합니다.
+// MCP 서버는 `/api/llm/explain` 응답 형식의 JSON 파일을 읽습니다. 파일 안 `source`에 검사 대상 저장소·커밋·시각을
+// 넣어 두면 서버를 `--revision` 없이 띄웠을 때 호출마다 최신 파일을 읽습니다(재검사해도 설정·재시작 불필요).
+// 파일 이름은 저장소별로 고정해 같은 저장소를 다시 검사하면 같은 파일을 덮어씁니다.
+// 전달 조건은 서버(handoff.py `_reason`)와 같게 계산해 화면의 "전달 가능 N건"이 서버 동작과 어긋나지 않게 합니다.
 import type { OS } from "@/types/security";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -65,7 +66,11 @@ export type Handoff =
       repository: string;
       revision: string;
       fileName: string;
-      snapshot: { mode: "red_blue"; results: any[] };
+      snapshot: {
+        mode: "red_blue";
+        source: { repository: string; revision: string; generated_at: string; tool: "72hours-web" };
+        results: any[];
+      };
       ready: number;
       blocked: { reason: BlockReason; count: number }[];
     };
@@ -96,12 +101,20 @@ export function buildHandoff(last: any): Handoff {
     else ready += 1;
   }
   const [owner, repo] = repository.split("/");
+  const rev = revision.toLowerCase();
+  // 검사 시각이 있으면 그 값을, 없으면 지금 시각을 씁니다 (MCP list_findings 의 source.generated_at)
+  const scannedAt = last.result?.scanned_at ?? last.reportInput?.scan?.scanned_at;
+  const generatedAt = typeof scannedAt === "string" && scannedAt.length <= 40 ? scannedAt : new Date().toISOString();
   return {
     ok: true,
     repository,
-    revision: revision.toLowerCase(),
-    fileName: `72hours-mcp-${owner}-${repo}-${revision.slice(0, 7).toLowerCase()}.json`,
-    snapshot: { mode: "red_blue", results: picked },
+    revision: rev,
+    fileName: `72hours-mcp-${owner}-${repo}.json`,
+    snapshot: {
+      mode: "red_blue",
+      source: { repository, revision: rev, generated_at: generatedAt, tool: "72hours-web" },
+      results: picked,
+    },
     ready,
     blocked: [...counts].map(([reason, count]) => ({ reason, count })),
   };
@@ -125,7 +138,10 @@ const PATHS: Record<OS, { python: string; server: string; download: (f: string) 
   },
 };
 
-/** client.example.json 과 같은 `mcpServers` 설정. 저장소·커밋·파일 이름은 채워서 줍니다 */
+/**
+ * client.example.json 과 같은 `mcpServers` 설정 (최초 1회만 붙여 넣기).
+ * `--revision` 없이 띄워 MCP가 호출마다 최신 파일을 읽게 하고, `--repository`로 저장소를 고정합니다.
+ */
 export function clientConfig(h: Extract<Handoff, { ok: true }>, os: OS): string {
   const p = PATHS[os];
   return JSON.stringify(
@@ -133,7 +149,7 @@ export function clientConfig(h: Extract<Handoff, { ok: true }>, os: OS): string 
       mcpServers: {
         "72hours-handoff": {
           command: p.python,
-          args: [p.server, "--results", p.download(h.fileName), "--repository", h.repository, "--revision", h.revision],
+          args: [p.server, "--results", p.download(h.fileName), "--repository", h.repository],
           env: { PYTHONIOENCODING: "utf-8" },
         },
       },

@@ -144,40 +144,26 @@ def _python(os_: TargetOS) -> str:
     return "py" if os_ == "windows" else "python3"
 
 
-def _upgrade_lines(manager: PackageManager | None, pkg: str, ver: str, os_: TargetOS) -> list[str] | None:
+def _dependency_commands(
+    manager: PackageManager | None, pkg: str, ver: str, os_: TargetOS,
+) -> tuple[list[str] | None, list[str] | None]:
     def q(value: str) -> str:
         return quote(os_, value)
 
+    p = q(pkg)
     return {
-        "npm": [f"npm install {q(f'{pkg}@{ver}')}"],
-        "pnpm": [f"pnpm add {q(f'{pkg}@{ver}')}"],
-        "yarn": [f"yarn add {q(f'{pkg}@{ver}')}"],
-        "bun": [f"bun add {q(f'{pkg}@{ver}')}"],
-        "pip": [f"{_python(os_)} -m pip install {q(f'{pkg}>={ver}')}"],
-        "uv": [f"uv add {q(f'{pkg}>={ver}')}"],
-        "poetry": [f"poetry add {q(f'{pkg}@^{ver}')}"],
-        "composer": [f"composer require {q(f'{pkg}:^{ver}')}"],
-        "bundler": [f"bundle update {q(pkg)}"],
-        "go": [f"go get {q(pkg + '@v' + ver.lstrip('v'))}", "go mod tidy"],
-        "cargo": [f"cargo update -p {q(pkg)} --precise {q(ver)}"],
-    }.get(manager or "")
-
-
-def _verify_lines(manager: PackageManager | None, pkg: str, os_: TargetOS) -> list[str] | None:
-    p = quote(os_, pkg)
-    return {
-        "npm": [f"npm ls {p}"],
-        "pnpm": [f"pnpm why {p}"],
-        "yarn": [f"yarn why {p}"],
-        "bun": ["bun pm ls"],
-        "pip": [f"{_python(os_)} -m pip show {p}"],
-        "uv": [f"uv pip show {p}"],
-        "poetry": [f"poetry show {p}"],
-        "composer": [f"composer show {p}"],
-        "bundler": [f"bundle info {p}"],
-        "go": [f"go list -m {p}"],
-        "cargo": [f"cargo tree -i {p}"],
-    }.get(manager or "")
+        "npm": ([f"npm install {q(f'{pkg}@{ver}')}"], [f"npm ls {p}"]),
+        "pnpm": ([f"pnpm add {q(f'{pkg}@{ver}')}"], [f"pnpm why {p}"]),
+        "yarn": ([f"yarn add {q(f'{pkg}@{ver}')}"], [f"yarn why {p}"]),
+        "bun": ([f"bun add {q(f'{pkg}@{ver}')}"], ["bun pm ls"]),
+        "pip": ([f"{_python(os_)} -m pip install {q(f'{pkg}>={ver}')}"], [f"{_python(os_)} -m pip show {p}"]),
+        "uv": ([f"uv add {q(f'{pkg}>={ver}')}"], [f"uv pip show {p}"]),
+        "poetry": ([f"poetry add {q(f'{pkg}@^{ver}')}"], [f"poetry show {p}"]),
+        "composer": ([f"composer require {q(f'{pkg}:^{ver}')}"], [f"composer show {p}"]),
+        "bundler": ([f"bundle update {p}"], [f"bundle info {p}"]),
+        "go": ([f"go get {q(pkg + '@v' + ver.lstrip('v'))}", "go mod tidy"], [f"go list -m {p}"]),
+        "cargo": ([f"cargo update -p {p} --precise {q(ver)}"], [f"cargo tree -i {p}"]),
+    }.get(manager or "", (None, None))
 
 
 def _dependency(finding: FindingInput, manager, oses) -> list[GuideAction]:
@@ -217,19 +203,20 @@ def _dependency(finding: FindingInput, manager, oses) -> list[GuideAction]:
         manual.append(f"사용하는 패키지 관리자로 {pkg} 를 {ver} 이상으로 올립니다 (lockfile 을 찾지 못했습니다)")
     raw_lockfile = finding.file_path or (finding.fix_hint.lockfile if finding.fix_hint else None)
     lockfile = safe_path(raw_lockfile)
+    commands_by_os = {o: _dependency_commands(manager, pkg, ver, o) for o in oses}
     actions = [
         GuideAction(
             id="upgrade_dependency",
             title=f"{pkg} 를 {ver} 이상으로 올리기",
             why="고쳐진 버전으로 올리면 이 취약점이 사라집니다",
-            commands=_blocks(oses, lambda o: _upgrade_lines(manager, pkg, ver, o)),
+            commands=_blocks(oses, lambda o: commands_by_os[o][0]),
             manual_steps=manual,
         ),
         GuideAction(
             id="verify_dependency",
             title="설치된 버전 확인",
             why=f"{ver} 이상이 설치됐는지 확인합니다",
-            commands=_blocks(oses, lambda o: _verify_lines(manager, pkg, o)),
+            commands=_blocks(oses, lambda o: commands_by_os[o][1]),
         ),
     ]
     if raw_lockfile and manager:

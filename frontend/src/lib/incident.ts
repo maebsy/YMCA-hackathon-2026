@@ -219,6 +219,19 @@ export function scanActions(findings: ScanFinding[], pendingIds: string[]): stri
   return actions.slice(0, 30);
 }
 
+/** 검사를 실행했다는 사실 자체도 조치 기록입니다(점검 실시). 수정·재검사 전이라도 가져올 수 있게 한 줄로 만듭니다. */
+export function scanCheckLine(repo: string, findings: { decision?: string }[]): string {
+  const name = repo.replace(/^https:\/\/github\.com\//, "").slice(0, 200);
+  const urgent = findings.filter(finding => finding.decision === "act").length;
+  return `저장소 보안 점검 실시: ${name} · 발견 ${findings.length}건${urgent ? `(지금 바로 고칠 것 ${urgent}건)` : ""}`;
+}
+
+/** 원인 후보로 먼저 고를 만한 발견: 위험도 critical·high, 최대 limit건 */
+export function urgentEvidence<T extends { finding: unknown }>(candidates: T[], limit = 10): T[] {
+  const severity = (item: T) => (item.finding && typeof item.finding === "object" ? String((item.finding as Record<string, unknown>).severity ?? "") : "");
+  return candidates.filter(item => ["critical", "high"].includes(severity(item))).slice(0, limit);
+}
+
 export function mergeActions(current: string, additions: string[]): string {
   const lines = current.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   for (const line of additions) if (!lines.includes(line)) lines.push(line);

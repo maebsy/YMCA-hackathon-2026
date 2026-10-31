@@ -6,7 +6,7 @@ import { useIncident, type IncidentEvidence } from "./incident-provider";
 import { useRepository } from "./repository-provider";
 import { Notice } from "./ui/notice";
 import { useClipboard } from "./ui/clipboard";
-import { autoSuggestions, draftBlockers, getAssessmentGaps, incidentTypeLabels, koreaNow, mergeActions, remainingQuestions, scanActions, type RemainingQuestion } from "@/lib/incident";
+import { autoSuggestions, draftBlockers, getAssessmentGaps, incidentTypeLabels, koreaNow, mergeActions, remainingQuestions, scanActions, scanCheckLine, urgentEvidence, type RemainingQuestion } from "@/lib/incident";
 import type { Deadline, FilingKind, IncidentForm, IncidentType } from "@/types/incident";
 
 const kinds: FilingKind[] = ["incident_24h", "privacy_72h"];
@@ -96,8 +96,11 @@ function Evidence() {
     return [{ repo: repository.resultRepo, fingerprint: String(finding.fingerprint), title: String(finding.title || finding.fingerprint), finding: value }];
   });
   if (!candidates.length) return null;
-  return <details className="incident-disclosure"><summary>원인 후보로 연결할 발견 <span className="muted">선택 · {incident.evidence.length}/50</span></summary>
+  const urgent = urgentEvidence(candidates).filter(item => !incident.evidence.some(value => value.repo === item.repo && value.fingerprint === item.fingerprint));
+  return <details className="incident-disclosure" open><summary>원인 후보로 연결할 발견 <span className="muted">선택 · {incident.evidence.length}/50</span></summary>
     <p className="field-hint">고른 발견은 초안의 원인 칸에 ‘자동 제안 · 확인 필요’로만 들어갑니다. 공격 시도나 취약점이 곧 침해 사실은 아닙니다.</p>
+    {urgent.length > 0 && <button type="button" className="button secondary" disabled={incident.evidence.length + urgent.length > 50}
+      onClick={() => urgent.forEach(item => incident.toggleEvidence(item))}>위험도 높은 발견 {urgent.length}건 한 번에 고르기</button>}
     <div className="incident-evidence-list">{candidates.map(item => {
       const selected = incident.evidence.some(value => value.repo === item.repo && value.fingerprint === item.fingerprint);
       return <label className="incident-choice" key={item.fingerprint}><input type="checkbox" checked={selected} disabled={!selected && incident.evidence.length >= 50} onChange={() => incident.toggleEvidence(item)}/><span>{item.title}<small>검사 발견 · 침해 사실 미확정</small></span></label>;
@@ -110,7 +113,8 @@ function ScanImport() {
   const repository = useRepository();
   if (!repository.reportInput || !repository.resultRepo)
     return <p className="incident-scan-empty muted">검사 없이 시작해도 됩니다. 저장소를 검사했다면 수정·재검사 기록을 조치 내용으로 가져올 수 있습니다.</p>;
-  const actions = scanActions(repository.findings, repository.pendingIds);
+  // 점검을 실행한 사실을 첫 줄로, 그 뒤에 수정·재검사 기록을 붙입니다
+  const actions = [scanCheckLine(repository.resultRepo, repository.findings), ...scanActions(repository.findings, repository.pendingIds)];
   const current = d.form.actions.split(/\r?\n/).map(line => line.trim());
   const fresh = actions.filter(line => !current.includes(line));
   return <section className="incident-scan" aria-labelledby="incident-scan-title">

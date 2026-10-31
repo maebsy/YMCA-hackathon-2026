@@ -62,11 +62,13 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
     onRunScan(repoInput.trim());
   };
 
-  const copyToClipboard = (text: string, msg: string) => {
-    navigator.clipboard
-      .writeText(text)
-      .then(() => onShowToast(msg))
-      .catch(() => onShowToast(msg));
+  const copyToClipboard = async (text: string, msg: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      onShowToast(msg);
+    } catch {
+      onShowToast("복사에 실패했습니다. 클립보드 권한을 확인하거나 내용을 직접 선택해 복사해 주세요.");
+    }
   };
 
   const actCount = findings.filter((f) => !f.fixed && f.decision === "act").length;
@@ -80,7 +82,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 font-mono text-xs text-[#d4ff3a] uppercase tracking-widest mb-3">
-              <span>// VIBE CODER SECURITY PLATFORM</span>
+              <span>{"// VIBE CODER SECURITY PLATFORM"}</span>
               <span className="text-[#27272a]">•</span>
               <span>ZERO-RETENTION SOURCE SCAN</span>
             </div>

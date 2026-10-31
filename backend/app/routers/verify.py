@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.routers.scans import ActorDep
 from app.verify import AttackSpec, Patch, VerifyRequest, verify
@@ -31,6 +31,8 @@ router = APIRouter(prefix="/verify", tags=["verify"])
 
 
 class VerifyStart(BaseModel):
+    # repo_dir·patch·start_cmd 같은 값을 보내면 조용히 무시하지 않고 422로 거절합니다
+    model_config = ConfigDict(extra="forbid")
     target: Literal["demo"] = "demo"  # 지금은 우리 데모 과녁만
 
 

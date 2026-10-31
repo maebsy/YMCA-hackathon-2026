@@ -6,6 +6,8 @@
 - 결과는 메모리에만 둡니다. 서버를 다시 켜면 사라지고, 같은 데모 과녁으로 다시 실행하면 됩니다.
 - 한 번에 1건만 실행합니다. LocalSandbox는 데모 앱을 고정 포트(3100)로 띄워서 두 건이 겹치면 서로 방해합니다.
 - 작업은 맡긴 사용자만 조회합니다 (로그인을 끈 서버에서는 모두 None이라 작업 번호를 아는 사람이 조회).
+- 같은 대상의 최근 done 결과(error 제외)는 새 소유자·작업 번호로 복사해 재사용합니다.
+  복사해도 원래 완료 시각을 유지하므로 재사용 가능 시간이 늘어나지 않습니다.
 - 실행 시간 제한은 샌드박스의 프로세스 제한 시간이 맡습니다. 여기서 따로 끊으면 스레드는 계속 도는데
   자리만 비어 다음 작업이 같은 포트로 겹쳐 뜨기 때문입니다.
 """
@@ -15,6 +17,8 @@ import time
 import uuid
 from collections import OrderedDict
 from collections.abc import Callable
+from copy import deepcopy
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
@@ -50,11 +54,27 @@ class VerifyJobs:
                                 headers={"Retry-After": "60"})
         key = uuid.uuid4().hex
         self.jobs[key] = {"job_id": key, "status": "queued", "result": None, "error": None,
-                          **(extra or {}), "owner": owner, "finished": None}
+                          **(extra or {}), "reused": False, "owner": owner, "finished": None}
         task = asyncio.create_task(self._run(key, work))
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
-        return {"job_id": key, "status": "queued"}
+        return {"job_id": key, "status": "queued", "reused": False}
+
+    def reuse_recent(self, *, target: str, owner=None, seconds: int) -> dict | None:
+        self._prune()
+        if seconds <= 0:
+            return None
+        now = time.monotonic()
+        eligible = [job for job in self.jobs.values()
+                    if job.get("target") == target and job["status"] == "done"
+                    and job["result"]["status"] != "error" and now - job["finished"] < seconds]
+        if not eligible:
+            return None
+        source = max(eligible, key=lambda job: job["finished"])
+        key = uuid.uuid4().hex
+        self.jobs[key] = {**deepcopy(source), "job_id": key, "owner": owner, "reused": True}
+        self._prune()
+        return {"job_id": key, "status": "done", "reused": True}
 
     async def _run(self, key: str, work: Callable[[], VerifyResult]) -> None:
         job = self.jobs[key]
@@ -75,6 +95,7 @@ class VerifyJobs:
                                                "message": "실검증 실행 중 오류가 났습니다. 서버 로그를 확인해 주세요."})
         finally:
             job["finished"] = time.monotonic()
+            job["finished_at"] = datetime.now(timezone.utc).isoformat()
             self._prune()
 
     def get(self, key: str, *, owner=None) -> dict:

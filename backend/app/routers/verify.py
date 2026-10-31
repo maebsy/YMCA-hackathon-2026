@@ -3,6 +3,8 @@
 - POST /api/verify        : 실검증을 접수하고 바로 job_id를 돌려줍니다 (202).
 - GET  /api/verify/{id}   : 진행 상태(queued·running·done·failed)와, 끝났으면 result(VerifyResult)를 돌려줍니다.
   검사 API(scans.py)와 같은 "접수 → 작업 번호 → 조회" 방식이고 로그인 규칙도 같습니다.
+- 같은 데모의 최근 done 결과(error 제외)는 요청자 소유의 새 작업으로 복사하며 실행 환경 확인도 건너뜁니다.
+  재사용 시간은 VERIFY_REUSE_SECONDS로 정하고, 0이면 매번 실행합니다.
 
 지금은 우리 데모 과녁(demo-vulnerable-site)만 받습니다.
 - 공격 정의(verify/attacks.json)와 기준 수정본(verify/fix/)은 서버에 있는 파일에서 읽고, 요청으로는 코드·경로·명령을
@@ -18,16 +20,34 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.config import ROOT_DIR
 from app.routers.scans import ActorDep
 from app.verify import AttackSpec, Patch, VerifyRequest, verify
 from app.verify.jobs import VerifyJobs
 from app.verify.sandbox import docker_available
 
 DEMO = Path(__file__).resolve().parents[3] / "demo-vulnerable-site"
+DEFAULT_REUSE_SECONDS = 300  # 공개 데모 부하를 줄이기 위한 임시값입니다.
 
 router = APIRouter(prefix="/verify", tags=["verify"])
+
+
+class _ReuseSettings(BaseSettings):
+    # 다른 설정과 같은 루트 .env를 읽고, 요청마다 환경 변수 변경도 반영합니다.
+    model_config = SettingsConfigDict(env_file=ROOT_DIR / ".env", extra="ignore")
+    verify_reuse_seconds: int = DEFAULT_REUSE_SECONDS
+
+    @field_validator("verify_reuse_seconds", mode="before")
+    @classmethod
+    def _seconds_or_default(cls, value):
+        try:
+            seconds = int(value)
+        except (TypeError, ValueError):
+            return DEFAULT_REUSE_SECONDS
+        return seconds if seconds >= 0 else DEFAULT_REUSE_SECONDS
 
 
 class VerifyStart(BaseModel):
@@ -73,6 +93,9 @@ def _diff(patch: Patch) -> str:
 @router.post("", status_code=202)
 async def start_verify(response: Response, jobs: JobsDep, user: ActorDep, body: VerifyStart | None = None):
     response.headers["Cache-Control"] = "no-store"
+    reused = jobs.reuse_recent(target="demo", owner=user, seconds=_ReuseSettings().verify_reuse_seconds)
+    if reused is not None:
+        return reused
     if not (DEMO / "verify" / "attacks.json").is_file():
         raise _unavailable("이 서버에는 데모 과녁(demo-vulnerable-site)이 없습니다.")
     if not await run_in_threadpool(_runtime_ready):

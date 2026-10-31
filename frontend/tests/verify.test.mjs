@@ -20,7 +20,7 @@ const result = {
     before_evidence: '[{"id":1},{"id":2}]', after_evidence: '[]', verdict: 'verified'}],
   before_tests: {ok: true, passed: 3, failed: 0}, after_tests: {ok: true, passed: 3, failed: 0}, duration_sec: 9.3,
 };
-const doneJob = {job_id: 'a'.repeat(32), status: 'done', result, error: null, target: 'demo',
+const doneJob = {job_id: 'a'.repeat(32), status: 'done', reused: false, finished_at: '2026-10-31T03:04:05+00:00', result, error: null, target: 'demo',
   attacks: [{id: 'sqli-orders', cwe: 'CWE-89', runtime: true, request: {method: 'GET', path: '/api/orders', query: {orderId: '0 OR 1=1'}}},
     {id: 'jwt-hardcoded', cwe: 'CWE-798', runtime: false}],
   patched_files: ['server.js'], patch_diff: '--- a/server.js\n+++ b/server.js\n'};
@@ -32,6 +32,17 @@ test('a finished job keeps the result, attack definitions and diff', () => {
   assert.deepEqual(job.patched_files, ['server.js']);
 });
 
+test('reuse metadata keeps the original completion time and validates its types', () => {
+  const job = parseVerifyJob({...doneJob, reused: true});
+  assert.equal(job.reused, true);
+  assert.equal(job.finished_at, doneJob.finished_at);
+  assert.equal(parseVerifyJob(doneJob).reused, false);
+  assert.equal(parseVerifyJob({...doneJob, reused: 'true'}), null);
+  assert.equal(parseVerifyJob({...doneJob, reused: undefined}), null);
+  assert.equal(parseVerifyJob({...doneJob, finished_at: 123}), null);
+  assert.equal(parseVerifyJob({...doneJob, finished_at: 'not-a-date'}), null);
+});
+
 test('a finished job with a malformed result is rejected instead of breaking the screen', () => {
   assert.equal(parseVerifyJob({...doneJob, result: {...result, attacks: [{id: 'x'}]}}), null);
   assert.equal(parseVerifyJob({...doneJob, result: {...result, status: 'maybe'}}), null);
@@ -40,7 +51,10 @@ test('a finished job with a malformed result is rejected instead of breaking the
 });
 
 test('a running job needs no result', () => {
-  assert.equal(parseVerifyJob({job_id: 'b', status: 'running', result: null, error: null}).status, 'running');
+  const job = parseVerifyJob({job_id: 'b', status: 'running', reused: false, result: null, error: null});
+  assert.equal(job.status, 'running');
+  assert.equal(job.reused, false);
+  assert.equal(job.finished_at, undefined);
 });
 
 test('attack request is shown as people read it', () => {
@@ -66,7 +80,7 @@ function fakeFetch(responses) {
 }
 
 test('runVerify submits the demo target and polls until done', async () => {
-  const calls = fakeFetch([[202, {job_id: 'j1', status: 'queued'}], [200, {job_id: 'j1', status: 'running'}], [200, doneJob]]);
+  const calls = fakeFetch([[202, {job_id: 'j1', status: 'queued'}], [200, {job_id: 'j1', status: 'running', reused: false}], [200, doneJob]]);
   const seen = [];
   const job = await runVerify({intervalMs: 0, onStatus: s => seen.push(s)});
   assert.equal(job.result.status, 'verified');
@@ -76,12 +90,24 @@ test('runVerify submits the demo target and polls until done', async () => {
   assert.deepEqual(seen, ['queued', 'running']);
 });
 
+test('runVerify fetches an already finished POST once without waiting for a timer', async t => {
+  const reusedJob = {...doneJob, reused: true};
+  const calls = fakeFetch([[202, {job_id: reusedJob.job_id, status: 'done', reused: true}], [200, reusedJob]]);
+  t.mock.method(globalThis, 'setTimeout', () => { throw new Error('a reused result must not wait'); });
+  const seen = [];
+  const job = await runVerify({onStatus: s => seen.push(s)});
+  assert.equal(job.reused, true);
+  assert.equal(job.finished_at, doneJob.finished_at);
+  assert.deepEqual(calls.map(({method, url}) => [method, url]), [['POST', '/api/verify'], ['GET', `/api/verify/${reusedJob.job_id}`]]);
+  assert.deepEqual(seen, []);
+});
+
 test('runVerify shows the server message when the server cannot run it', async () => {
   fakeFetch([[503, {detail: {code: 'VERIFY_UNAVAILABLE', message: '이 서버에는 실검증을 실행할 환경(Docker 또는 Node 22.5 이상)이 없습니다.'}}]]);
   await assert.rejects(runVerify({intervalMs: 0}), /Docker 또는 Node/);
 });
 
 test('runVerify reports a failed job with its message', async () => {
-  fakeFetch([[202, {job_id: 'j2', status: 'queued'}], [200, {job_id: 'j2', status: 'failed', error: {code: 'VERIFY_ERROR', message: '실검증 실행 중 오류가 났습니다.'}}]]);
+  fakeFetch([[202, {job_id: 'j2', status: 'queued'}], [200, {job_id: 'j2', status: 'failed', reused: false, error: {code: 'VERIFY_ERROR', message: '실검증 실행 중 오류가 났습니다.'}}]]);
   await assert.rejects(runVerify({intervalMs: 0}), /실검증 실행 중 오류/);
 });

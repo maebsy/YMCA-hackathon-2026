@@ -49,6 +49,7 @@ function Result({ job }: { job: VerifyJob }) {
       <p className="vp-verdict-label">판정 · {verdict.label}</p>
       <p>{result.message}</p>
       <p className="vp-muted">실행 환경: {result.sandbox === "docker" ? "Docker 격리 컨테이너" : "이 서버에서 바로 실행 (데모 과녁 전용)"} · {result.duration_sec}초</p>
+      {job.reused && <p className="vp-reused">최근 실행 결과입니다{job.finished_at && <> (<time dateTime={job.finished_at}>{new Date(job.finished_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}</time> 실행)</>}. 데모 입력이 고정이라 잠시 동안은 다시 실행하지 않고 같은 결과를 보여 줍니다.</p>}
     </div>
 
     {result.attacks.length > 0 && <section aria-labelledby="verify-attacks">

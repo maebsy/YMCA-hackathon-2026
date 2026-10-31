@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import threading
 import time
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,6 +16,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routers import verify as R
 from app.routers.scans import scan_user
+from app.verify import jobs as J
 from app.verify.jobs import VerifyJobs
 from app.verify.schemas import AttackOutcome, VerifyResult
 
@@ -22,6 +25,11 @@ def _verified(*_a, **_k) -> VerifyResult:
     return VerifyResult(status="verified", message="ok", sandbox="local", attacks=[
         AttackOutcome(id="sqli-orders", before_succeeded=True, after_succeeded=False, verdict="verified"),
     ])
+
+
+@pytest.fixture
+def reuse_default(monkeypatch):
+    monkeypatch.delenv("VERIFY_REUSE_SECONDS", raising=False)
 
 
 @pytest.fixture
@@ -55,6 +63,128 @@ def test_verify_job_returns_result_and_demo_inputs(ready):
     assert job["patched_files"] == ["server.js"]
     assert "WHERE id = ?" in job["patch_diff"] and job["patch_diff"].startswith("--- a/server.js")
     assert "owner" not in job and "finished" not in job
+    assert job["reused"] is False
+    assert datetime.fromisoformat(job["finished_at"]).tzinfo == timezone.utc
+
+
+@pytest.mark.parametrize("status", ["verified", "fix_failed", "not_reproduced"])
+def test_recent_result_is_reused_without_runtime_check(ready, reuse_default, monkeypatch, status):
+    calls = []
+
+    def work(*_a, **_k):
+        calls.append(True)
+        return _verified().model_copy(update={"status": status})
+
+    def runtime_must_not_run():
+        raise AssertionError("재사용할 때 실행 환경을 확인하면 안 됨")
+
+    monkeypatch.setattr(R, "verify", work)
+    with TestClient(app) as client:
+        first = _wait(client, client.post("/api/verify").json()["job_id"])
+        monkeypatch.setattr(R, "_runtime_ready", runtime_must_not_run)
+        response = client.post("/api/verify", json={"target": "demo"})
+        assert response.status_code == 202
+        assert response.headers["cache-control"] == "no-store"
+        start = response.json()
+        assert start["status"] == "done" and start["reused"] is True
+        assert start["job_id"] != first["job_id"]
+        reused = client.get(f"/api/verify/{start['job_id']}").json()
+    assert len(calls) == 1
+    assert reused == {**first, "job_id": start["job_id"], "reused": True}
+
+
+def test_reused_result_has_its_own_owner(ready, reuse_default):
+    try:
+        with TestClient(app) as client:
+            app.dependency_overrides[scan_user] = lambda: "user-a"
+            original = _wait(client, client.post("/api/verify").json()["job_id"])
+            app.dependency_overrides[scan_user] = lambda: "user-b"
+            response = client.post("/api/verify")
+            assert response.status_code == 202 and response.json()["reused"] is True
+            key = response.json()["job_id"]
+            assert key != original["job_id"]
+            assert client.get(f"/api/verify/{original['job_id']}").status_code == 404
+            reused = client.get(f"/api/verify/{key}")
+            assert reused.status_code == 200 and reused.json()["result"] == original["result"]
+            assert "owner" not in reused.json() and "finished" not in reused.json()
+            app.dependency_overrides[scan_user] = lambda: "user-a"
+            assert client.get(f"/api/verify/{key}").status_code == 404
+            assert client.get(f"/api/verify/{original['job_id']}").status_code == 200
+    finally:
+        app.dependency_overrides.pop(scan_user, None)
+
+
+def test_zero_reuse_seconds_runs_every_time(ready, monkeypatch):
+    monkeypatch.setenv("VERIFY_REUSE_SECONDS", "0")
+    calls = []
+
+    def work(*_a, **_k):
+        calls.append(True)
+        return _verified()
+
+    monkeypatch.setattr(R, "verify", work)
+    with TestClient(app) as client:
+        for _ in range(2):
+            response = client.post("/api/verify")
+            assert response.json()["status"] == "queued" and response.json()["reused"] is False
+            assert _wait(client, response.json()["job_id"])["reused"] is False
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("failure", ["error", "failed"])
+def test_unsuccessful_execution_is_not_reused(ready, reuse_default, monkeypatch, failure):
+    calls = []
+
+    def work(*_a, **_k):
+        calls.append(True)
+        if failure == "failed":
+            raise RuntimeError("실행 실패")
+        return VerifyResult(status="error", message="실행 실패")
+
+    monkeypatch.setattr(R, "verify", work)
+    with TestClient(app) as client:
+        for _ in range(2):
+            response = client.post("/api/verify")
+            assert response.json()["status"] == "queued" and response.json()["reused"] is False
+            job = _wait(client, response.json()["job_id"])
+            assert job["status"] == ("done" if failure == "error" else "failed")
+            assert datetime.fromisoformat(job["finished_at"]).tzinfo == timezone.utc
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("value", ["", "invalid", "1.5", "-1"])
+def test_invalid_reuse_seconds_uses_default(ready, monkeypatch, value):
+    monkeypatch.setenv("VERIFY_REUSE_SECONDS", value)
+    assert R._ReuseSettings().verify_reuse_seconds == 300
+    with TestClient(app) as client:
+        _wait(client, client.post("/api/verify").json()["job_id"])
+        assert client.post("/api/verify").json()["reused"] is True
+
+
+def test_reuse_expires_from_original_execution(ready, monkeypatch):
+    monkeypatch.setenv("VERIFY_REUSE_SECONDS", "10")
+    with TestClient(app) as client:
+        original = _wait(client, client.post("/api/verify").json()["job_id"])
+        finished = app.state.verify_jobs.jobs[original["job_id"]]["finished"]
+        # asyncio도 같은 time 모듈을 쓰므로 단조 시계 전체를 바꾸지 않습니다.
+        monkeypatch.setattr(J, "time", SimpleNamespace(monotonic=lambda: finished + 9))
+        reused = client.post("/api/verify").json()
+        assert reused["reused"] is True
+        copy = client.get(f"/api/verify/{reused['job_id']}").json()
+        assert copy["finished_at"] == original["finished_at"]
+        monkeypatch.setattr(J, "time", SimpleNamespace(monotonic=lambda: finished + 10))
+        fresh = client.post("/api/verify").json()
+        assert fresh["status"] == "queued" and fresh["reused"] is False
+        assert _wait(client, fresh["job_id"])["reused"] is False
+
+
+def test_results_are_only_reused_for_the_same_target(ready, reuse_default):
+    with TestClient(app) as client:
+        original = _wait(client, client.post("/api/verify").json()["job_id"])
+        app.state.verify_jobs.jobs[original["job_id"]]["target"] = "other"
+        response = client.post("/api/verify").json()
+        assert response["status"] == "queued" and response["reused"] is False
+        _wait(client, response["job_id"])
 
 
 def test_body_is_optional(ready):

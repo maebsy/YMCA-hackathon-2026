@@ -20,6 +20,7 @@ export interface VerifyResult {
 }
 export interface VerifyJob {
   job_id: string; status: "queued" | "running" | "done" | "failed";
+  reused: boolean; finished_at?: string;
   result: VerifyResult | null; error: { code?: string; message?: string } | null;
   target?: string; attacks: AttackDefinition[]; patched_files: string[]; patch_diff: string;
 }
@@ -43,10 +44,13 @@ function validResult(v: unknown): v is VerifyResult {
 /** 서버 응답을 확인해 화면이 쓰는 모양으로 돌려줍니다. 모양이 다르면 null (화면이 깨지는 대신 오류로 보여 줌). */
 export function parseVerifyJob(v: unknown): VerifyJob | null {
   if (!record(v) || typeof v.job_id !== "string" || !["queued", "running", "done", "failed"].includes(String(v.status))) return null;
+  if (typeof v.reused !== "boolean") return null;
+  if (v.finished_at !== undefined && (typeof v.finished_at !== "string" || !Number.isFinite(Date.parse(v.finished_at)))) return null;
   if (v.status === "done" && !validResult(v.result)) return null;
   const attacks = Array.isArray(v.attacks) ? v.attacks.filter((a): a is AttackDefinition => record(a) && typeof a.id === "string") : [];
   return {
     job_id: v.job_id, status: v.status as VerifyJob["status"],
+    reused: v.reused, finished_at: v.finished_at as string | undefined,
     result: v.status === "done" ? v.result as VerifyResult : null,
     error: record(v.error) ? { code: typeof v.error.code === "string" ? v.error.code : undefined, message: typeof v.error.message === "string" ? v.error.message : undefined } : null,
     target: typeof v.target === "string" ? v.target : undefined,
@@ -105,10 +109,12 @@ export async function runVerify(options: { onStatus?: (status: VerifyJob["status
   if (!res.ok) throw apiError(data, `실검증 접수 실패 (${res.status})`);
   const jobId = record(data) && typeof data.job_id === "string" ? data.job_id : null;
   if (!jobId) throw new Error("실검증 접수 응답이 올바르지 않습니다.");
-  onStatus?.("queued");
+  let waitBeforePoll = !record(data) || data.status !== "done";
+  if (waitBeforePoll) onStatus?.("queued");
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    await new Promise(resolve => setTimeout(resolve, intervalMs));
+    if (waitBeforePoll) await new Promise(resolve => setTimeout(resolve, intervalMs));
+    waitBeforePoll = true;
     if (isCancelled?.()) throw new Error("실검증 조회를 멈췄습니다.");
     const response = await fetch(`/api/verify/${encodeURIComponent(jobId)}`, { cache: "no-store" });
     const body: unknown = await response.json().catch(() => ({}));

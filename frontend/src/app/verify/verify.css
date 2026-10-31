@@ -45,6 +45,7 @@
 .vp-verdict[data-tone="ok"] .vp-verdict-label { color: var(--vp-ok); }
 .vp-verdict[data-tone="danger"] .vp-verdict-label { color: var(--vp-danger); }
 .vp-verdict[data-tone="warn"] .vp-verdict-label { color: var(--vp-warn); }
+.vp-reused { margin-top: 4px !important; color: var(--muted, #a1a1aa); font-size: 12px; line-height: 1.7; }
 
 .vp-attacks, .vp-static, .vp-isolation { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .vp-attack { border: 1px solid var(--line, #27272a); border-radius: 12px; padding: 14px; background: var(--surface, #111113); min-width: 0; }

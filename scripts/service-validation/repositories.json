@@ -1,0 +1,4 @@
+[
+  {"url":"https://github.com/OWASP/NodeGoat","reason":"교육용 취약 웹 앱: 실제 탐지·GPU 분석 경로"},
+  {"url":"https://github.com/OWASP/www-project-top-ten","reason":"OWASP 프로젝트 공개 사이트(Jekyll HTML): 일반 사이트·탐지 적음 경로"}
+]

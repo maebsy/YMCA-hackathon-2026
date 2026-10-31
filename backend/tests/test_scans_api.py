@@ -1,0 +1,64 @@
+"""검사 API (/api/scans): 접수 → 진행 조회 → 결과, 재검사 비교, 주소 제한. 실제 스캐너 없이 엔진의 scan_repo만 바꿔 끼웁니다."""
+import time
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app  # app.routers.scans 가 저장소 루트(security_engine)를 import 경로에 넣습니다
+
+import security_engine  # noqa: E402
+from security_engine import scan  # noqa: E402
+from security_engine.models import ScanOptions  # noqa: E402
+
+
+@pytest.fixture
+def site(tmp_path):
+    (tmp_path / ".env").write_text("X=1\n", encoding="utf-8")  # 설정 검사기가 잡는 문제 1건
+    return tmp_path
+
+
+@pytest.fixture
+def fake_scan_repo(monkeypatch, site):
+    def fake(repo_url, previous=None, **kw):
+        return scan(site, previous, options=ScanOptions(tools=("config",)), repo_url=repo_url)
+
+    monkeypatch.setattr(security_engine, "scan_repo", fake)
+
+
+def _wait(client, job_id):
+    for _ in range(100):
+        job = client.get(f"/api/scans/{job_id}").json()
+        if job["status"] in ("done", "failed"):
+            return job
+        time.sleep(0.05)
+    raise AssertionError("검사가 끝나지 않음")
+
+
+def test_scan_job_then_rescan(fake_scan_repo, site):
+    url = "https://github.com/demo/site"
+    with TestClient(app) as client:
+        r = client.post("/api/scans", json={"repo_url": url})
+        assert r.status_code == 202
+        job = _wait(client, r.json()["job_id"])
+        assert job["status"] == "done", job
+        first = job["result"]
+        assert first["coverage"]["config"]["status"] == "ok"
+        assert first["findings"] and first["report_scan"]["repo"] == url
+        assert first["report_scan"]["resolved_at"] is None
+
+        (site / ".env").unlink()  # 고친 뒤 재검사
+        r = client.post("/api/scans", json={"repo_url": url, "previous": first["result"]})
+        second = _wait(client, r.json()["job_id"])["result"]
+        assert second["comparison"]["resolved"] >= 1
+        assert second["report_scan"]["resolved_at"]  # 열린 문제 0건 → 완료 리포트
+
+        report = client.post("/api/reports/plain", json={
+            "scan": second["report_scan"], "findings": second["findings"], "explain_results": []})
+        assert report.status_code == 200
+
+
+def test_rejects_non_github_url():
+    with TestClient(app) as client:
+        r = client.post("/api/scans", json={"repo_url": "https://169.254.169.254/latest"})
+        assert r.status_code == 400
+        assert client.get("/api/scans/nope").status_code == 404

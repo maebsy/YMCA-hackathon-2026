@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -22,17 +23,20 @@ class Deferred(RuntimeError):
     pass
 
 
-class DrainPending(Deferred):
-    """교체를 시작했고 진행 중인 작업을 기다리는 중. 새 작업 차단(drain)을 다음 실행까지 유지합니다."""
+# 교체 대기 정책 (#151).
+# 해석 작업은 백엔드 메모리에만 있어 재시작하면 끊깁니다. 그렇다고 교체를 위해 새 작업을 막으면(drain)
+# 이용자가 계속 들어오는 동안 사이트가 막힙니다(운영에서 실제로 발생). 그래서 새 작업은 막지 않고,
+# 진행 중 작업이 0이 되는 순간에만 아주 잠깐 막고 교체합니다. 계속 바쁘면 다음 타이머로 미룹니다.
+DRAIN_POLL_SECONDS = 2
+IDLE_WAIT_PER_RUN = 8 * 60  # 한 번 실행에서 빈 순간을 기다리는 시간 (서비스 TimeoutStartSec 25분 안)
+DRAIN_CONFIRM_SECONDS = 20  # 막은 직후 막 들어온 요청이 끝나기를 기다리는 최대 시간. 넘으면 풀고 다시 기다림
 
-
-# 교체 대기(drain) 정책.
-# 예전에는 60초만 기다린 뒤 차단을 풀어서, 이용자가 계속 들어오면 진행 중 작업이 0이 될 틈이 없어 교체가 끝없이 밀렸습니다.
-# 이제 한 번 시작한 대기는 작업이 끝날 때까지 새 작업만 막고 유지하되, 이용자를 무한정 막지 않게 상한을 둡니다.
-DRAIN_POLL_SECONDS = 5
-DRAIN_WAIT_PER_RUN = 8 * 60  # 한 번 실행에서 기다리는 시간 (서비스 TimeoutStartSec 25분 안)
-DRAIN_MAX_SECONDS = 20 * 60  # 대기 전체 상한: 백엔드 작업 시간 제한(LLM 15분)보다 넉넉히
-DRAIN_COOLDOWN_SECONDS = 10 * 60  # 상한을 넘겨 차단을 풀었으면, 그동안은 다시 막지 않음
+# MCP(72hours-mcp: 검사별 연결 /mcp/h/* 와 서비스 MCP /mcp/service/rpc)도 같은 main 커밋으로 맞춥니다
+MCP_SOURCE = "integrations/mcp-handoff"
+MCP_LIVE_PORT = 8765
+MCP_CANDIDATE_PORT = 18765
+# 앱 교체가 성공하면 같은 커밋의 배포 스크립트로 자신을 갱신합니다 (예전에는 머지돼도 서버에 안 들어갔음)
+RUNTIME_FILES = ("deploy.py", "deployment_entry.py", "snapshot.py")
 
 
 def drain_record(path):
@@ -42,6 +46,12 @@ def drain_record(path):
         return float(since) if since else None
     except (OSError, ValueError, AttributeError, TypeError):
         return None
+
+
+def requirements(path):
+    """의존성 목록만 비교합니다. 줄바꿈(CRLF)·주석·빈 줄 차이는 의존성 변경이 아닙니다."""
+    lines = (line.split("#", 1)[0].strip() for line in path.read_text(encoding="utf-8").splitlines())
+    return sorted(line for line in lines if line)
 
 
 def atomic(path, data):
@@ -103,6 +113,7 @@ class Deployer:
         self.env = safe_env()
         self.log = None
         self.owns_lock = False
+        self.retry = False
 
     def run(self, args, cwd=None, timeout=180):
         return subprocess.run(args, cwd=cwd, env=self.env, check=True, timeout=timeout,
@@ -246,43 +257,42 @@ class Deployer:
         except (OSError, ValueError):
             return None
 
-    def drain(self, bootstrap=False):
+    def guard_status(self, headers, bootstrap=False):
+        """백엔드의 진행 중 작업 수. 가드가 없는 예전 서버의 첫 이전(--bootstrap)만 None."""
+        try:
+            return get_json("http://127.0.0.1:8000/api/_deployment/status", headers)
+        except urllib.error.HTTPError as exc:
+            legacy = not (self.target(self.root/"current")/"deployment.json").exists()
+            if exc.code == 404 and bootstrap and legacy:
+                return None  # Manual one-time migration from a pre-guard server; never enabled in timer.
+            raise Deferred("Backend deployment guard unavailable") from None
+
+    def drain(self, bootstrap=False, now=False):
+        """새 작업을 막지 않고 진행 중 작업이 0이 되는 순간을 기다렸다가, 그때만 잠깐 막고 교체 단계로 넘깁니다."""
         self.stage = "drain"
         headers = {"X-Deployment-Token": (self.control/"control-token").read_text().strip()}
         marker = self.control/"drain"
-        cooldown = self.control/"drain-cooldown.json"
-        since = drain_record(marker)
-        if since is None:
-            # 직전 대기가 상한을 넘겨 풀렸다면 잠시 이용자를 막지 않습니다
-            try:
-                until = float(json.loads(cooldown.read_text()).get("until", 0))
-            except (OSError, ValueError, AttributeError, TypeError):
-                until = 0
-            if time.time() < until:
-                raise Deferred("Recent drain timed out; not pausing new jobs again yet")
-            since = time.time()
-            atomic(marker, {"revision": self.revision, "since": since})
-        for _ in range(int(DRAIN_WAIT_PER_RUN / DRAIN_POLL_SECONDS)):
+        if now:
+            # 운영자 지시(--now): 기다리지 않고 바로 교체합니다. 진행 중 해석은 끊깁니다
+            atomic(marker, {"revision": self.revision, "since": time.time()})
+            return
+        for _ in range(int(IDLE_WAIT_PER_RUN / DRAIN_POLL_SECONDS)):
             if self.paused():
-                # 기다리는 도중 운영자가 멈춤: 교체하지 않고 새 작업 차단을 바로 풉니다 (main 에서 drain 정리)
-                raise Deferred("Paused by operator while waiting; new jobs reopened")
-            try:
-                data = get_json("http://127.0.0.1:8000/api/_deployment/status", headers)
-            except urllib.error.HTTPError as exc:
-                legacy = not (self.target(self.root/"current")/"deployment.json").exists()
-                if exc.code == 404 and bootstrap and legacy:
-                    return  # Manual one-time migration from a pre-guard server; never enabled in timer.
-                raise Deferred("Backend deployment guard unavailable") from None
-            if data.get("draining") is True and data.get("busy") == 0:
-                cooldown.unlink(missing_ok=True)
+                raise Deferred("Paused by operator while waiting; nothing changed")
+            data = self.guard_status(headers, bootstrap)
+            if data is None:
                 return
-            if time.time() - since >= DRAIN_MAX_SECONDS:
-                # 작업이 상한 안에 끝나지 않음: 이용자를 계속 막지 않도록 차단을 풀고 잠시 쉰 뒤 다시 시도합니다
+            if data.get("busy") == 0:
+                atomic(marker, {"revision": self.revision, "since": time.time()})
+                # 확인과 차단 사이에 막 들어온 요청이 있을 수 있어, 막은 뒤 한 번 더 0인지 봅니다 (최대 20초만 막음)
+                for _ in range(int(DRAIN_CONFIRM_SECONDS / DRAIN_POLL_SECONDS)):
+                    data = self.guard_status(headers)
+                    if data.get("draining") is True and data.get("busy") == 0:
+                        return
+                    time.sleep(DRAIN_POLL_SECONDS)
                 marker.unlink(missing_ok=True)
-                atomic(cooldown, {"until": time.time() + DRAIN_COOLDOWN_SECONDS})
-                raise Deferred("Active jobs did not finish within the drain limit; new jobs reopened")
             time.sleep(DRAIN_POLL_SECONDS)
-        raise DrainPending("Active jobs: new jobs stay paused until they finish")
+        raise Deferred("Active jobs: waiting for an idle moment without pausing new jobs")
 
     def rollback(self):
         old = json.loads(self.transaction.read_text())
@@ -317,6 +327,149 @@ class Deployer:
         (self.control/"drain").unlink(missing_ok=True)
         atomic(self.control/"applied.json", {"revision": self.revision})
 
+    def read_control(self, name):
+        try:
+            return json.loads((self.control/name).read_text())
+        except (OSError, ValueError):
+            return None
+
+    def mcp_pending(self, release):
+        """이 커밋의 MCP를 올려야 하는지. 같은 커밋에서 실패했으면 --retry 전까지 다시 시도하지 않습니다."""
+        if not (self.root/"mcp/live-current").is_symlink():
+            return False  # MCP를 이 방식으로 관리하지 않는 서버
+        applied = (self.read_control("mcp-applied.json") or {}).get("revision")
+        if applied == self.revision:
+            return False
+        if not self.retry and (self.read_control("mcp-failed.json") or {}).get("revision") == self.revision:
+            return False
+        if applied:
+            try:
+                changed = self.capture(["git", "-C", str(release), "diff", "--name-only", applied, self.revision,
+                                        "--", MCP_SOURCE])
+            except subprocess.SubprocessError:
+                changed = "unknown"  # 비교할 수 없으면 올려서 맞춥니다
+            if not changed:
+                atomic(self.control/"mcp-applied.json", {"revision": self.revision})
+                return False
+        return True
+
+    def mcp_env(self):
+        """72hours-mcp 서비스와 같은 설정(MCP_PUBLIC_ORIGIN 등). 값은 기록하지 않습니다."""
+        values = {}
+        path = Path.home()/".config/72hours/mcp.env"
+        for line in path.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip()
+        if not values.get("MCP_PUBLIC_ORIGIN"):
+            raise Deferred("MCP_PUBLIC_ORIGIN is not configured")
+        return values
+
+    def mcp_check(self, port, host):
+        """MCP 상태와 서비스 MCP 도구 목록을 실제 공개 주소의 Host로 확인합니다."""
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode()
+        headers = {"Host": host, "Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+        for _ in range(30):
+            try:
+                if get_json(f"http://127.0.0.1:{port}/mcp/health", {"Host": host}).get("status") != "ok":
+                    raise ValueError("MCP health")
+                request = urllib.request.Request(f"http://127.0.0.1:{port}/mcp/service/rpc", data=body, headers=headers)
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    names = {tool["name"] for tool in json.load(response)["result"]["tools"]}
+                if {"service_info", "start_scan"} <= names:
+                    return names
+                raise ValueError("MCP tools missing")
+            except (OSError, ValueError, KeyError, TypeError):
+                time.sleep(1)
+        raise RuntimeError("MCP health or tool list failed")
+
+    def deploy_mcp(self, release):
+        """MCP를 후보 포트에서 확인한 뒤 교체하고, 실패하면 이전 버전으로 되돌립니다. 작업 공간·연결 DB는 그대로 둡니다."""
+        self.stage = "mcp"
+        base = self.root/"mcp"
+        source = release/MCP_SOURCE
+        previous = (base/"live-current").resolve(strict=True)
+        if requirements(previous/"requirements.txt") != requirements(source/"requirements.txt"):
+            # 공용 가상환경을 바꾸면 지금 도는 MCP에도 영향이 가므로 운영자가 직접 갱신합니다
+            raise Deferred("MCP dependencies changed; update the MCP venv first")
+        settings = self.mcp_env()
+        origins = settings["MCP_PUBLIC_ORIGIN"]
+        host = origins.split(",")[0].strip().split("://", 1)[-1].split("/", 1)[0]
+        target = base/"releases"/self.revision
+        python = str(base/".venv/bin/python")
+        if not (target/".ready").exists():
+            shutil.rmtree(target, ignore_errors=True)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source, target, ignore=shutil.ignore_patterns("tests", "__pycache__"))
+            candidate = Path(tempfile.mkdtemp(prefix="mcp-candidate-", dir=base))
+            try:
+                process = subprocess.Popen(
+                    [python, str(target/"live_server.py"), "--database", str(candidate/"links.sqlite3"),
+                     "--public-origin", origins, "--port", str(MCP_CANDIDATE_PORT)],
+                    cwd=target, env={**self.env, **settings}, stdout=self.log, stderr=subprocess.STDOUT)
+                try:
+                    self.mcp_check(MCP_CANDIDATE_PORT, host)
+                    if process.poll() is not None:
+                        raise RuntimeError("MCP candidate exited; possible port conflict")
+                finally:
+                    self.stop_candidate(process)
+            finally:
+                shutil.rmtree(candidate, ignore_errors=True)
+            (target/".ready").touch()
+        try:
+            self.link("mcp/live-current", target)
+            self.run(["systemctl", "--user", "restart", "72hours-mcp"], timeout=60)
+            self.mcp_check(MCP_LIVE_PORT, host)
+        except BaseException:
+            self.stage = "mcp_rollback"
+            self.link("mcp/live-current", previous)
+            self.run(["systemctl", "--user", "restart", "72hours-mcp"], timeout=60)
+            raise
+        atomic(self.control/"mcp-applied.json", {"revision": self.revision})
+
+    def update_mcp(self, release):
+        """MCP 교체 결과("deployed"/"failed"/None). MCP 실패는 이미 끝난 앱 교체를 되돌리지 않습니다."""
+        if not self.mcp_pending(release):
+            return None
+        try:
+            self.deploy_mcp(release)
+        except Exception as exc:
+            reason = str(exc) if isinstance(exc, Deferred) else type(exc).__name__
+            atomic(self.control/"mcp-failed.json", {"revision": self.revision, "reason": reason})
+            return "failed"
+        (self.control/"mcp-failed.json").unlink(missing_ok=True)
+        return "deployed"
+
+    def update_runtime(self, release):
+        """같은 커밋의 배포 스크립트로 자신을 갱신합니다. 문법이 틀린 파일이 하나라도 있으면 아무것도 바꾸지 않습니다."""
+        if self.runtime != (self.control/"runtime").resolve():
+            return []  # 저장소에서 직접 실행(테스트·수동)할 때는 건드리지 않음
+        source = release/"deploy/general-server/auto-deploy"
+        changed = [name for name in RUNTIME_FILES if (source/name).read_bytes() != (self.runtime/name).read_bytes()]
+        pinned = self.control/"runtime-pinned"
+        if pinned.exists():
+            # 운영자가 install.sh로 직접 설치한 사본은 main이 같은 내용을 가질 때까지 되돌리지 않습니다
+            if not changed:
+                pinned.unlink()
+            return []
+        try:
+            for name in changed:
+                compile((source/name).read_text(encoding="utf-8"), name, "exec")
+        except SyntaxError:
+            return ["invalid"]
+        for name in changed:
+            temporary = self.runtime/(name + ".next")
+            shutil.copyfile(source/name, temporary)
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self.runtime/name)
+        return changed
+
+    def follow_up(self, release):
+        """앱과 같은 커밋으로 MCP·배포 스크립트를 맞춥니다. 앱이 이미 최신이어도 남은 것만 이어서 합니다."""
+        mcp = self.update_mcp(release)
+        runtime = self.update_runtime(release)
+        return {key: value for key, value in (("mcp", mcp), ("runtime", runtime)) if value}
+
     def execute(self, args):
         with locks([self.control/"deploy.lock", self.root/"frontend-deploy.lock"]):
             self.owns_lock = True
@@ -330,9 +483,8 @@ class Deployer:
                 self.stage = "paused"
                 self.record("paused", reason=self.paused().get("reason", ""))
                 return
-            since = drain_record(marker)
-            if since is None or time.time() - since >= DRAIN_MAX_SECONDS:
-                marker.unlink(missing_ok=True)  # 이어서 기다릴 대기가 아니면 정리 (예전 빈 파일 포함)
+            marker.unlink(missing_ok=True)  # 실행 사이에 이용자를 막아 두는 일은 없습니다 (#151)
+            self.retry = args.retry
             self.revision = self.head()
             if self.state.exists():
                 previous = json.loads(self.state.read_text())
@@ -340,7 +492,15 @@ class Deployer:
                     return
             applied = self.control/"applied.json"
             if applied.exists() and json.loads(applied.read_text()).get("revision") == self.revision and not args.retry:
-                marker.unlink(missing_ok=True)  # 바꿀 것이 없으면 남은 대기로 이용자를 막지 않습니다
+                release = self.root/"auto-releases"/self.revision
+                if (release/".ready").exists():
+                    (self.control/"logs").mkdir(exist_ok=True)
+                    with (self.control/"logs"/(self.revision + ".log")).open("a") as self.log:
+                        done = self.follow_up(release)
+                    self.log = None
+                    if done:
+                        self.stage = "follow_up"
+                        self.record("deployed", **done)
                 return
             self.stage = "ci"
             if not self.ready(self.revision):
@@ -365,10 +525,11 @@ class Deployer:
                 if previous != (self.target(self.root/"current"), self.target(self.root/"frontend")):
                     raise Deferred("Another operator changed the active release while building")
                 self.check_schema(release, args.reviewed_schema_revision)
-                self.drain(args.bootstrap)
+                self.drain(args.bootstrap, getattr(args, "now", False))
                 self.activate(release, args.public_url)
+                done = self.follow_up(release)
             self.log = None
-            self.record("deployed")
+            self.record("deployed", **done)
 
 
 def pause(root, reason=""):
@@ -400,8 +561,8 @@ def show_status(root):
         "applied": (read("applied.json") or {}).get("revision"),
         "last_run": read("status.json"),
         "draining_since_seconds": round(time.time() - since) if since else ((control/"drain").exists() or None),
-        "drain_limit_seconds": DRAIN_MAX_SECONDS,
-        "cooldown_until": (read("drain-cooldown.json") or {}).get("until"),
+        "mcp_applied": (read("mcp-applied.json") or {}).get("revision"),
+        "mcp_failed": read("mcp-failed.json"),
     }
     try:
         token = (control/"control-token").read_text().strip()
@@ -425,6 +586,8 @@ def main():
                          help="자동 배포 멈춤 (예: 시연·테스트 중). 기다리던 새 작업 차단도 바로 풂")
     control.add_argument("--resume", action="store_true", help="자동 배포 다시 켜기 (다음 타이머에 이어서 진행)")
     control.add_argument("--status", action="store_true", help="멈춤·대기·진행 중 작업·적용 버전 보기")
+    parser.add_argument("--now", action="store_true",
+                        help="운영자 전용: 진행 중 작업이 빌 때까지 기다리지 않고 바로 교체 (진행 중 해석은 끊김). 타이머에는 쓰지 않음")
     args = parser.parse_args()
     os.umask(0o077)
     if args.pause is not None:
@@ -445,8 +608,8 @@ def main():
         if not deployer.owns_lock:
             print("Deployment lock busy; left the active deployment untouched.", flush=True)
             return 0
-        # 작업을 기다리는 중(DrainPending)이면 새 작업 차단을 다음 실행까지 유지해 교체가 밀리지 않게 합니다
-        if not deployer.transaction.exists() and not isinstance(exc, DrainPending):
+        # 교체 중이 아니면 새 작업 차단을 남기지 않습니다 (#151)
+        if not deployer.transaction.exists():
             (deployer.control/"drain").unlink(missing_ok=True)
         status = "deferred" if isinstance(exc, Deferred) else "failed"
         # No raw command/env/exception text in the status document or journal.

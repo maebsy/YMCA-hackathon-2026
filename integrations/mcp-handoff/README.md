@@ -56,13 +56,16 @@ integrations/mcp-handoff/.venv/Scripts/python.exe integrations/mcp-handoff/serve
 server.py --results <결과 파일 절대 경로> --repository <owner/repo>
 ```
 
+`--repository`는 생략할 수 있지만 **함께 주는 것을 권장합니다.** 생략하면 그 경로에 어떤 저장소의 결과 파일이 저장돼도 그대로 전달합니다. 웹의 설정 복사는 항상 `--repository`를 넣습니다.
+
 | 동작 | 내용 |
 |---|---|
-| 최신 결과 | 호출할 때 파일의 수정 시각·크기가 바뀌었으면 다시 읽습니다 |
+| 최신 결과 | 호출할 때 파일 내용(sha256)이 바뀌었으면 다시 읽습니다. 같은 시각·같은 크기로 덮어써도 반영됩니다 |
 | 저장소·커밋 | 파일 안의 `source.repository`·`source.revision`·`source.generated_at`을 씁니다. `list_findings`의 `source`에 나옵니다 |
 | 저장소 고정 | `--repository`와 파일의 저장소가 다르면 그 파일은 받지 않고 직전 결과를 유지합니다 |
 | 깨진 파일 | 저장 도중·형식 오류면 직전 정상 결과를 유지하고 `notice`로 알립니다 |
 | 파일 없음 | 서버는 뜨고 `list_findings`가 빈 목록과 "자동 저장을 켜 주세요" 안내를 돌려줍니다 |
+| 파일 삭제 | 한 번 읽은 뒤 파일이 사라지면 직전 결과를 유지하고 `notice`로 알립니다 |
 
 `--revision`을 주면 기존처럼 시작할 때 한 번 읽는 고정 방식입니다. 이때 파일의 `source.revision`이 다르면 거부합니다.
 

@@ -41,7 +41,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", required=True, type=Path)
     parser.add_argument(
-        "--repository", help="Target owner/repo, not the scanner repository. Pins the repository in live mode"
+        "--repository", help="Target owner/repo, not the scanner repository. Pins the repository in live mode (recommended)"
     )
     parser.add_argument(
         "--revision", help="Full commit SHA of the scanned target. Given: fixed snapshot. Omitted: live file (web auto-save)"

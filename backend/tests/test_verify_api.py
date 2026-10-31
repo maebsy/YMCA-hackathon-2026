@@ -19,6 +19,7 @@ from app.routers.scans import scan_user
 from app.verify import jobs as J
 from app.verify.jobs import VerifyJobs
 from app.verify.schemas import AttackOutcome, VerifyResult
+from tests.test_verify_bridge import RED_XSS, blue, red
 
 
 def _verified(*_a, **_k) -> VerifyResult:
@@ -302,3 +303,84 @@ def test_integration_demo_through_api():
     # 기능 테스트 건수까지 읽혀야 화면에 "3/3 통과"를 보여 줄 수 있습니다
     assert result["before_tests"]["passed"] == result["after_tests"]["passed"] == 3
     assert result["after_tests"]["failed"] == 0
+
+
+# ── mode="ai": Red·Blue가 만든 공격·수정본으로 실행 (가짜 vLLM) ──
+
+
+@pytest.fixture
+def ai_ready(monkeypatch, fake_vllm, reuse_default):
+    calls = []
+
+    def fake_verify(req, *, trusted):
+        calls.append((req, trusted))
+        return _verified()
+
+    monkeypatch.setattr(R, "docker_available", lambda: True)
+    monkeypatch.setattr(R, "verify", fake_verify)
+    monkeypatch.setenv("VERIFY_REUSE_SECONDS", "0")
+    return SimpleNamespace(vllm=fake_vllm, calls=calls)
+
+
+def _with_llm(client, vllm):
+    client.app.state.explainer = SimpleNamespace(client=vllm.client())
+
+
+def test_demo_findings_point_at_vulnerable_lines():
+    lines = (R.DEMO / "server.js").read_text(encoding="utf-8").splitlines()
+    found = {f.fingerprint: f for f in R._demo_findings()}
+    assert set(found) == {"demo:sqli-orders", "demo:xss-search"}
+    assert "SELECT * FROM orders WHERE id" in lines[found["demo:sqli-orders"].start_line - 1]
+    assert "req.query.q" in lines[found["demo:xss-search"].start_line - 1]
+
+
+def test_ai_mode_runs_model_attacks_and_patch_in_docker_only(ai_ready):
+    ai_ready.vllm.queue("RedAttackPlan", red(), RED_XSS).queue("BluePatch", blue())
+    with TestClient(app) as client:
+        _with_llm(client, ai_ready.vllm)
+        r = client.post("/api/verify", json={"target": "demo", "mode": "ai"})
+        assert r.status_code == 202, r.text
+        job = _wait(client, r.json()["job_id"])
+    assert job["status"] == "done", job
+    assert job["mode"] == "ai" and job["target"] == "demo-ai"
+    req, trusted = ai_ready.calls[0]
+    assert trusted is False  # 모델이 만든 코드는 Docker 격리에서만
+    assert [a.request.path for a in req.attacks] == ["/api/orders", "/search"]
+    assert "?" in req.patch.files["server.js"]  # Blue 편집이 원본에 적용된 전체 파일
+    assert job["patched_files"] == ["server.js"] and "+++ b/server.js" in job["patch_diff"]
+    assert set(job["ai"]["red_reasons"]) == {a.id for a in req.attacks}
+    assert job["ai"]["skipped"] == []
+
+
+def test_ai_mode_without_patch_reports_error_and_skips_run(ai_ready):
+    # Blue가 원본에 없는 줄을 고치려 하면 (재요청까지) 수정본이 없으므로 실행하지 않습니다
+    bad = blue(edits=[{"start_line": 9999, "end_line": 9999, "replace": "x"}])
+    ai_ready.vllm.queue("RedAttackPlan", red(), RED_XSS).queue("BluePatch", bad, bad, bad)
+    with TestClient(app) as client:
+        _with_llm(client, ai_ready.vllm)
+        job = _wait(client, client.post("/api/verify", json={"mode": "ai"}).json()["job_id"])
+    assert job["status"] == "done"
+    assert job["result"]["status"] == "error"
+    assert ai_ready.calls == []
+    assert job["attacks"] == [] and {s["stage"] for s in job["ai"]["skipped"]} == {"blue"}
+
+
+def test_ai_mode_requires_docker(ai_ready, monkeypatch):
+    monkeypatch.setattr(R, "docker_available", lambda: False)
+    with TestClient(app) as client:
+        _with_llm(client, ai_ready.vllm)
+        r = client.post("/api/verify", json={"mode": "ai"})
+    assert r.status_code == 503 and "Docker" in r.json()["detail"]["message"]
+
+
+def test_ai_mode_requires_llm(ai_ready):
+    ai_ready.vllm.models = ("other-model",)
+    with TestClient(app) as client:
+        _with_llm(client, ai_ready.vllm)
+        r = client.post("/api/verify", json={"mode": "ai"})
+    assert r.status_code == 503 and "LLM" in r.json()["detail"]["message"]
+
+
+def test_unknown_mode_rejected(ai_ready):
+    with TestClient(app) as client:
+        assert client.post("/api/verify", json={"mode": "user-repo"}).status_code == 422

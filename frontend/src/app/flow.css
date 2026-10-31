@@ -53,14 +53,21 @@ label { display:block; font-size:12px; font-weight:600; margin-bottom:8px; }
 .text-link { display:inline-flex; gap:8px; align-items:center; border:0; padding:0; background:transparent; color:var(--text); font-weight:600; font-size:12px; text-decoration:underline; text-underline-offset:4px; }
 .text-link:hover { color:var(--accent); }
 .card { border:1px solid var(--border); background:var(--subtle); border-radius:18px; }
-.site-header { min-height:88px; display:flex; align-items:center; justify-content:space-between; gap:20px; border-bottom:1px solid var(--border); }
+.site-header { min-height:88px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px 20px; padding-block:12px; border-bottom:1px solid var(--border); }
+.site-header>a { flex-shrink:0; }
 .brand { display:inline-flex; align-items:center; gap:10px; font-weight:700; font-size:24px; letter-spacing:-.8px; line-height:1; }
 .brand>svg { color:var(--accent); }
 .brand-hours { font-size:20px; font-weight:500; }
 .header-note { color:var(--muted); font-size:11px; margin-right:auto; margin-left:20px; }
-.header-actions { display:flex; align-items:center; gap:20px; }
+.header-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px 20px; min-width:0; max-width:100%; margin-left:auto; }
 .header-actions>a { display:flex; align-items:center; min-height:44px; color:var(--muted); font-size:12px; }
 .header-actions>a:hover,.header-actions>a[aria-current] { color:var(--accent); }
+.auth-controls { min-width:0; max-width:100%; color:var(--muted); font-size:12px; }
+.auth-actions { display:flex; align-items:center; gap:7px; min-width:0; max-width:100%; }
+.auth-username { min-width:0; max-width:16ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.auth-button { flex-shrink:0; min-height:44px; padding:0; border:0; background:transparent; font-size:inherit; color:inherit; white-space:nowrap; }
+.auth-button:hover { color:var(--accent); }
+.auth-error { max-width:28ch; color:var(--danger); font-size:11px; overflow-wrap:anywhere; }
 .moon-icon { display:none; }
 [data-theme="light"] .moon-icon { display:block; }
 [data-theme="light"] .sun-icon { display:none; }

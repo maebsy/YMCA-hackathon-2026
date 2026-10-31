@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { Moon, ShieldCheck, Sun } from "lucide-react";
+import AuthControls from "@/components/auth-controls";
 
 export function Brand() {
   return <span className="brand"><ShieldCheck size={28} strokeWidth={1.5}/><span>72<span className="brand-hours">hours</span><span className="accent">.</span></span></span>;
@@ -32,6 +33,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         <Link href="/repository" aria-current={pathname === "/repository" ? "page" : undefined}>GitHub 실제 검사</Link>
         <Link href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}>사고 신고</Link>
         <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>도움말</Link>
+        <AuthControls/>
         <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label="밝은 테마와 어두운 테마 전환"><Sun className="sun-icon" size={18}/><Moon className="moon-icon" size={18}/></button>
       </nav>
     </header>

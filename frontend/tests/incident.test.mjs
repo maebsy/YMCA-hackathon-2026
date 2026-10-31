@@ -3,18 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createRequire} from 'node:module';
-import ts from 'typescript';
+import {loadTypeScript} from './helpers/load-typescript.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 function load(relative) {
-  const source = fs.readFileSync(path.join(directory, relative), 'utf8');
-  const compiled = ts.transpileModule(source, {compilerOptions: {
-    module:ts.ModuleKind.CommonJS, target:ts.ScriptTarget.ES2022,
-  }}).outputText;
-  const loaded = {exports:{}};
-  new Function('require', 'module', 'exports', compiled)(createRequire(import.meta.url), loaded, loaded.exports);
-  return loaded.exports;
+  return loadTypeScript(path.join(directory, relative));
 }
 const domain = load('../src/lib/incident.ts');
 const api = load('../src/lib/api.ts');

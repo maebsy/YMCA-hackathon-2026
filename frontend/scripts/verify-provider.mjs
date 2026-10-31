@@ -1,24 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import vm from "node:vm";
+import { loadTypeScript } from "../tests/helpers/load-typescript.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const require = createRequire(resolve(root, "package.json"));
-const ts = require("typescript");
 const repoA = "https://github.com/test-org/project-a";
 const repoB = "https://github.com/test-org/project-b";
 
 function loadSource(relative, imports = {}) {
-  const compiled = ts.transpileModule(readFileSync(resolve(root, relative), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
-  }).outputText;
-  const loaded = { exports: {} };
-  vm.runInNewContext(compiled, { module: loaded, exports: loaded.exports, URL, Date, Error, console,
-    require: name => imports[name] ?? require(name) }, { filename: relative });
-  return loaded.exports;
+  return loadTypeScript(resolve(root, relative), { imports, globals: { URL, Date, Error, console, process } });
 }
 const realAPI = loadSource("src/lib/api.ts");
 const { buildHandoff } = loadSource("src/lib/mcp.ts");

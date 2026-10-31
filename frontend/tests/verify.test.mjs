@@ -1,17 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createRequire} from 'node:module';
-import ts from 'typescript';
+import {loadTypeScript} from './helpers/load-typescript.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const compiled = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/lib/verify.ts'), 'utf8'), {
-  compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
-}).outputText;
-const loaded = {exports: {}};
-new Function('require', 'module', 'exports', compiled)(createRequire(import.meta.url), loaded, loaded.exports);
-const {parseVerifyJob, requestLine, testsLabel, runVerify} = loaded.exports;
+const {parseVerifyJob, requestLine, testsLabel, runVerify} = loadTypeScript(path.join(__dirname, '../src/lib/verify.ts'));
 
 const result = {
   status: 'verified', message: '모든 공격이 수정 후 차단되고 기능 테스트를 통과했습니다.', sandbox: 'local',

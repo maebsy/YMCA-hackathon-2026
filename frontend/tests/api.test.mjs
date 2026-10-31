@@ -3,15 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createRequire} from 'node:module';
-import ts from 'typescript';
+import {loadTypeScript} from './helpers/load-typescript.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const compiled = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/lib/api.ts'), 'utf8'), {
-  compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
-}).outputText;
-const loaded = {exports: {}};
-new Function('require', 'module', 'exports', compiled)(createRequire(import.meta.url), loaded, loaded.exports);
-const {itemToFinding, mergeExplanation, explain} = loaded.exports;
+const loaded = loadTypeScript(path.join(__dirname, '../src/lib/api.ts'));
+const {itemToFinding, mergeExplanation, explain} = loaded;
 const item = {id:'osv:test', title:'Test vulnerability', severity:'unknown', status:'code_issue', kind:'dependency'};
 
 test('unrequested findings do not claim an LLM request is still running', () => {
@@ -91,7 +86,7 @@ test('failed and expired LLM jobs surface the server message', async () => {
 });
 
 // ── #59: GPU 해석을 백엔드 동시 실행 수만큼 함께 보내기 ──
-const {runLimited, LLM_PARALLEL} = loaded.exports;
+const {runLimited, LLM_PARALLEL} = loaded;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 test('runLimited never exceeds the limit and finishes every item', async () => {

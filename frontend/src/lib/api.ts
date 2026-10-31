@@ -1,4 +1,5 @@
 // 백엔드 연결: /api/* 는 next.config.ts rewrites 로 FastAPI(:8000)에 전달됩니다.
+import { apiFetch, LOGIN_REQUIRED_MESSAGE } from "./auth";
 import type { Finding } from "@/types/security";
 import type { AssessResponse, Deadline, FilingKind, FilingNeed, FilingReport, FilingRequest, IncidentInput, ReportBadge, ReportCard, ReportField, ReportSection } from "@/types/incident";
 
@@ -11,19 +12,19 @@ export { now };
 
 // 검사 접수 → 3초마다 진행 상태 조회 (검사는 1~3분 걸려서 응답을 기다리지 않고 작업 번호로 확인)
 export async function startScan(repoUrl: string, previous?: unknown, onStatus?: (s: string) => void) {
-  const res = await fetch("/api/scans", {
+  const res = await apiFetch("/api/scans", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ repo_url: repoUrl, previous: previous ?? null }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.detail?.message || data?.detail || `검사 접수 실패 (${res.status})`);
+  if (!res.ok) throw new Error(res.status === 401 ? LOGIN_REQUIRED_MESSAGE : data?.detail?.message || data?.detail || `검사 접수 실패 (${res.status})`);
   const started = Date.now();
   while (Date.now() - started < 15 * 60 * 1000) {
     await new Promise((r) => setTimeout(r, 3000));
-    const st = await fetch(`/api/scans/${data.job_id}`);
+    const st = await apiFetch(`/api/scans/${data.job_id}`);
     const job = await st.json().catch(() => ({}));
-    if (!st.ok) throw new Error(job?.detail?.message || `검사 상태 조회 실패 (${st.status})`);
+    if (!st.ok) throw new Error(st.status === 401 ? LOGIN_REQUIRED_MESSAGE : job?.detail?.message || `검사 상태 조회 실패 (${st.status})`);
     onStatus?.(job.status);
     if (job.status === "done") return job.result;
     if (job.status === "failed") throw new Error(job.error?.message || "검사 실패");
@@ -33,7 +34,7 @@ export async function startScan(repoUrl: string, previous?: unknown, onStatus?: 
 
 export async function llmHealthy(): Promise<boolean> {
   try {
-    const res = await fetch("/api/llm/health", { cache: "no-store", signal: AbortSignal.timeout(12_000) });
+    const res = await apiFetch("/api/llm/health", { cache: "no-store", signal: AbortSignal.timeout(12_000) });
     return res.ok;
   } catch {
     return false;
@@ -74,20 +75,20 @@ export async function runLimited<T, R>(
 }
 
 export async function explain(findings: unknown[], os: string, hosting = "unknown") {
-  const res = await fetch("/api/llm/explain/tasks", {
+  const res = await apiFetch("/api/llm/explain/tasks", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ findings, mode: "red_blue", environment: { os, hosting } }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.detail?.message || `LLM 해석 실패 (${res.status})`);
+  if (!res.ok) throw new Error(res.status === 401 ? LOGIN_REQUIRED_MESSAGE : data?.detail?.message || `LLM 해석 실패 (${res.status})`);
   if (typeof data.job_id !== "string") throw new Error("LLM 작업 응답이 올바르지 않습니다.");
   const started = Date.now();
   while (Date.now() - started < 16 * 60 * 1000) {
-    const response = await fetch(`/api/llm/explain/tasks/${encodeURIComponent(data.job_id)}`,
+    const response = await apiFetch(`/api/llm/explain/tasks/${encodeURIComponent(data.job_id)}`,
       { cache: "no-store", signal: AbortSignal.timeout(15_000) });
     const job = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(job?.detail?.message || `LLM 상태 조회 실패 (${response.status})`);
+    if (!response.ok) throw new Error(response.status === 401 ? LOGIN_REQUIRED_MESSAGE : job?.detail?.message || `LLM 상태 조회 실패 (${response.status})`);
     if (job.status === "failed") throw new Error(job.error?.message || "LLM 해석에 실패했습니다.");
     if (job.status === "done") {
       if (!Array.isArray(job.result?.results)) throw new Error("LLM 결과 형식이 올바르지 않습니다.");
@@ -101,13 +102,13 @@ export async function explain(findings: unknown[], os: string, hosting = "unknow
 
 // 비전공자용 점검 리포트 (실제 검사 결과로). format=html 이면 인쇄용 HTML, markdown 이면 붙여 넣기용
 export async function plainReport(body: unknown, format: "html" | "markdown" = "html") {
-  const res = await fetch(`/api/reports/plain?format=${format}`, {
+  const res = await apiFetch(`/api/reports/plain?format=${format}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`리포트 생성 실패 (${res.status}): ${text.slice(0, 200)}`);
+  if (!res.ok) throw new Error(res.status === 401 ? LOGIN_REQUIRED_MESSAGE : `리포트 생성 실패 (${res.status}): ${text.slice(0, 200)}`);
   return text;
 }
 
@@ -144,6 +145,7 @@ function validNeed(value: unknown): value is FilingNeed {
     && (!value.required || validDeadline(value.deadline));
 }
 function reportFailure(body: string, status: number, label: string): Error {
+  if (status === 401) return new Error(LOGIN_REQUIRED_MESSAGE);
   let detail = "다시 시도하고 입력 내용을 확인해 주세요.";
   try {
     const data: unknown = JSON.parse(body);
@@ -168,7 +170,7 @@ async function requestIncidentReport(path: string, body: unknown, label: string)
   let response: Response;
   let content: string;
   try {
-    response = await fetch(`/api/reports/${path}`, {
+    response = await apiFetch(`/api/reports/${path}`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
       cache: "no-store", signal: AbortSignal.timeout(20_000),
     });

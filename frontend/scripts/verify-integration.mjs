@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import vm from "node:vm";
+import { loadTypeScript } from "../tests/helpers/load-typescript.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const require = createRequire(resolve(root, "package.json"));
-const ts = require("typescript");
 const storage = new Map();
 const requests = [];
 let replies = [];
 const runtime = {
-  URL, Date, Map, Set, console, AbortSignal,
+  URL, Date, Map, Set, console, AbortSignal, process,
   setTimeout(callback) { callback(); return 0; },
   localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
   fetch: async (url, options) => {
@@ -25,11 +21,7 @@ const runtime = {
   },
 };
 function compile(relative, imports = {}) {
-  const source = readFileSync(resolve(root, relative), "utf8");
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText;
-  const loaded = { exports: {} };
-  vm.runInNewContext(compiled, { ...runtime, module: loaded, exports: loaded.exports, require: name => imports[name] ?? require(name) }, { filename: relative });
-  return loaded.exports;
+  return loadTypeScript(resolve(root, relative), { imports, globals: runtime });
 }
 const api = compile("src/lib/api.ts");
 const provider = compile("src/components/repository-provider.tsx", { "@/lib/api": api });
@@ -104,10 +96,10 @@ await checkAsync("Scan API surfaces queue rejection", async () => {
   replies = [{ ok: false, status: 400, body: { detail: { message: "invalid repo" } } }];
   await assert.rejects(api.startScan(saved.repoUrl), /invalid repo/);
 });
-await checkAsync("Scan API preserves login, owner-policy and queue errors", async () => {
+await checkAsync("Scan API requests login and preserves owner-policy and queue errors", async () => {
   for (const [status, message] of [[401, "login required"], [403, "owner not allowed"], [429, "queue full"]]) {
     replies.push({ ok: false, status, body: { detail: { message } } });
-    await assert.rejects(api.startScan(saved.repoUrl), new RegExp(message));
+    await assert.rejects(api.startScan(saved.repoUrl), status === 401 ? /GitHub로 로그인/ : new RegExp(message));
   }
 });
 await checkAsync("Scan API surfaces failed job without inventing results", async () => {

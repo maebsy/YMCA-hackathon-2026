@@ -1,5 +1,5 @@
 // Red–Blue 실검증 API (/api/verify): 접수 → 작업 번호 → 2초마다 조회. 모양은 backend/app/verify/schemas.py 의 VerifyResult 입니다.
-// 테스트가 이 파일만 변환해 불러오므로 다른 모듈을 import 하지 않습니다.
+import { apiFetch, LOGIN_REQUIRED_MESSAGE } from "./auth";
 
 export type VerifyStatus = "verified" | "not_reproduced" | "fix_failed" | "error";
 export type AttackVerdict = "verified" | "not_reproduced" | "fix_failed";
@@ -111,7 +111,8 @@ export const isolationLabels: [keyof Isolation, string][] = [
   ["no_new_privs", "권한 상승 금지"],
 ];
 
-function apiError(data: unknown, fallback: string): Error {
+function apiError(data: unknown, fallback: string, status: number): Error {
+  if (status === 401) return new Error(LOGIN_REQUIRED_MESSAGE);
   const detail = record(data) ? data.detail : undefined;
   if (record(detail) && typeof detail.message === "string") return new Error(detail.message);
   if (typeof detail === "string") return new Error(detail);
@@ -121,9 +122,9 @@ function apiError(data: unknown, fallback: string): Error {
 /** 실검증을 접수하고 끝날 때까지 조회합니다. onStatus로 queued·running 을 알려 줍니다. */
 export async function runVerify(options: { mode?: VerifyMode; onStatus?: (status: VerifyJob["status"]) => void; intervalMs?: number; timeoutMs?: number; isCancelled?: () => boolean } = {}): Promise<VerifyJob> {
   const { mode = "reference", onStatus, intervalMs = 2000, timeoutMs = 10 * 60 * 1000, isCancelled } = options;
-  const res = await fetch("/api/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: "demo", mode }) });
+  const res = await apiFetch("/api/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: "demo", mode }) });
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw apiError(data, `실검증 접수 실패 (${res.status})`);
+  if (!res.ok) throw apiError(data, `실검증 접수 실패 (${res.status})`, res.status);
   const jobId = record(data) && typeof data.job_id === "string" ? data.job_id : null;
   if (!jobId) throw new Error("실검증 접수 응답이 올바르지 않습니다.");
   let waitBeforePoll = !record(data) || data.status !== "done";
@@ -133,9 +134,9 @@ export async function runVerify(options: { mode?: VerifyMode; onStatus?: (status
     if (waitBeforePoll) await new Promise(resolve => setTimeout(resolve, intervalMs));
     waitBeforePoll = true;
     if (isCancelled?.()) throw new Error("실검증 조회를 멈췄습니다.");
-    const response = await fetch(`/api/verify/${encodeURIComponent(jobId)}`, { cache: "no-store" });
+    const response = await apiFetch(`/api/verify/${encodeURIComponent(jobId)}`, { cache: "no-store" });
     const body: unknown = await response.json().catch(() => ({}));
-    if (!response.ok) throw apiError(body, `실검증 상태 조회 실패 (${response.status})`);
+    if (!response.ok) throw apiError(body, `실검증 상태 조회 실패 (${response.status})`, response.status);
     const job = parseVerifyJob(body);
     if (!job) throw new Error("실검증 응답 형식이 올바르지 않습니다.");
     if (job.status === "failed") throw new Error(job.error?.message || "실검증에 실패했습니다.");

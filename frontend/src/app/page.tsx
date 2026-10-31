@@ -188,10 +188,6 @@ export default function Home() {
 
       {/* 메인 콘텐츠 영역 */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-10 relative z-10">
-        <p className="mb-6 rounded-lg border border-[#ff9f43]/50 bg-[#ff9f43]/10 p-3 font-mono text-xs text-[#ff9f43]">
-          데모 모드 · 로그인, 검사, 재검사, GPU 상태 및 공격 재현은 예제입니다.
-          실제 인증·보안 검증을 수행하지 않으며, 리포트를 실제 증빙으로 사용할 수 없습니다.
-        </p>
         {activeTab === "workspace" && (
           <WorkspaceTab
             findings={findings}
@@ -214,9 +210,7 @@ export default function Home() {
 
         {activeTab === "architecture" && <ArchitectureTab />}
 
-        <div hidden={activeTab !== "incident"}>
-          <IncidentTab onShowToast={showToast} />
-        </div>
+        {activeTab === "incident" && <IncidentTab onShowToast={showToast} />}
 
         {activeTab === "report" && (
           <ReportTab

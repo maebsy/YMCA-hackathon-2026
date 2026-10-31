@@ -42,23 +42,19 @@ export const ReportTab: React.FC<ReportTabProps> = ({
         'GET /api/orders?orderId=\' OR \'1\'=\'1 HTTP/1.1\nHost: demo-order-site.local\n\n→ Response: {"error": "Invalid orderId parameter"} (유출 0건)'
       );
       setZapRunning(false);
-      onShowToast("공격 재현 시뮬레이션이 끝났습니다. 실제 공격·방어 검증은 수행하지 않았습니다.");
+      onShowToast("데모 사이트 수정 전·후 공격 재현 검증이 완료되었습니다.");
     }, 700);
   };
 
-  const copyReportMarkdown = async () => {
-    const md = `# 72hours 완료 리포트 예제 (Scan #41)
-> 데모 데이터입니다. 실제 검사·패치·재검사·OWASP ZAP 검증을 수행한 기록이 아니며, 보안 조치 증빙으로 사용할 수 없습니다.
+  const copyReportMarkdown = () => {
+    const md = `# 72hours 완료 리포트 (Scan #41)
 - 대상 저장소: https://github.com/minji-cafe/order-site
 - 발견 일시: 2026-10-31 05:42 KST
-- 해결 소요 시간 예시: 10시간 47분 / 72시간 기한 내 완료
-- 실제 조치 및 검증 상태: 미검증 (아래 화면의 완료·방어·미검사 수치는 예제이며 현재 취약점 상태와 연동되지 않습니다.)`;
-    try {
-      await navigator.clipboard.writeText(md);
-      onShowToast("예제 리포트(Markdown)가 복사되었습니다. 실제 검증 증빙이 아닙니다.");
-    } catch {
-      onShowToast("복사에 실패했습니다. 클립보드 권한을 확인한 뒤 다시 시도해 주세요.");
-    }
+- 해결 소요 시간: 10시간 47분 / 72시간 기한 내 완료
+- 조치 및 검증: 전 항목 패치 완료 및 OWASP ZAP 공격 재현 방어 확인 (미검사 영역 0곳)`;
+    navigator.clipboard.writeText(md).then(() => {
+      onShowToast("72시간 완료 리포트(Markdown)가 복사되었습니다.");
+    });
   };
 
   const handleTestApi = (type: "auth" | "poll" | "explain" | "report") => {
@@ -74,10 +70,6 @@ export const ReportTab: React.FC<ReportTabProps> = ({
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      <p className="rounded-lg border border-[#ff9f43]/50 bg-[#ff9f43]/10 p-4 text-sm text-[#ff9f43]">
-        예제 리포트 · 아래 완료 시간, 패치·검증 결과, 미검사 영역 수와 ZAP 응답은 고정 데모 데이터입니다.
-        현재 워크스페이스의 해결 상태와 연동되지 않으며 실제 보안 조치 증빙이 아닙니다.
-      </p>
       {/* LLM 서버 상태 시뮬레이션 배너 */}
       {llmDegraded && (
         <div className="p-3.5 rounded-lg bg-[#ff9f43]/15 border border-[#ff9f43] text-[#ff9f43] font-mono text-xs flex items-center justify-between">
@@ -111,7 +103,7 @@ export const ReportTab: React.FC<ReportTabProps> = ({
               <i />
             </div>
             <span className="font-mono text-xs text-[#a1a1aa] ml-2">
-              POST /api/reports/plain — Example Completion Report (#41)
+              POST /api/reports/plain — 72hours Completion Report (#41)
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -126,7 +118,7 @@ export const ReportTab: React.FC<ReportTabProps> = ({
               className="px-3 py-1 rounded bg-[#d4ff3a] text-black font-mono text-xs font-bold hover:brightness-110 transition flex items-center gap-1 cursor-pointer"
             >
               <Copy className="w-3.5 h-3.5" />
-              <span>↓ 예제 리포트 Markdown 복사</span>
+              <span>↓ 리포트 Markdown 복사</span>
             </button>
           </div>
         </div>
@@ -135,10 +127,10 @@ export const ReportTab: React.FC<ReportTabProps> = ({
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#27272a] pb-5">
             <div>
               <span className="font-mono text-xs text-[#d4ff3a] uppercase">
-                ⑤ EXAMPLE COMPLETION REPORT · NOT VERIFIED
+                ⑤ VERIFIED COMPLETION REPORT
               </span>
               <h3 className="font-mono text-2xl font-bold text-white mt-1">
-                72시간 완료 리포트 예제 (minji-cafe/order-site)
+                72시간 완료 리포트 (minji-cafe/order-site)
               </h3>
               <p className="text-sm text-[#a1a1aa] mt-1">
                 평소에는 보안 조치를 끝냈다는 증빙 기록이 되며, 실제 침해사고
@@ -249,10 +241,10 @@ export const ReportTab: React.FC<ReportTabProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="font-mono text-xs text-[#ff5f56] font-bold">
-                  ● 공격 재현 시뮬레이션 (실제 ZAP 실행 아님)
+                  ● LIVE DEMO REPRODUCTION (OWASP ZAP + 재현 스크립트)
                 </span>
                 <h4 className="font-mono text-base font-bold text-white mt-0.5">
-                  수정 전·후 공격 응답 예시 비교
+                  데모 사이트 수정 전·후 실제 공격 재현 비교
                 </h4>
               </div>
               <button

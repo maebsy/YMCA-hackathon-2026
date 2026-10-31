@@ -268,6 +268,10 @@ def _maven_key(v: str) -> tuple | None:
     if not m:
         return None
     qualifier = (m[2] or "").lower()
+    # Maven expands a/b/m only when a digit immediately follows the letter.
+    # Bare or separated aliases are unknown qualifiers; do not guess their order.
+    if qualifier in {"a", "b", "m"} and (not m[3] or m.start(3) != m.end(2)):
+        return None
     if qualifier not in _MAVEN_QUALIFIER:
         return None  # 모르는 한정자는 비교하지 않는다
     return (_trim([int(x) for x in m[1].split(".")]), _MAVEN_QUALIFIER[qualifier], int(m[3] or 0))

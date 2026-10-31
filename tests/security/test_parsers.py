@@ -354,3 +354,35 @@ def test_dependency_plan_ignores_targets_it_cannot_compare():
     [plan] = _dependency_upgrades([dep("a", "1.0.1"), dep("b", "1.0.0-rc.9"), dep("c", "not-semver")])
     assert plan["target_version"] == "1.0.1"  # 1.0.0-rc.9는 더 낮고, not-semver는 비교하지 않음
     assert plan["fixes"] == ["a", "b"] and plan["unfixable"] == ["c"]
+
+
+def test_maven_short_qualifiers_require_an_adjacent_digit():
+    from security_engine.normalize import version_key
+
+    for short, full in (("a", "alpha"), ("b", "beta"), ("m", "milestone")):
+        for alias in (short, short.upper()):
+            for prefix in ("1.0-", "1.0.", "1.0"):
+                assert version_key(prefix + alias + "1", "Maven") == version_key(prefix + full + "1", "Maven")
+                for suffix in ("", "-1", ".1"):
+                    version = prefix + alias + suffix
+                    assert version_key(version, "Maven") is None
+                    assert pick_fix_version(version, ["1.0"], "Maven") is None
+                    assert pick_fix_version("1.0", [version], "Maven") is None
+                    assert pick_fix_version(None, [version], "Maven") is None
+            assert pick_fix_version("1.0-" + alias + "1", ["1.0"], "Maven") == "1.0"
+        assert version_key("1.0-" + full + "-1", "Maven") == version_key("1.0-" + full + "1", "Maven")
+
+
+def test_osv_parse_does_not_downgrade_unknown_maven_short_qualifiers():
+    for qualifier in ("a", "b", "m", "A", "B", "M"):
+        for suffix in ("", "-1", ".1"):
+            [finding] = osv.parse(_osv_reintroduced("1.0-" + qualifier + suffix, "1.0", "Maven"), Path("/abs/site"))
+            assert finding["package"]["fixed_versions"] == ["1.0"]
+            assert finding["remediation"] == {"kind": "no_fix_available", "target_version": None, "autofix": None}
+
+
+def test_osv_parse_keeps_upgrades_for_numbered_maven_short_qualifiers():
+    for qualifier in ("a", "b", "m"):
+        [finding] = osv.parse(_osv_reintroduced("1.0-" + qualifier + "1", "1.0", "Maven"), Path("/abs/site"))
+        assert finding["remediation"]["kind"] == "upgrade_dependency"
+        assert finding["remediation"]["target_version"] == "1.0"

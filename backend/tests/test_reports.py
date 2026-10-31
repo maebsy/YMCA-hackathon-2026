@@ -576,3 +576,12 @@ def test_api_assess_and_filings(api):
 )
 def test_api_rejects_bad_requests(api, path, payload):
     assert api.post(path, json=payload).status_code == 422
+
+
+def test_completed_next_steps_do_not_promise_unbuilt_alerts():
+    # 매일 자동 검사·이메일 알림은 아직 구현되지 않았습니다. 완료 리포트가 이를 '된다'고 안내하면 안 됩니다
+    from app.reports.plain import next_steps
+
+    text = " ".join(next_steps([], completed=True).bullets)
+    assert "알려 드립니다" not in text and "자동 검사는 계속" not in text
+    assert "재검사" in text and "준비 중" in text

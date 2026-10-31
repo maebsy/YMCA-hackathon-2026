@@ -40,3 +40,13 @@ Node 22.5+ 필요 (`node:sqlite` 내장). 외부 의존성은 `express`, `jsonwe
 `verify/fix/server.js` — **기준 수정본**(Blue가 내야 할 수정의 예시). 실검증이 after 사본에 덮어씁니다.
 바뀐 곳은 세 군데입니다: 파라미터 바인딩(SQL 주입), 출력 이스케이프(XSS), 서명 키를 환경변수로(하드코딩 키).
 이 수정본으로 실검증하면 `verified`가 나오고, 보안엔진으로 재검사하면 SQL 주입·하드코딩 키 탐지가 사라집니다.
+
+## 화면과 API로 실행
+
+- 화면: 웹의 `/verify`에서 "실검증 실행"을 누르면 판정, 공격별 수정 전/후, 기능 테스트, 격리 4항목, 수정 내용을 보여 줍니다.
+- API: 검사 API와 같은 "접수 → 작업 번호 → 조회" 방식입니다 (`backend/app/routers/verify.py`).
+  - `POST /api/verify` (본문 `{"target": "demo"}` 또는 비움) → 202 `{job_id, status: "queued"}`
+  - `GET /api/verify/{job_id}` → `status`(queued·running·done·failed), 끝나면 `result`(`VerifyResult`), `attacks`(위 공격 정의), `patched_files`, `patch_diff`
+- 서버는 이 폴더의 `verify/attacks.json`과 `verify/fix/`만 씁니다. 요청으로 경로·수정본·명령을 보내면 422로 거절합니다. 데모 과녁은 Docker가 없으면 서버에서 격리 없이 실행되기 때문입니다.
+- 실행 환경: Docker가 있으면 Docker, 없으면 서버의 Node 22.5 이상과 npm을 씁니다. 둘 다 없으면 503입니다.
+- 한 번에 1건만 실행하고(데모 앱이 고정 포트 3100을 씀), 기다리는 것까지 3건을 넘으면 429입니다. 결과는 서버 메모리에만 둡니다.

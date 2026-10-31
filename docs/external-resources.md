@@ -26,6 +26,7 @@
 | Python 공식 Docker 이미지 | 3.12-slim | 백엔드 컨테이너 기반 이미지 | PSF-2.0 (포함된 Debian 패키지는 각 라이선스) | https://hub.docker.com/_/python |
 | PostgreSQL 공식 Docker 이미지 | 17-alpine | 로컬 개발용 DB | PostgreSQL License | https://hub.docker.com/_/postgres |
 | PostgreSQL Windows 바이너리 | 17.11-5 | #7 스키마/RLS·#26 큐의 독립 임시 DB 통합 테스트 (서비스 등록 없음) | PostgreSQL License | https://www.enterprisedb.com/download-postgresql-binaries |
+| Zonky PostgreSQL Windows 바이너리 | 17.11.0 | #52 엔진 결과 저장의 독립 임시 DB 통합 테스트, Maven Central SHA-256 검증 (개발용) | PostgreSQL License (패키징 Apache-2.0) | https://github.com/zonkyio/embedded-postgres-binaries |
 | HTTPX | 0.28.1 | LLM 서버(vLLM) 호출 | BSD-3-Clause | https://github.com/encode/httpx |
 | pytest | 9.2.0 | 백엔드·보안엔진 테스트 (개발용) | MIT | https://github.com/pytest-dev/pytest |
 | vLLM | 0.32.0 | GPU 서버 LLM 서빙 (OpenAI 호환 API) | Apache-2.0 | https://github.com/vllm-project/vllm |

@@ -6,10 +6,10 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from handoff import HandoffError, Snapshot
+from handoff import HandoffError, LiveSnapshot, Snapshot
 
 
-def create_server(snapshot: Snapshot) -> FastMCP:
+def create_server(snapshot: Snapshot | LiveSnapshot) -> FastMCP:
     server = FastMCP(
         "72hours-handoff",
         instructions="Read-only local LLM handoff. List findings, then request a ready finding's prompt. "
@@ -40,12 +40,25 @@ def create_server(snapshot: Snapshot) -> FastMCP:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", required=True, type=Path)
-    parser.add_argument("--repository", required=True, help="Target owner/repo, not the scanner repository")
-    parser.add_argument("--revision", required=True, help="Full commit SHA of the scanned target")
+    parser.add_argument(
+        "--repository", help="Target owner/repo, not the scanner repository. Pins the repository in live mode (recommended)"
+    )
+    parser.add_argument(
+        "--revision", help="Full commit SHA of the scanned target. Given: fixed snapshot. Omitted: live file (web auto-save)"
+    )
     parser.add_argument("--run-index", type=int, help="Required for llm-check reports (zero based)")
     args = parser.parse_args()
     try:
-        snapshot = Snapshot(args.results, args.repository, args.revision, args.run_index)
+        if args.revision:
+            # 기존 방식: 운영자가 저장소·커밋을 정하고 파일은 시작할 때 한 번 읽습니다
+            if not args.repository:
+                parser.error("--revision을 줄 때는 --repository도 필요합니다.")
+            snapshot = Snapshot(args.results, args.repository, args.revision, args.run_index)
+        else:
+            # 웹 자동 저장: 파일이 바뀌면 다음 호출 때 다시 읽고, 커밋은 파일에서 읽습니다
+            if args.run_index is not None:
+                parser.error("--run-index는 --revision을 준 고정 방식에서만 씁니다.")
+            snapshot = LiveSnapshot(args.results, args.repository)
     except HandoffError as exc:
         parser.error(str(exc))
     create_server(snapshot).run(transport="stdio")

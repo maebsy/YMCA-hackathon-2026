@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>72hours — 바이브 코더 보안 플랫폼 (Interactive Web Preview)</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-white: #ffffff;
+      --bg-blue-soft: #f0f9ff;
+      --bg-mint-soft: #f0fdfa;
+      --blue-strong: #0284c7;
+      --mint-strong: #0d9488;
+      --text-primary: #0f172a;
+      --text-secondary: #334155;
+      --text-muted: #64748b;
+      --line-soft: rgba(14, 165, 233, 0.2);
+      --danger: #ef4444;
+      --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text-primary);
+      background:
+        radial-gradient(circle at 14% 12%, rgba(224, 242, 254, 0.9) 0%, transparent 45%),
+        radial-gradient(circle at 86% 18%, rgba(204, 251, 241, 0.85) 0%, transparent 48%),
+        linear-gradient(180deg, #ffffff 0%, #f8fafc 48%, #f0f9ff 100%);
+      min-height: 100vh;
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px 20px 64px; }
+
+    /* Header */
+    .header {
+      position: sticky; top: 12px; z-index: 40;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 18px;
+      padding: 12px 18px;
+      box-shadow: 0 8px 28px rgba(14, 165, 233, 0.08);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-logo {
+      width: 38px; height: 38px; border-radius: 11px;
+      background: linear-gradient(135deg, var(--blue-strong), var(--mint-strong));
+      color: #fff; font-weight: 900; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .nav-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .nav-btn {
+      border: 1px solid transparent; background: transparent; color: var(--text-secondary);
+      font-size: 12px; font-weight: 800; padding: 7px 12px; border-radius: 10px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .nav-btn:hover { background: #f0f9ff; color: var(--blue-strong); }
+    .nav-btn.active {
+      background: linear-gradient(135deg, var(--blue-strong), var(--mint-strong));
+      color: #fff;
+    }
+    .demo-btn {
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      background: linear-gradient(135deg, #e0f2fe, #ccfbf1);
+      color: #0369a1; font-size: 12px; font-weight: 800;
+      padding: 7px 13px; border-radius: 10px; cursor: pointer;
+    }
+
+    /* Hero & 120fps Liquid Search Box */
+    .hero { text-align: center; padding: 28px 0 18px; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: #e0f2fe; border: 1px solid rgba(56, 189, 248, 0.4);
+      color: var(--blue-strong); font-size: 11.5px; font-weight: 800;
+      padding: 5px 14px; border-radius: 999px; margin-bottom: 12px;
+    }
+    .hero h1 { font-size: clamp(24px, 3.5vw, 38px); font-weight: 900; letter-spacing: -0.03em; margin-bottom: 18px; }
+    .hero h1 span {
+      background: linear-gradient(135deg, var(--blue-strong), var(--mint-strong));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .liquid-wrap { max-width: 820px; margin: 0 auto; text-align: left; }
+    .liquid-shell {
+      position: relative; overflow: hidden; border-radius: 20px;
+      background: rgba(255, 255, 255, 0.96);
+      border: 2px solid rgba(56, 189, 248, 0.45);
+      box-shadow: 0 18px 42px -12px rgba(14, 165, 233, 0.16);
+      padding: 12px 14px;
+    }
+    .liquid-fill {
+      position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
+      background: linear-gradient(90deg, rgba(224,242,254,0.95) 0%, rgba(125,211,252,0.82) 48%, rgba(94,234,212,0.86) 85%, rgba(45,212,191,0.92) 100%);
+      pointer-events: none; z-index: 1; will-change: width;
+    }
+    .liquid-crest {
+      position: absolute; top: -15%; bottom: -15%; right: -16px; width: 32px;
+      background: radial-gradient(circle at 25% 50%, rgba(45,212,191,0.95), rgba(56,189,248,0.6) 65%, transparent 100%);
+      border-radius: 42% 58% 62% 38% / 45% 52% 48% 55%;
+      animation: wave 0.95s ease-in-out infinite alternate;
+    }
+    @keyframes wave {
+      0% { transform: translateY(-4px) scaleY(1.03); }
+      100% { transform: translateY(4px) scaleY(0.97); }
+    }
+    .liquid-inner {
+      position: relative; z-index: 2;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    }
+    .liquid-input-box { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 240px; }
+    .liquid-icon {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--blue-strong), var(--mint-strong));
+      color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 900;
+    }
+    .liquid-input {
+      width: 100%; border: none; background: transparent; outline: none;
+      font-size: 14px; font-weight: 700; color: var(--text-primary);
+    }
+    .btn-primary {
+      border: none; border-radius: 12px; cursor: pointer;
+      background: linear-gradient(135deg, var(--blue-strong), var(--mint-strong));
+      color: #fff; font-weight: 800; font-size: 13px; padding: 11px 18px;
+      box-shadow: 0 8px 18px -4px rgba(2, 132, 199, 0.35);
+      transition: transform 0.15s;
+    }
+    .btn-primary:hover { transform: translateY(-1px); }
+
+    .countup-card {
+      margin-top: 10px; padding: 14px 18px; border-radius: 16px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(56, 189, 248, 0.28);
+    }
+    .countup-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .countup-num {
+      font-size: 26px; font-weight: 900;
+      background: linear-gradient(135deg, var(--blue-strong), var(--mint-strong));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .track { height: 8px; border-radius: 999px; background: #e0f2fe; overflow: hidden; margin-bottom: 10px; }
+    .track-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #38bdf8, #0284c7, #14b8a6, #2dd4bf); will-change: width; }
+    .steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .step-chip {
+      text-align: center; font-size: 11px; font-weight: 800; padding: 5px 6px;
+      border-radius: 8px; border: 1px solid #cbd5e1; color: #64748b; background: #f8fafc;
+    }
+    .step-chip.done { border-color: rgba(20,184,166,0.45); background: #f0fdfa; color: #0f172a; }
+
+    /* KPI Chips + Hover Tooltip */
+    .kpi-grid {
+      max-width: 820px; margin: 14px auto 0;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;
+    }
+    .kpi-card {
+      position: relative; background: #fff; border: 1px solid var(--line-soft);
+      border-radius: 14px; padding: 11px 14px; text-align: left;
+    }
+    .kpi-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 800; color: var(--blue-strong); }
+    .kpi-val { font-size: 19px; font-weight: 900; margin-top: 3px; }
+    .tooltip-trigger {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 17px; height: 17px; border-radius: 50%; background: #e0f2fe; color: #0284c7;
+      font-size: 10px; font-weight: 800; cursor: help; position: relative;
+    }
+    .tooltip-trigger:hover .tooltip-box { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    .tooltip-box {
+      position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(4px);
+      width: 230px; padding: 9px 11px; border-radius: 10px; background: #0f172a; color: #f8fafc;
+      font-size: 11px; font-weight: 500; line-height: 1.45; z-index: 60;
+      opacity: 0; visibility: hidden; transition: all 0.16s; pointer-events: none;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.25);
+    }
+
+    /* Slide Bar */
+    .slide-bar {
+      margin: 20px 0 16px; padding: 10px 14px; border-radius: 16px;
+      background: #fff; border: 1px solid var(--line-soft);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    }
+    .slide-arrow {
+      border: 1px solid #cbd5e1; background: #f8fafc; color: var(--text-secondary);
+      font-size: 12px; font-weight: 800; padding: 8px 14px; border-radius: 10px; cursor: pointer;
+    }
+    .slide-arrow.next {
+      border: none; background: linear-gradient(135deg, var(--blue-strong), var(--mint-strong)); color: #fff;
+    }
+
+    /* Cards & Layout */
+    .grid-12 { display: grid; grid-template-columns: 360px 1fr; gap: 18px; }
+    @media (max-width: 900px) { .grid-12 { grid-template-columns: 1fr; } .steps-grid { grid-template-columns: repeat(2, 1fr); } }
+    .panel {
+      background: rgba(255, 255, 255, 0.92); border: 1px solid var(--line-soft);
+      border-radius: 20px; padding: 18px;
+      box-shadow: 0 10px 28px -8px rgba(14, 165, 233, 0.08);
+    }
+    .ch-single {
+      width: 100%; padding: 9px 12px; border-radius: 10px; border: 1.5px solid var(--blue-strong);
+      background: linear-gradient(135deg, #f0f9ff, #f0fdfa); color: var(--blue-strong);
+      font-size: 12.5px; font-weight: 800; text-align: center; margin: 10px 0;
+    }
+    .os-row { display: flex; gap: 6px; margin-bottom: 12px; }
+    .os-btn {
+      flex: 1; padding: 7px; border-radius: 8px; border: 1px solid #e2e8f0;
+      background: #f8fafc; font-size: 11.5px; font-weight: 800; cursor: pointer;
+    }
+    .os-btn.active { background: var(--blue-strong); color: #fff; border-color: var(--blue-strong); }
+
+    .finding-card {
+      background: #fff; border: 1px solid var(--line-soft); border-radius: 16px;
+      padding: 15px 18px; margin-bottom: 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      transition: all 0.16s;
+    }
+    .finding-card:hover { border-color: #38bdf8; transform: translateY(-2px); box-shadow: 0 10px 24px -8px rgba(2,132,199,0.15); }
+    .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; }
+    .badge-act { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .badge-attend { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+    .badge-track { background: #f0fdfa; color: #0d9488; border: 1px solid #99f6e4; }
+
+    /* Right Slide-Over Drawer */
+    .drawer-backdrop {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, 0.32); backdrop-filter: blur(4px);
+      z-index: 80; display: none; justify-content: flex-end;
+    }
+    .drawer-backdrop.open { display: flex; }
+    .drawer {
+      width: min(560px, 94vw); height: 100%; background: #fff;
+      border-left: 1px solid rgba(56, 189, 248, 0.35); padding: 24px; overflow-y: auto;
+      box-shadow: -20px 0 50px rgba(15, 23, 42, 0.16);
+    }
+    .code-box {
+      background: #0f172a; color: #e2e8f0; padding: 12px 14px; border-radius: 12px;
+      font-size: 12px; overflow-x: auto; margin-top: 6px;
+    }
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; z-index: 100;
+      background: #0f172a; color: #fff; padding: 11px 16px; border-radius: 12px;
+      font-size: 12.5px; font-weight: 700; display: none;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-logo mono">72h</div>
+        <div>
+          <div style="font-size:15px;font-weight:900;">72hours · 스마트 보안 스튜디오</div>
+          <div class="mono" style="font-size:10px;color:#0284c7;font-weight:700;">120FPS LIQUID SYNC · ZERO-RETENTION · LOCAL GPU RED–BLUE</div>
+        </div>
+      </div>
+      <div class="nav-pills">
+        <button class="nav-btn active" onclick="setSlide(0)">01 스캔 &amp; MCP</button>
+        <button class="nav-btn" onclick="setSlide(1)">02 5단계 흐름 &amp; GPU</button>
+        <button class="nav-btn" onclick="setSlide(2)">03 24h·72h 신고</button>
+        <button class="nav-btn" onclick="setSlide(3)">04 완료 리포트</button>
+        <button class="demo-btn" onclick="playLiquidScan()">💧 120fps 물결 스캔 시연</button>
+      </div>
+    </header>
+
+    <!-- Hero & 120fps Liquid Search Box -->
+    <section class="hero">
+      <div class="hero-badge">● 120FPS LIQUID SCAN · 찾고, 고치고, 72시간 안에 끝냅니다</div>
+      <h1>맑은 물결로 채우는 <span>0% → 100% 스마트 보안</span></h1>
+
+      <div class="liquid-wrap">
+        <div class="liquid-shell">
+          <div id="liquidFill" class="liquid-fill" style="width:100%;">
+            <div class="liquid-crest"></div>
+          </div>
+          <div class="liquid-inner">
+            <div class="liquid-input-box">
+              <div class="liquid-icon">🔍</div>
+              <div style="flex:1;">
+                <div class="mono" id="liquidTopBadge" style="font-size:10.5px;font-weight:800;color:#0369a1;">REPOSITORY SCAN · 100% COMPLETE</div>
+                <input id="repoInput" class="liquid-input mono" value="https://github.com/minji-cafe/order-site" />
+              </div>
+            </div>
+            <button class="btn-primary" onclick="playLiquidScan()" id="scanBtn">✨ 스캔 시작</button>
+          </div>
+        </div>
+
+        <div class="countup-card">
+          <div class="countup-top">
+            <span id="stageLabel" style="font-size:12.5px;font-weight:800;color:#0f172a;">✓ 100% 스마트 물결 스캔 완료 (취약점 5건 정규화)</span>
+            <span class="mono countup-num" id="countText">100%</span>
+          </div>
+          <div class="track">
+            <div id="syncFill" class="track-fill" style="width:100%;"></div>
+          </div>
+          <div class="steps-grid">
+            <div class="step-chip done" id="st0">① 추출 ✓</div>
+            <div class="step-chip done" id="st1">② 4대 엔진 ✓</div>
+            <div class="step-chip done" id="st2">③ GPU 검증 ✓</div>
+            <div class="step-chip done" id="st3">④ 완료 ✓</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 Minimal KPI Chips with Hover Tooltips -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-head">
+            <span>72H 타이머</span>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">취약점 최초 발견(0h)부터 패치 재검사 통과(72h)까지 남은 법정 골든타임입니다.</span></span>
+          </div>
+          <div class="kpi-val mono" id="timerDisplay">61:12:40</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-head">
+            <span>즉시 조치 (act)</span>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">CISA SSVC 기준 act(지금 바로), attend(이번 주), track*(추후 관리)로 우선순위를 분류합니다.</span></span>
+          </div>
+          <div class="kpi-val"><span style="color:#ef4444;" id="actCount">1건</span> <span style="font-size:13px;color:#64748b;">/ 미해결 <span id="openCount">5</span>건</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-head">
+            <span>GPU 성공률</span>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">로컬 L4 GPU vLLM(Qwen3.8-27B) Red–Blue 검증 루프로 조치 성공률 96%를 달성했습니다.</span></span>
+          </div>
+          <div class="kpi-val" style="color:#0d9488;">96%</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-head">
+            <span>원본 즉시 파기</span>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">Zero-Retention 원칙에 따라 스캔 직후 원본 소스코드는 즉시 삭제하고 정규화 결과만 남깁니다.</span></span>
+          </div>
+          <div class="kpi-val" style="color:#0284c7;">100%</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide Bar -->
+    <div class="slide-bar">
+      <button class="slide-arrow" onclick="prevSlide()">◀ 이전 슬라이드</button>
+      <div class="nav-pills" id="slidePills">
+        <button class="nav-btn active" onclick="setSlide(0)">01 취약점 스캔 &amp; MCP</button>
+        <button class="nav-btn" onclick="setSlide(1)">02 5단계 흐름 &amp; GPU 평가</button>
+        <button class="nav-btn" onclick="setSlide(2)">03 24h·72h 신고 코파일럿</button>
+        <button class="nav-btn" onclick="setSlide(3)">04 완료 리포트 &amp; ZAP</button>
+      </div>
+      <button class="slide-arrow next" onclick="nextSlide()">다음 슬라이드 ▶</button>
+    </div>
+
+    <!-- SLIDE 01 -->
+    <div id="slide-0" class="slide-view">
+      <div class="grid-12">
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong style="font-size:15px;">스캔 환경 설정</strong>
+            <span class="tooltip-trigger">ⓘ<span class="tooltip-box">[osv] package-lock.json 4건 / [opengrep] 자체 규칙 3건 / [gitleaks] 비밀키 1건(act) 탐지 완료</span></span>
+          </div>
+          <div class="ch-single">GitHub 연동</div>
+          <div class="os-row">
+            <button class="os-btn active" onclick="selectOs('windows', this)">Windows</button>
+            <button class="os-btn" onclick="selectOs('macos', this)">macOS</button>
+            <button class="os-btn" onclick="selectOs('linux', this)">Linux</button>
+          </div>
+          <button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="playLiquidScan()">💧 0%→100% 물결 스캔 실행</button>
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e0f2fe;font-size:12px;">
+            <div class="mono" style="color:#0284c7;font-weight:800;margin-bottom:4px;">● MCP AUTO-SAVE HANDOFF</div>
+            <p style="color:#475569;font-size:11.5px;margin-bottom:8px;">Cursor · Claude Code가 <code>list_findings</code>와 <code>get_fix_prompt</code>로 검증된 패치를 즉시 수신합니다.</p>
+            <button class="slide-arrow" style="width:100%;" onclick="showToast('MCP 설정 JSON이 클립보드에 복사되었습니다.')">📋 MCP 클라이언트 설정 복사</button>
+          </div>
+        </div>
+
+        <div>
+          <div style="margin-bottom:10px;font-size:12.5px;color:#475569;font-weight:700;">
+            💡 취약점 카드를 클릭하면 <b>오른쪽 슬라이드 드로어</b>에서 Red 공격 시나리오·OS 명령어·AI 프롬프트를 확인할 수 있습니다.
+          </div>
+          <div id="findingsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 02 -->
+    <div id="slide-1" class="slide-view" style="display:none;">
+      <div class="panel" style="margin-bottom:16px;">
+        <h3 style="font-size:16px;font-weight:900;margin-bottom:12px;">01 · 5단계 스마트 보안 점검 흐름 (아이콘 호버 시 상세 툴팁)</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;">
+          <div class="kpi-card"><div class="kpi-head"><span>STEP 01</span><span class="tooltip-trigger">ⓘ<span class="tooltip-box">GitHub 저장소 읽기 전용 권한을 일회성으로 부여합니다.</span></span></div><div style="font-weight:800;margin-top:4px;">① 소스 접근 권한 부여</div></div>
+          <div class="kpi-card"><div class="kpi-head"><span>STEP 02</span><span class="tooltip-trigger">ⓘ<span class="tooltip-box">Opengrep·OSV·Gitleaks·자체 검사기 실행 후 원본 코드는 즉시 삭제합니다.</span></span></div><div style="font-weight:800;margin-top:4px;">② 4대 엔진 검사 &amp; 즉시 파기</div></div>
+          <div class="kpi-card"><div class="kpi-head"><span>STEP 03</span><span class="tooltip-trigger">ⓘ<span class="tooltip-box">CISA SSVC 결정 트리로 act(지금 바로)·attend·track* 우선순위를 분류합니다.</span></span></div><div style="font-weight:800;margin-top:4px;">③ SSVC 우선순위 알림</div></div>
+          <div class="kpi-card" style="border-color:#2dd4bf;background:#f0fdfa;"><div class="kpi-head"><span style="color:#0d9488;">STEP 04 ★핵심</span><span class="tooltip-trigger">ⓘ<span class="tooltip-box">로컬 L4 GPU Red–Blue 검증을 통과한 설명과 패치 프롬프트를 MCP로 전달합니다.</span></span></div><div style="font-weight:800;margin-top:4px;">④ 쉬운 설명 + MCP 패치</div></div>
+          <div class="kpi-card"><div class="kpi-head"><span>STEP 05</span><span class="tooltip-trigger">ⓘ<span class="tooltip-box">수정 반영 후 재검사를 통과하면 72시간 완료 리포트를 발급합니다.</span></span></div><div style="font-weight:800;margin-top:4px;">⑤ 재검사 &amp; 완료 리포트</div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3 style="font-size:16px;font-weight:900;margin-bottom:12px;">02 · 로컬 L4 GPU (Qwen3.8-27B) Red–Blue 검증 효과 평가</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+          <div class="kpi-card"><div class="mono" style="font-size:11px;color:#64748b;">비교군 A · 스캐너 원문</div><div style="font-size:22px;font-weight:900;margin:4px 0;">32%</div><div style="font-size:11.5px;color:#64748b;">평균 48분 · 비개발자 조치 곤란</div></div>
+          <div class="kpi-card"><div class="mono" style="font-size:11px;color:#0284c7;">비교군 B · GPU 미사용</div><div style="font-size:22px;font-weight:900;margin:4px 0;">68%</div><div style="font-size:11.5px;color:#64748b;">평균 29분 · 정형 템플릿 한계</div></div>
+          <div class="kpi-card"><div class="mono" style="font-size:11px;color:#0284c7;">비교군 C · 로컬 GPU LLM</div><div style="font-size:22px;font-weight:900;margin:4px 0;color:#0284c7;">94%</div><div style="font-size:11.5px;color:#64748b;">평균 9분 · 성공률 +26%p 상승</div></div>
+          <div class="kpi-card" style="border-color:#2dd4bf;background:#f0fdfa;"><div class="mono" style="font-size:11px;color:#0d9488;font-weight:800;">비교군 D · C + Red–Blue 검증</div><div style="font-size:22px;font-weight:900;margin:4px 0;color:#0d9488;">96%</div><div style="font-size:11.5px;color:#0d9488;font-weight:700;">기능 유지율 100% · 회귀 오류 0건</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 03 -->
+    <div id="slide-2" class="slide-view" style="display:none;">
+      <div class="panel">
+        <h3 style="font-size:16px;font-weight:900;margin-bottom:6px;">03 · 24h(KISA 침해사고) · 72h(개인정보 유출) 신고서 자동 채움 코파일럿</h3>
+        <p style="font-size:12.5px;color:#475569;margin-bottom:14px;">스캔으로 확인된 기술적 사실은 자동으로 채우고, 모르는 항목은 지어내지 않고 <code>[확인 필요]</code>로 표시합니다.</p>
+        <div class="code-box mono">[KISA 24시간 침해사고 &amp; 개보위 72시간 유출 신고서 초안]
+• 점검 저장소: https://github.com/minji-cafe/order-site
+• 탐지된 주요 원인: src/lib/supabase.ts:4 (Gitleaks — Supabase service_role 관리자 키 노출)
+• 유출 가능 항목: 고객 주문 테이블(이름·연락처·주소) RLS 우회 조회 위험
+• 기술적 긴급 조치: 클라이언트 번들 키 즉시 폐기 및 서버 전용 환경변수(.env.local) 분리 완료
+• 추가 확인 필요 사항: [확인 필요: 외부 비정상 접속 로그 발생 시각 및 정보주체 통지 여부]</div>
+        <button class="btn-primary" style="margin-top:12px;" onclick="showToast('24h/72h 신고서 초안이 클립보드에 복사되었습니다.')">📋 신고서 초안 복사하기</button>
+      </div>
+    </div>
+
+    <!-- SLIDE 04 -->
+    <div id="slide-3" class="slide-view" style="display:none;">
+      <div class="panel">
+        <h3 style="font-size:16px;font-weight:900;margin-bottom:6px;">04 · 72시간 골든타임 완료 리포트 &amp; OWASP ZAP 공격 재현 비교</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px;">
+          <div class="kpi-card" style="border-color:#fecaca;background:#fef2f2;">
+            <div class="mono" style="font-size:11px;color:#dc2626;font-weight:800;">BEFORE PATCH · 공격 성공 (200 OK)</div>
+            <div style="font-weight:800;margin:6px 0;">브라우저 변조 금액(totalPrice: 100원) 결제 승인됨</div>
+            <div class="mono" style="font-size:11px;color:#475569;">POST /api/orders → HTTP 200 OK (취약점 재현)</div>
+          </div>
+          <div class="kpi-card" style="border-color:#99f6e4;background:#f0fdfa;">
+            <div class="mono" style="font-size:11px;color:#0d9488;font-weight:800;">AFTER PATCH · 방어 확인 (400 BLOCKED)</div>
+            <div style="font-weight:800;margin:6px 0;">서버 DB 정가 재계산 검증으로 변조 요청 즉시 차단</div>
+            <div class="mono" style="font-size:11px;color:#0d9488;">POST /api/orders → HTTP 400 Bad Request (방어 완료)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Slide-Over Drawer -->
+  <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawer(event)">
+    <div class="drawer" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <span id="drawerBadge" class="badge badge-act">act · 지금 바로</span>
+        <button class="slide-arrow" onclick="closeDrawer()">✕ 닫기</button>
+      </div>
+      <div class="mono" id="drawerFile" style="font-size:12px;color:#0284c7;font-weight:700;"></div>
+      <h2 id="drawerTitle" style="font-size:19px;font-weight:900;margin:6px 0 10px;"></h2>
+      <p id="drawerEasy" style="font-size:13.5px;color:#334155;margin-bottom:16px;"></p>
+
+      <div style="padding:12px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:14px;">
+        <div class="mono" style="font-size:11px;color:#dc2626;font-weight:800;">🔴 RED AGENT 공격 시나리오</div>
+        <div id="drawerAttack" style="font-size:12.5px;color:#7f1d1d;margin-top:4px;"></div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <div class="mono" style="font-size:11px;color:#0284c7;font-weight:800;">&gt;_ OS 맞춤 터미널 명령어 (<span id="drawerOsLabel">WINDOWS</span>)</div>
+        <div class="code-box mono" id="drawerCmd"></div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div class="mono" style="font-size:11px;color:#0d9488;font-weight:800;">🤖 로컬 GPU (Red–Blue 검증 통과) AI 코딩툴 수정 프롬프트</div>
+        <div class="code-box mono" id="drawerPrompt" style="white-space:pre-wrap;"></div>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="btn-primary" style="flex:1;" onclick="copyPrompt()">📋 AI 수정 프롬프트 복사</button>
+        <button class="slide-arrow" onclick="toggleDoneFromDrawer()" id="drawerDoneBtn">✓ 조치 완료 표시</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const FINDINGS = [
+      {
+        id: "f1", ssvc: "act", ssvcLabel: "act · 지금 바로", engine: "gitleaks",
+        file: "src/lib/supabase.ts:4",
+        title: "브라우저 코드에 관리자 키(service_role) 노출",
+        easy: "누구나 브라우저 개발자 도구(F12)에서 이 관리자 키를 볼 수 있으며, 보안 규칙(RLS)을 무시하고 모든 고객 정보를 읽거나 삭제할 수 있습니다.",
+        attack: "F12 Network 탭에서 NEXT_PUBLIC_SUPABASE_SERVICE_KEY 헤더 추출 → REST API로 전체 고객 테이블 덤프 성공",
+        cmds: {
+          windows: "Add-Content -Path .env.local -Value 'SUPABASE_SERVICE_ROLE_KEY=<새로_발급한_키>'",
+          macos: "printf '\\nSUPABASE_SERVICE_ROLE_KEY=<새로_발급한_키>\\n' >> .env.local",
+          linux: "printf '\\nSUPABASE_SERVICE_ROLE_KEY=<새로_발급한_키>\\n' >> .env.local"
+        },
+        prompt: "src/lib/supabase.ts 4번째 줄에서 NEXT_PUBLIC_ 접두어로 노출된 service_role 키를 즉시 제거하고 anon 공개키만 남기세요. 관리자 권한 작업은 서버 전용 Route Handler(app/api/*) 내부에서만 process.env.SUPABASE_SERVICE_ROLE_KEY로 호출하도록 분리하세요.",
+        done: false
+      },
+      {
+        id: "f2", ssvc: "attend", ssvcLabel: "attend · 이번 주", engine: "opengrep",
+        file: "app/api/orders/route.ts:19",
+        title: "주문 금액을 브라우저 요청값 그대로 결제 처리",
+        easy: "손님이 브라우저에서 50,000원짜리 케이크 가격을 100원으로 고쳐서 보내도 서버가 확인 없이 그대로 결제를 승인합니다.",
+        attack: "Burp/ZAP 프록시로 POST /api/orders 요청 본문의 totalPrice를 100으로 변조 → 정상 결제 승인(200 OK)",
+        cmds: {
+          windows: "npx opengrep scan --config security_engine/rules/vibe-coding.yml app/api/orders",
+          macos: "npx opengrep scan --config security_engine/rules/vibe-coding.yml app/api/orders",
+          linux: "npx opengrep scan --config security_engine/rules/vibe-coding.yml app/api/orders"
+        },
+        prompt: "app/api/orders/route.ts에서 클라이언트가 보낸 req.body.totalPrice를 신뢰하지 말고, 상품 ID(itemId)와 수량(qty)으로 서버 DB에서 단가를 직접 조회해 총액을 재계산한 뒤 결제 API를 호출하도록 수정하세요.",
+        done: false
+      },
+      {
+        id: "f3", ssvc: "attend", ssvcLabel: "attend · 이번 주", engine: "opengrep",
+        file: "app/api/admin/export/route.ts:8",
+        title: "로그인 확인 없이 고객 목록 다운로드 API 열림",
+        easy: "관리자 페이지 버튼만 숨겨져 있을 뿐, 주소(/api/admin/export)만 입력하면 누구나 고객 명단 엑셀을 내려받을 수 있습니다.",
+        attack: "비로그인 상태에서 curl -i http://localhost:3000/api/admin/export 호출 → 전체 주문자 CSV 반환",
+        cmds: {
+          windows: "curl.exe -i http://localhost:3000/api/admin/export",
+          macos: "curl -i http://localhost:3000/api/admin/export",
+          linux: "curl -i http://localhost:3000/api/admin/export"
+        },
+        prompt: "app/api/admin/export/route.ts 최상단에 서버 세션 검증(getServerSession 또는 Supabase auth.getUser) 및 관리자 역할(role === 'admin') 확인 로직을 추가하고, 미인증 시 401/403을 반환하세요.",
+        done: false
+      },
+      {
+        id: "f4", ssvc: "track*", ssvcLabel: "track* · 추후 관리", engine: "osv-scanner",
+        file: "package-lock.json (next@15.0.1)",
+        title: "알려진 보안 패치가 나온 구버전 프레임워크 사용",
+        easy: "현재 사용 중인 Next.js 버전에 공개된 보안 취약점(CVE)이 있으니 안전한 패치 버전으로 업데이트가 필요합니다.",
+        attack: "특수 조작된 헤더 요청으로 미들웨어 권한 우회 시도 가능성 존재",
+        cmds: {
+          windows: "npm install next@latest react@latest react-dom@latest",
+          macos: "npm install next@latest react@latest react-dom@latest",
+          linux: "npm install next@latest react@latest react-dom@latest"
+        },
+        prompt: "package.json의 next 버전을 최신 보안 패치 버전으로 올리고 package-lock.json을 갱신한 뒤 npm run build가 정상 통과하는지 확인하세요.",
+        done: false
+      }
+    ];
+
+    let currentSlide = 0;
+    let currentOs = "windows";
+    let activeFindingId = null;
+    let rafId = null;
+
+    function renderFindings() {
+      const container = document.getElementById("findingsList");
+      container.innerHTML = FINDINGS.map(f => {
+        const badgeCls = f.ssvc === "act" ? "badge-act" : f.ssvc === "attend" ? "badge-attend" : "badge-track";
+        return `
+          <div class="finding-card" onclick="openDrawer('${f.id}')" style="${f.done ? 'opacity:0.55;' : ''}">
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+                <span class="badge ${badgeCls}">${f.ssvcLabel}</span>
+                <span class="mono" style="font-size:11.5px;color:#64748b;">${f.file} · ${f.engine}</span>
+                ${f.done ? '<span class="badge badge-track">✓ 조치 완료</span>' : ''}
+              </div>
+              <div style="font-size:15px;font-weight:800;">${f.title}</div>
+              <div style="font-size:12.5px;color:#475569;margin-top:2px;">${f.easy}</div>
+            </div>
+            <button class="slide-arrow next" style="white-space:nowrap;">슬라이드 상세 ▶</button>
+          </div>
+        `;
+      }).join("");
+
+      const openItems = FINDINGS.filter(f => !f.done);
+      const actItems = openItems.filter(f => f.ssvc === "act");
+      document.getElementById("actCount").textContent = actItems.length + "건";
+      document.getElementById("openCount").textContent = openItems.length;
+    }
+
+    function playLiquidScan() {
+      if (rafId) cancelAnimationFrame(rafId);
+      const fill = document.getElementById("liquidFill");
+      const sync = document.getElementById("syncFill");
+      const count = document.getElementById("countText");
+      const badge = document.getElementById("liquidTopBadge");
+      const stage = document.getElementById("stageLabel");
+      const duration = 2200;
+      const start = performance.now();
+
+      function tick(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 2.2);
+        const pct = eased * 100;
+        const intPct = Math.round(pct);
+
+        fill.style.width = pct.toFixed(2) + "%";
+        sync.style.width = pct.toFixed(2) + "%";
+        count.textContent = intPct + "%";
+        badge.textContent = intPct < 100 ? `LIQUID SCANNING · ${intPct}%` : "REPOSITORY SCAN · 100% COMPLETE";
+
+        if (intPct < 25) stage.textContent = "① GitHub 저장소 소스 및 의존성 트리 추출 중...";
+        else if (intPct < 58) stage.textContent = "② Opengrep · OSV · Gitleaks · 자체 설정 검사기 가동 중...";
+        else if (intPct < 88) stage.textContent = "③ 로컬 L4 GPU Red–Blue 자율 검증 루프 가동 중...";
+        else if (intPct < 100) stage.textContent = "④ MCP 프롬프트 생성 및 원본 소스코드 즉시 파기 중...";
+        else stage.textContent = "✓ 100% 스마트 물결 스캔 완료 (원본 즉시 파기 완료)";
+
+        [25, 55, 85, 100].forEach((th, idx) => {
+          const el = document.getElementById("st" + idx);
+          if (intPct >= th) el.classList.add("done");
+          else el.classList.remove("done");
+        });
+
+        if (t < 1) rafId = requestAnimationFrame(tick);
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function setSlide(idx) {
+      currentSlide = (idx + 4) % 4;
+      for (let i = 0; i < 4; i++) {
+        document.getElementById("slide-" + i).style.display = i === currentSlide ? "block" : "none";
+      }
+      document.querySelectorAll(".header .nav-btn").forEach((b, i) => b.classList.toggle("active", i === currentSlide));
+      document.querySelectorAll("#slidePills .nav-btn").forEach((b, i) => b.classList.toggle("active", i === currentSlide));
+    }
+    function prevSlide() { setSlide(currentSlide - 1); }
+    function nextSlide() { setSlide(currentSlide + 1); }
+
+    function selectOs(os, btnEl) {
+      currentOs = os;
+      document.querySelectorAll(".os-btn").forEach(b => b.classList.remove("active"));
+      btnEl.classList.add("active");
+    }
+
+    function openDrawer(id) {
+      activeFindingId = id;
+      const f = FINDINGS.find(x => x.id === id);
+      if (!f) return;
+      document.getElementById("drawerBadge").textContent = f.ssvcLabel;
+      document.getElementById("drawerFile").textContent = f.file + " · " + f.engine;
+      document.getElementById("drawerTitle").textContent = f.title;
+      document.getElementById("drawerEasy").textContent = f.easy;
+      document.getElementById("drawerAttack").textContent = f.attack;
+      document.getElementById("drawerOsLabel").textContent = currentOs.toUpperCase();
+      document.getElementById("drawerCmd").textContent = f.cmds[currentOs];
+      document.getElementById("drawerPrompt").textContent = f.prompt;
+      document.getElementById("drawerDoneBtn").textContent = f.done ? "↺ 미해결로 되돌리기" : "✓ 조치 완료 표시";
+      document.getElementById("drawerBackdrop").classList.add("open");
+    }
+
+    function closeDrawer() {
+      document.getElementById("drawerBackdrop").classList.remove("open");
+    }
+
+    function copyPrompt() {
+      const f = FINDINGS.find(x => x.id === activeFindingId);
+      if (!f) return;
+      navigator.clipboard?.writeText(f.prompt);
+      showToast("AI 코딩툴용 수정 프롬프트를 클립보드에 복사했습니다.");
+    }
+
+    function toggleDoneFromDrawer() {
+      const f = FINDINGS.find(x => x.id === activeFindingId);
+      if (!f) return;
+      f.done = !f.done;
+      renderFindings();
+      closeDrawer();
+      showToast(f.done ? "조치 완료로 반영되었습니다." : "미해결 상태로 되돌렸습니다.");
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      t.textContent = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 2600);
+    }
+
+    renderFindings();
+    playLiquidScan();
+  </script>
+</body>
+</html>

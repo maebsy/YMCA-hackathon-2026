@@ -181,7 +181,8 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(config['mcpServers']['72hours-service']['url'], ORIGIN + '/mcp/service/rpc')
         self.assertIn('default branch', self.client.get('/mcp/service/agent.txt').text)
         tool_list = self.rpc('tools/list', {}).json()['result']['tools']
-        self.assertEqual(len(tool_list), 11)
+        self.assertEqual(len(tool_list), 15)  # 기존 11개 + 한 번에 점검·고치기 증명 4개 (#140)
+        self.assertTrue({'audit_repository', 'audit_status', 'check_fix', 'verify_demo'} <= {t['name'] for t in tool_list})
         tools = {t['name']: t for t in tool_list}
         self.assertFalse(tools['start_scan']['annotations']['readOnlyHint'])
         response = self.client.post('/mcp/service/rpc', headers={'Origin': 'https://evil.example'}, json={})

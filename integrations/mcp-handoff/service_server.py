@@ -34,7 +34,17 @@ Preserve existing MCP settings. Respect client approval and organization policie
 user confirmation or reconnect before newly registered tools appear. Never claim registration succeeded without tools/list.
 Clients that only support stdio need a separate transport bridge; remote HTTP support is required here.
 
-## Conversation workflow
+## Fastest path (one call)
+- audit_repository(repository_url, request_id, authorized=true, os, hosting): creates a workspace if none is given,
+  scans, waits up to 90 s, then starts GPU Red/Blue analysis for the top-risk findings and returns a summary + next steps.
+- audit_status(workspace_token, scan_id): scan summary, each analysis status, and which fix prompts are ready.
+- After the user approves and pushes fixes: check_fix(workspace_token, scan_id, request_id, authorized=true)
+  rescans and lists resolved / still open / new / key-reissue-needed items.
+- verify_demo(mode): runtime proof in an isolated sandbox (before: attack succeeds, after: blocked, tests pass).
+  Demo target only for now; say so to the user.
+- Prompts: security_audit(repository_url), fix_and_verify(workspace_token, scan_id).
+
+## Conversation workflow (step by step)
 1. In a coding agent, inspect the user's current git remote and changes. In web chat without project access,
    ask for the public GitHub repository URL instead; never pretend to read or edit local files.
    Confirm the user is authorized to scan the repository.
@@ -59,7 +69,7 @@ Demo boundaries: public GitHub repos permitted by backend policy; at most 50 LLM
 16 scan/analysis dispatches per workspace, bounded total storage. GPU credentials stay on the server.
 Existing backend authentication/allowlist errors are returned, never bypassed. Backend job expiry requires a new scan.
 No API for billing/account administration, arbitrary shell, source download or automatic deployment is exposed.
-The HTTPS demonstration address is temporary and may change when its tunnel restarts.
+Use the fixed HTTPS address above in client settings.
 '''
 
 
@@ -131,6 +141,50 @@ def create_service_server(api, origin, port):
         personal_info {leaked: confirmed/suspected/none, affected_count, items}. Use only user-confirmed facts.
         """
         return await api.incident(workspace_token, scan_id, kind, incident)
+
+    # ── 한 번에 점검·고치기 증명 흐름 (#140) ──
+    @server.tool(annotations=write)
+    async def audit_repository(repository_url: str, request_id: str, authorized: bool = False,
+                               workspace_token: str = '', os: str = 'linux', hosting: str = 'unknown',
+                               max_analyses: int = 3) -> dict:
+        """One call security audit of a PUBLIC GitHub repo the user is authorized to scan. Creates a workspace if
+        workspace_token is empty (keep the returned token private), scans, waits up to 90 s, starts GPU analysis for the
+        top max_analyses (0-5) findings and returns summary + next steps. Reuse request_id only for the SAME request."""
+        return await api.audit(workspace_token or None, repository_url, request_id, authorized, os, hosting, max_analyses)
+
+    @server.tool(annotations=read)
+    async def audit_status(workspace_token: str, scan_id: str) -> dict:
+        """Scan summary, analysis statuses and which fix prompts (get_fix_prompt) are ready, in one call."""
+        return await api.audit_status(workspace_token, scan_id)
+
+    @server.tool(annotations=write)
+    async def check_fix(workspace_token: str, scan_id: str, request_id: str, authorized: bool = False) -> dict:
+        """After fixes are PUSHED to the default branch: rescan the same repo against scan_id and list resolved,
+        persisting, new and key-reissue-needed findings. Same commit means the fix was not pushed yet."""
+        return await api.check_fix(workspace_token, scan_id, request_id, authorized)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True,
+                                             openWorldHint=False))
+    async def verify_demo(mode: str = 'reference') -> dict:
+        """Runtime proof on the DEMO target only: isolated sandbox replays attacks before/after the fix and runs
+        functional tests. mode: reference (human fix) or ai (Red/Blue generated attacks and fix). Not the user's repo."""
+        return await api.verify_demo(mode)
+
+    @server.prompt()
+    def security_audit(repository_url: str) -> str:
+        """이 저장소의 보안 점검을 처음부터 끝까지 진행합니다."""
+        return (f'72hours로 {repository_url} 저장소를 점검해 줘. 먼저 내가 이 저장소를 검사할 권한이 있는지 확인하고, '
+                'audit_repository를 authorized=true로 한 번 호출해. 결과를 위험도 순으로 쉬운 말로 설명하고, '
+                'audit_status로 GPU 해석이 끝난 항목의 수정 지시(get_fix_prompt)를 받아 보여 줘. '
+                '코드는 내가 허락하기 전에는 고치지 마. 비밀값 원문은 절대 출력하지 마.')
+
+    @server.prompt()
+    def fix_and_verify(workspace_token: str, scan_id: str) -> str:
+        """준비된 수정 지시로 고치고, push 후 재검사로 해결을 확인합니다."""
+        return ('audit_status로 준비된 수정 지시를 확인하고, 내가 허락한 항목만 로컬 코드에서 고친 뒤 관련 테스트를 돌려 줘. '
+                '내가 push를 허락하면 push하고, check_fix로 같은 검사와 비교해 해결·계속·새로·키 재발급 필요를 알려 줘. '
+                f'(workspace_token은 대화 안에만 두고 출력하지 마. scan_id={scan_id}) '
+                '실행으로 증명하는 예시가 필요하면 verify_demo를 부르되 데모 과녁 전용이라고 분명히 말해 줘.' + ('' if workspace_token else ''))
 
     endpoint = origin + '/mcp/service/rpc'
     config = {'type': 'http', 'url': endpoint}

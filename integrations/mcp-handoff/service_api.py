@@ -1,11 +1,34 @@
 """Service MCP uses the existing backend contract, never the engine or GPU directly."""
+import asyncio
 import hashlib
 import json
 import re
+import time
 
 import httpx
 
 from handoff import Snapshot, _reason, redact
+
+# 한 번에 점검(#140): MCP 호출 하나가 너무 오래 걸리지 않게 기다리는 시간을 제한하고, 넘으면 audit_status 로 잇는다
+MAX_WAIT_SECONDS = 90
+POLL_SECONDS = 3
+MAX_AUTO_ANALYSES = 5
+SEVERITY_ORDER = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3, 'unknown': 4}
+FINDING_FIELDS = ('fingerprint', 'title', 'severity', 'category', 'tool', 'file_path', 'start_line')
+
+
+def pick_findings(findings, count):
+    """해석할 항목: 위험도 높은 순, 같은 위험도면 분류(코드·비밀값·설정·의존성)가 겹치지 않게 먼저 고른다."""
+    ordered = sorted(findings, key=lambda f: (SEVERITY_ORDER.get(f.get('severity'), 9), f.get('fingerprint', '')))
+    picked, seen = [], set()
+    for f in ordered:
+        if len(picked) < count and f.get('category') not in seen:
+            picked.append(f)
+            seen.add(f.get('category'))
+    for f in ordered:
+        if len(picked) < count and f not in picked:
+            picked.append(f)
+    return picked
 
 
 def clean(value):
@@ -200,3 +223,126 @@ class ServiceAPI:
         report = await self.request('POST', f'/api/reports/{kind}?format=json', body)
         return {'source': source, 'draft_only': True, 'result': clean(report),
                 'notice': '사용자가 확인한 사고 사실만 입력하세요. 외부 기관에 제출되지 않습니다.'}
+
+    # ── 한 번에 점검·고치기 증명 흐름 (#140) ──
+
+    async def wait(self, token, job, kind, seconds, sleep=asyncio.sleep, clock=time.monotonic):
+        """작업이 끝나거나(done·failed) 접수가 불확실하거나 시간이 다 될 때까지 상태를 확인한다."""
+        seconds = max(0, min(int(seconds), MAX_WAIT_SECONDS))
+        deadline = clock() + seconds
+        while True:
+            data, _ = await self.poll(token, job, kind)
+            if data['state'] in ('done', 'failed', 'not_confirmed') or clock() >= deadline:
+                return data
+            await sleep(POLL_SECONDS)
+
+    async def audit(self, token, url, request_id, authorized, os='linux', hosting='unknown',
+                    max_analyses=3, wait_seconds=MAX_WAIT_SECONDS):
+        """검사 시작 → (최대 90초) 완료 대기 → 위험도 상위 항목의 GPU 해석 자동 시작 → 요약과 다음 할 일."""
+        if not 0 <= int(max_analyses) <= MAX_AUTO_ANALYSES:
+            raise ValueError(f'max_analyses는 0~{MAX_AUTO_ANALYSES}입니다.')
+        created = None
+        if not token:
+            created = self.store.create()
+            token = created['workspace_token']
+        receipt = await self.start_scan(token, url, request_id, authorized)
+        scan_id = receipt['scan_id']
+        data = await self.wait(token, scan_id, 'scan', wait_seconds)
+        out = {'workspace_token': token, 'scan_id': scan_id, 'scan_status': data['state']}
+        if created:
+            out['workspace_notice'] = created['notice']
+        if data['state'] != 'done':
+            out['next'] = ('검사가 아직 끝나지 않았습니다. 잠시 뒤 audit_status(workspace_token, scan_id)로 이어서 확인하세요.'
+                           if data['state'] in ('queued', 'running') else data.get('notice') or '검사가 실패했습니다.')
+            return out
+        result, source = await self.scan_result(token, scan_id)
+        analyses = []
+        for f in pick_findings(result['findings'], int(max_analyses)):
+            started = await self.start_analysis(token, scan_id, f['fingerprint'], os, hosting)
+            analyses.append({'fingerprint': f['fingerprint'], 'title': clean(f.get('title')),
+                             'severity': f.get('severity'), **started})
+        out.update(source=source, summary=clean(result.get('summary')),
+                   top_findings=[clean({k: f.get(k) for k in FINDING_FIELDS})
+                                 for f in pick_findings(result['findings'], 10)],
+                   analyses=analyses,
+                   next=('GPU 해석은 1~3분 걸립니다. audit_status로 준비된 수정 지시(get_fix_prompt)를 확인하세요. '
+                         '코드는 사용자가 허락한 경우에만 고치고, 고친 뒤 push 하면 check_fix로 해결 여부를 확인합니다.'))
+        return out
+
+    async def audit_status(self, token, scan_id):
+        """검사 요약, 이 검사에서 시작한 해석들의 상태와 준비된 수정 지시를 한 번에."""
+        scan = await self.get_scan(token, scan_id)
+        out = {'scan_id': scan_id, 'scan_status': scan['status']}
+        if 'summary' in scan:
+            out.update(source=scan['source'], summary=scan['summary'], comparison=scan.get('comparison'))
+        analyses = []
+        for job, _ in self.store.analyses(token, scan_id):
+            item = await self.get_analysis(token, job)
+            entry = {'analysis_id': job, 'status': item['status']}
+            for f in item.get('findings') or []:
+                entry.update(fingerprint=f.get('fingerprint'), ready=f.get('ready'), reason=f.get('reason'))
+            analyses.append(entry)
+        out['analyses'] = analyses
+        ready = [a['analysis_id'] for a in analyses if a.get('ready')]
+        out['next'] = (f'수정 지시 준비됨: get_fix_prompt(analysis_id)로 받으세요 ({len(ready)}건).' if ready
+                       else '아직 준비된 수정 지시가 없습니다. 해석이 끝나면 다시 확인하세요.')
+        return out
+
+    async def check_fix(self, token, scan_id, request_id, authorized, wait_seconds=MAX_WAIT_SECONDS):
+        """같은 저장소를 직전 검사와 비교해 다시 검사하고, 해결·계속·새로·키 재발급 필요를 정리한다."""
+        _, previous = await self.scan_result(token, scan_id)
+        receipt = await self.start_scan(token, f"https://github.com/{previous['repository']}", request_id,
+                                        authorized, scan_id)
+        rescan_id = receipt['scan_id']
+        data = await self.wait(token, rescan_id, 'scan', wait_seconds)
+        out = {'previous_scan_id': scan_id, 'rescan_id': rescan_id, 'scan_status': data['state']}
+        if data['state'] != 'done':
+            out['next'] = '재검사가 아직 끝나지 않았습니다. audit_status(workspace_token, rescan_id)로 이어서 확인하세요.'
+            return out
+        result, source = await self.scan_result(token, rescan_id)
+        groups = {'resolved': [], 'persisting': [], 'new': [], 'key_reissue_needed': []}
+        for f in result['result'].get('findings') or []:
+            loc = f.get('location') or {}
+            row = clean({'fingerprint': f.get('fingerprint'), 'title': f.get('title'), 'severity': f.get('severity'),
+                         'file': loc.get('file'), 'line': loc.get('start_line')})
+            if f.get('status') == 'runtime_check_needed':
+                groups['key_reissue_needed'].append(row)
+            elif f.get('change') == 'resolved' or f.get('status') == 'code_resolved':
+                groups['resolved'].append(row)
+            elif f.get('change') in ('new', 'persisting'):
+                groups[f['change']].append(row)
+        out.update(source=source, previous_revision=previous['revision'], comparison=clean(result.get('comparison')),
+                   **{k: v[:30] for k, v in groups.items()},
+                   notice=('해결은 엔진이 다시 찾지 못했다는 뜻입니다. 키는 코드에서 지워도 발급처에서 폐기·재발급해야 합니다.'))
+        if source['revision'] == previous['revision']:
+            out['warning'] = '재검사한 커밋이 직전 검사와 같습니다. 고친 코드를 push 했는지 확인하세요.'
+        return out
+
+    async def verify_demo(self, mode='reference', wait_seconds=MAX_WAIT_SECONDS * 2,
+                          sleep=asyncio.sleep, clock=time.monotonic):
+        """실검증: 격리 샌드박스에서 수정 전 공격 성공 → 수정 후 차단 + 기능 테스트 통과를 실행으로 확인 (데모 과녁 전용)."""
+        if mode not in ('reference', 'ai'):
+            raise ValueError("mode는 reference(사람이 쓴 기준 수정본) 또는 ai(Red·Blue가 만든 공격·수정본)입니다.")
+        started = await self.request('POST', '/api/verify', {'target': 'demo', 'mode': mode})
+        job = started.get('job_id', '')
+        if not re.fullmatch(r'[a-f0-9]{32}', job):
+            raise ValueError('실검증 작업 식별자를 확인할 수 없습니다.')
+        deadline = clock() + max(0, min(int(wait_seconds), MAX_WAIT_SECONDS * 2))
+        while True:
+            state = await self.request('GET', f'/api/verify/{job}')
+            if state.get('status') in ('done', 'failed') or clock() >= deadline:
+                break
+            await sleep(POLL_SECONDS)
+        out = {'verify_job_id': job, 'mode': mode, 'status': state.get('status'), 'reused': state.get('reused'),
+               'scope': '데모 과녁(demo-vulnerable-site) 전용입니다. 사용자 저장소 실검증은 아직 지원하지 않습니다.'}
+        r = state.get('result') or {}
+        if r:
+            out.update(verdict=r.get('status'), sandbox=r.get('sandbox'), isolation_confirmed=r.get('isolation_confirmed'),
+                       message=clean(r.get('message')), before_tests=r.get('before_tests'),
+                       after_tests=r.get('after_tests'),
+                       attacks=[clean({'id': a.get('id'), 'verdict': a.get('verdict'),
+                                       'before': (a.get('before_evidence') or '')[:160],
+                                       'after': (a.get('after_evidence') or '')[:160]}) for a in r.get('attacks') or []])
+        if state.get('status') not in ('done', 'failed'):
+            out['next'] = '실검증이 아직 진행 중입니다. 잠시 뒤 같은 mode로 다시 호출하면 최근 결과를 재사용합니다.'
+        return out

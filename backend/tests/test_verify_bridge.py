@@ -11,7 +11,14 @@ from app.verify import verifier as V
 pytestmark = pytest.mark.anyio
 
 DEMO = Path(__file__).resolve().parents[2] / "demo-vulnerable-site"
-FIXED = (DEMO / "verify" / "fix" / "server.js").read_text(encoding="utf-8")
+ORIGINAL = (DEMO / "server.js").read_text(encoding="utf-8")
+
+# Blue가 내는 편집: 원본의 한 부분을 → 고친 내용으로
+SQL_EDIT = {"find": 'db.query("SELECT * FROM orders WHERE id = " + orderId)',
+            "replace": 'db.query("SELECT * FROM orders WHERE id = ?", orderId)'}
+XSS_EDIT = {"find": 'const q = req.query.q || "";',
+            "replace": 'const q = String(req.query.q || "").replace(/[&<>"\']/g, (c) => '
+                       '({ "&": "&amp;", "<": "&lt;", ">": "&gt;", \'"\': "&quot;", "\'": "&#39;" })[c]);'}
 
 SQLI = FindingInput(fingerprint="semgrep:sqli", tool="semgrep", category="code", rule_id="vibe-coding/sql-string-concat",
                     title="SQL 문자열 연결", severity="critical", file_path="server.js", start_line=39,
@@ -32,8 +39,8 @@ RED_XSS = red(path="/search", query=[{"name": "q", "value": "<script>alert(1)</s
               success_rule="body_contains", success_value="<script>alert(1)</script>", reason="입력이 그대로 반사됩니다.")
 
 
-def blue(content=FIXED, file_path="server.js"):
-    return {"file_path": file_path, "content": content, "summary": "자리표시자와 이스케이프로 고쳤습니다."}
+def blue(edits=(SQL_EDIT, XSS_EDIT), file_path="server.js"):
+    return {"file_path": file_path, "edits": list(edits), "summary": "자리표시자와 이스케이프로 고쳤습니다."}
 
 
 async def test_red_blue_outputs_become_verify_inputs(fake_vllm):
@@ -47,7 +54,11 @@ async def test_red_blue_outputs_become_verify_inputs(fake_vllm):
     assert sqli.success_when == "json_array_len_gte:2" and sqli.cwe == "CWE-89" and sqli.runtime
     assert xss.success_when == "body_contains:<script>alert(1)</script>"
     assert plan.attack_fingerprints == {sqli.id: "semgrep:sqli", xss.id: "red:xss"}
-    assert plan.patch.files == {"server.js": FIXED}
+    # 편집을 원본에 적용한 전체 내용이 Patch.files 로 갑니다
+    patched = plan.patch.files["server.js"]
+    assert "WHERE id = ?\", orderId)" in patched and "&amp;" in patched
+    assert 'WHERE id = " + orderId' not in patched
+    assert len(patched.splitlines()) == len(ORIGINAL.splitlines())  # 나머지는 그대로
     # 같은 파일의 두 결과는 Blue가 한 번에 고칩니다. 두 모델 모두 파일 전체를 봅니다
     assert len(fake_vllm.calls("BluePatch")) == 1
     for call in fake_vllm.calls("RedAttackPlan") + fake_vllm.calls("BluePatch"):
@@ -82,9 +93,11 @@ async def test_bad_red_output_is_skipped(fake_vllm, over, why):
     [
         (blue(file_path="../package.json"), "입력에 없는 파일"),
         (blue(file_path="other.js"), "입력에 없는 파일"),
-        (blue(content="   "), "비어"),
-        (blue(content=(DEMO / "server.js").read_text(encoding="utf-8")), "원본과 같"),
-        (blue(content="// ...이하 동일\n"), "절반보다 짧"),
+        (blue([{"find": "  ", "replace": "x"}]), "비어"),
+        (blue([{"find": "db.execute(sql)", "replace": "x"}]), "찾지 못했"),
+        (blue([{"find": "res.json(", "replace": "res.send("}]), "모호"),  # 원본에 여러 번 나옴
+        (blue([SQL_EDIT, {"find": "없는 줄", "replace": "x"}]), "2번째"),  # 하나라도 틀리면 전체 거절
+        (blue([{"find": SQL_EDIT["find"], "replace": SQL_EDIT["find"]}]), "원본과 같"),
     ],
 )
 async def test_bad_blue_output_is_skipped(fake_vllm, patch, why):
@@ -96,12 +109,14 @@ async def test_bad_blue_output_is_skipped(fake_vllm, patch, why):
     assert plan.skipped[0].stage == "blue" and why in plan.skipped[0].reason
 
 
-async def test_fenced_patch_is_unwrapped(fake_vllm):
-    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", blue(content=f"```javascript\n{FIXED}```"))
+async def test_edits_apply_in_order(fake_vllm):
+    """앞 편집이 바꾼 내용을 뒤 편집이 이어서 고칠 수 있습니다."""
+    second = {"find": SQL_EDIT["replace"], "replace": SQL_EDIT["replace"] + " // 매개변수 바인딩"}
+    fake_vllm.queue("RedAttackPlan", red()).queue("BluePatch", blue([SQL_EDIT, second]))
 
     plan = await B.plan_verification(fake_vllm.client(), [SQLI], DEMO)
 
-    assert plan.patch.files["server.js"].strip() == FIXED.strip()
+    assert "orderId) // 매개변수 바인딩" in plan.patch.files["server.js"]
 
 
 @pytest.mark.parametrize("file_path", [None, "../../etc/passwd", "/etc/passwd", "missing.js"])

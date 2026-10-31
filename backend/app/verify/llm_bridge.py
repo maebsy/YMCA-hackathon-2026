@@ -1,7 +1,8 @@
 """Red·Blue 출력 → 실검증 입력 연결 (#97).
 
 - Red  : 탐지 결과와 대상 파일을 보고 로컬 앱에 그대로 재생할 HTTP 요청과 성공 판정 규칙을 냅니다 → `AttackSpec`
-- Blue : 같은 파일에 걸린 탐지 결과들을 함께 고친 **파일 전체 내용**을 냅니다 → `Patch.files`
+- Blue : 같은 파일에 걸린 탐지 결과들을 고칠 '이 부분을 → 이렇게' 편집 목록을 냅니다. 서버가 원본에 적용해
+         **파일 전체 내용**을 만듭니다 → `Patch.files`. (파일 전체를 모델이 다시 쓰면 L4에서 길이 한도에 잘리고 느립니다)
 - `verify_findings`: 위 두 출력을 만들어 `verify()`로 샌드박스에서 수정 전·후를 실제로 실행합니다.
 
 모델 출력은 그대로 믿지 않습니다. 공격 경로는 앱 안 경로(`/...`)만, 수정은 입력으로 준 파일에만 허용하고
@@ -24,13 +25,12 @@ from app.llm.schemas import FindingInput
 from .schemas import AttackSpec, HttpRequest, Patch, VerifyRequest, VerifyResult
 from .verifier import verify
 
-# 문맥 12K 토큰 안에서 파일 전체를 읽고 다시 써야 하므로 원본 크기를 제한합니다
+# 문맥 12K 토큰 안에서 파일 전체를 모델에 보여 줘야 하므로 원본 크기를 제한합니다
 MAX_SOURCE_CHARS = 9000
 RED_ATTACK_SAMPLING = Sampling(temperature=0.2, max_tokens=1200)
-BLUE_PATCH_SAMPLING = Sampling(temperature=0.2, max_tokens=4500)
+BLUE_PATCH_SAMPLING = Sampling(temperature=0.2, max_tokens=2000)
 
 _PATH = re.compile(r"^/(?!/)[^\s\\]{0,399}$")
-_FENCE = re.compile(r"^```[\w.+-]*\n(.*?)\n?```\s*$", re.DOTALL)
 
 
 # ── 모델이 만드는 JSON (strict 스키마라 dict 대신 이름·값 목록을 씁니다) ──
@@ -57,9 +57,14 @@ class RedAttackPlan(BaseModel):
     attack: RedAttackDraft
 
 
+class Edit(BaseModel):
+    find: str = Field(max_length=1500, description="원본에 정확히 한 번 나오는 바꿀 부분 (공백·따옴표까지 그대로)")
+    replace: str = Field(max_length=2500, description="바꾼 내용")
+
+
 class BluePatch(BaseModel):
     file_path: str = Field(max_length=500)
-    content: str = Field(max_length=MAX_SOURCE_CHARS * 2, description="수정된 파일 전체 내용")
+    edits: list[Edit] = Field(min_length=1, max_length=10)
     summary: str = Field(max_length=400)
 
 
@@ -103,8 +108,10 @@ RED_ATTACK_SYSTEM = """\
 - reason은 한국어 한두 문장. JSON만 출력한다."""
 
 BLUE_PATCH_SYSTEM = """\
-너는 72hours의 Blue다. 탐지된 취약점을 고친 **파일 전체 내용**을 출력한다.
-- file_path는 입력에 준 경로를 그대로 쓴다. content는 생략 없이 파일 전체다("..." 나 "이하 동일" 금지).
+너는 72hours의 Blue다. 탐지된 취약점을 고칠 편집 목록(edits)을 출력한다.
+- file_path는 입력에 준 경로를 그대로 쓴다.
+- 각 편집의 find는 원본 파일에서 **정확히 한 번** 나오는 부분을 공백·따옴표까지 그대로 복사한다(한두 줄이면 충분).
+  replace는 그 부분을 고친 내용이다. 파일 전체를 다시 쓰지 않는다.
 - 취약점과 관련된 줄만 최소한으로 고친다. 라우트·응답 형식·정상 동작·내보내기(export)는 바꾸지 않는다.
 - 새 패키지를 추가하지 않는다. 언어 기본 기능과 이미 쓰는 라이브러리로 고친다.
   (예: SQL은 자리표시자(?)와 매개변수, HTML 출력은 이스케이프, 비밀값은 환경변수)
@@ -122,7 +129,7 @@ def red_attack_messages(finding: FindingInput, path: str, source: str) -> list[d
 
 def blue_patch_messages(findings: list[FindingInput], path: str, source: str) -> list[dict]:
     blocks = "\n".join(f"<finding>\n{prompts.render_finding(f)}\n</finding>" for f in findings)
-    content = f"{blocks}\n\n{_source_block(path, source)}\n\n위 탐지 결과를 모두 고친 {path} 전체를 출력하세요."
+    content = f"{blocks}\n\n{_source_block(path, source)}\n\n위 탐지 결과를 모두 고치는 {path} 편집 목록을 출력하세요."
     return [{"role": "system", "content": BLUE_PATCH_SYSTEM}, {"role": "user", "content": content}]
 
 
@@ -169,19 +176,23 @@ def to_attack_spec(draft: RedAttackDraft, attack_id: str, finding: FindingInput)
 
 
 def to_patch_content(patch: BluePatch, path: str, original: str) -> tuple[str | None, str]:
-    """(수정본, '') 또는 받을 수 없으면 (None, 이유)."""
+    """편집 목록을 원본에 차례로 적용해 (수정된 전체 내용, '') 또는 받을 수 없으면 (None, 이유)를 돌려줍니다.
+
+    find가 없거나 두 번 이상 나오면 어디를 고칠지 모호하므로 전체를 거절합니다(일부만 적용하지 않음).
+    """
     if PurePosixPath(patch.file_path.strip().lstrip("./")) != PurePosixPath(path):
         return None, f"입력에 없는 파일을 고치려 했습니다: {patch.file_path[:80]!r}"
-    content = patch.content
-    fenced = _FENCE.match(content.strip())
-    if fenced:  # 모델이 코드 블록으로 감싼 경우만 벗겨 냅니다
-        content = fenced.group(1) + "\n"
-    if not content.strip():
-        return None, "수정본이 비어 있습니다."
-    if content.strip() == original.strip():
-        return None, "수정본이 원본과 같습니다."
-    if len(content) < len(original) * 0.5:
-        return None, "수정본이 원본의 절반보다 짧습니다(일부만 출력한 것으로 보임)."
+    content = original
+    for i, edit in enumerate(patch.edits, 1):
+        if not edit.find.strip():
+            return None, f"{i}번째 편집의 find가 비어 있습니다."
+        count = content.count(edit.find)
+        if count != 1:
+            where = "찾지 못했습니다" if count == 0 else f"{count}번 나와 어디인지 모호합니다"
+            return None, f"{i}번째 편집의 find를 원본에서 {where}: {edit.find[:60]!r}"
+        content = content.replace(edit.find, edit.replace, 1)
+    if content == original:
+        return None, "편집을 적용해도 원본과 같습니다."
     return content, ""
 
 

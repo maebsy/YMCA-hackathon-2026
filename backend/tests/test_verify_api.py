@@ -384,3 +384,46 @@ def test_ai_mode_requires_llm(ai_ready):
 def test_unknown_mode_rejected(ai_ready):
     with TestClient(app) as client:
         assert client.post("/api/verify", json={"mode": "user-repo"}).status_code == 422
+
+
+# ── 재사용 만료 경계 (#122): 부동소수점 뺄셈 오차로 정확한 경계에서 만료된 결과를 재사용하던 문제 ──
+# 이 finished 값에서는 (finished + 10) - finished == 9.999999999999996 이라, 예전 비교(now - finished < 10)가
+# 정확히 10초 지난 순간을 '아직 유효'로 판정했습니다. CI 의 간헐 실패는 실제 finished 가 이런 값일 때 났습니다.
+_BOUNDARY_FINISHED = 23.56163399378497
+
+
+def _done_job(finished):
+    result = VerifyResult(status="verified", sandbox="docker")
+    return {"job_id": "src", "status": "done", "result": result.model_dump(), "error": None, "target": "demo",
+            "reused": False, "owner": None, "finished": finished, "finished_at": "2026-11-01T00:00:00+00:00"}
+
+
+def test_boundary_value_really_breaks_subtraction():
+    assert (_BOUNDARY_FINISHED + 10) - _BOUNDARY_FINISHED < 10  # 재현 조건이 성립하는지 (환경과 무관한 IEEE 754 결과)
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "reused"),
+    [(9, True), (9.999, True), (10, False), (10.001, False), (11, False)],
+)
+def test_reuse_window_boundary_is_deterministic(monkeypatch, elapsed, reused):
+    jobs = VerifyJobs()
+    jobs.jobs["src"] = _done_job(_BOUNDARY_FINISHED)
+    monkeypatch.setattr(J, "time", SimpleNamespace(monotonic=lambda: _BOUNDARY_FINISHED + elapsed))
+
+    got = jobs.reuse_recent(target="demo", seconds=10)
+
+    assert (got is not None) is reused
+    if reused:
+        assert got["reused"] is True and jobs.jobs[got["job_id"]]["finished"] == _BOUNDARY_FINISHED
+
+
+@pytest.mark.parametrize(("elapsed", "kept"), [(1799.999, True), (1800, False)])
+def test_retention_ttl_boundary_is_deterministic(monkeypatch, elapsed, kept):
+    jobs = VerifyJobs(ttl=1800)
+    jobs.jobs["src"] = _done_job(_BOUNDARY_FINISHED)
+    monkeypatch.setattr(J, "time", SimpleNamespace(monotonic=lambda: _BOUNDARY_FINISHED + elapsed))
+
+    jobs._prune()
+
+    assert ("src" in jobs.jobs) is kept

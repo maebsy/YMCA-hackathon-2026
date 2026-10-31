@@ -43,7 +43,7 @@ class VerifyJobs:
         now = time.monotonic()
         finished = [k for k, job in self.jobs.items() if job["finished"] is not None]
         for k in finished:
-            if now - self.jobs[k]["finished"] >= self.ttl:
+            if now >= self.jobs[k]["finished"] + self.ttl:  # 마감 시각과 비교 (아래 reuse_recent 참고)
                 del self.jobs[k]
         finished = [k for k, job in self.jobs.items() if job["finished"] is not None]
         for k in finished[:max(0, len(finished) - self.kept)]:
@@ -71,9 +71,12 @@ class VerifyJobs:
         if seconds <= 0:
             return None
         now = time.monotonic()
+        # 경과 시간(now - finished)을 빼서 비교하면 부동소수점 반올림 때문에 정확히 seconds 가 지난 순간에도
+        # 9.999999999999996 처럼 조금 모자라게 나와 만료된 결과를 재사용할 수 있습니다(#122, CI 간헐 실패).
+        # 마감 시각(finished + seconds)과 비교하면 경계(정확히 seconds 경과)는 항상 만료로 판정됩니다.
         eligible = [job for job in self.jobs.values()
                     if job.get("target") == target and job["status"] == "done"
-                    and job["result"]["status"] != "error" and now - job["finished"] < seconds]
+                    and job["result"]["status"] != "error" and now < job["finished"] + seconds]
         if not eligible:
             return None
         source = max(eligible, key=lambda job: job["finished"])

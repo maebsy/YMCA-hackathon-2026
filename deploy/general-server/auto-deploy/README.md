@@ -39,6 +39,25 @@ python3 ~/apps/72hours/auto-deploy/runtime/deploy.py --bootstrap --public-url ht
 systemctl --user enable --now 72hours-auto-deploy.timer
 ```
 
+## 멈춤·재개·상태 (테스트·시연 중)
+
+```bash
+D=~/apps/72hours/auto-deploy/runtime
+python3 $D/deploy.py --pause "시연 중"   # 자동 배포 멈춤. 기다리던 새 작업 차단도 바로 풂
+python3 $D/deploy.py --status            # 멈춤·대기 경과·진행 중 작업 수·적용 버전 (읽기만)
+python3 $D/deploy.py --resume            # 다시 켜기. 다음 타이머(최대 2분)에 이어서 진행
+```
+
+- 멈춘 동안 타이머는 계속 돌지만 main 조회·빌드·교체를 하지 않고 `status.json`에 `paused`만 남긴다.
+- 교체를 기다리는 도중에 멈추면 5초 안에 대기를 그만두고 새 작업 차단을 푼다. 이미 링크를 바꾸는 중(`transaction.json`)이면 그 교체를 끝낸 뒤 풀린다.
+- 타이머 자체를 끄는 `systemctl --user disable --now 72hours-auto-deploy.timer`보다 위 명령을 먼저 쓴다(설정은 그대로, 다시 켜기 쉬움).
+
+### 교체 대기(drain) 동작
+- 새 커밋을 교체할 때는 새 작업 접수만 막고(503 `DEPLOYMENT_DRAINING`, "새 버전을 적용 중입니다") 진행 중인 작업이 끝나기를 기다린다. 조회(GET)는 계속 된다.
+- 한 번 시작한 대기는 **작업이 끝날 때까지 다음 실행에도 이어진다**. 예전처럼 60초 뒤 차단을 풀면, 이용자가 계속 들어올 때 진행 중 작업이 0이 될 틈이 없어 교체가 끝없이 밀렸다.
+- 대신 이용자를 무한정 막지 않도록 **대기 전체 상한은 20분**이다. 넘기면 차단을 풀고 10분 동안은 다시 막지 않는다.
+- 백엔드 가드는 25분이 지난 대기 표시를 무시한다. 타이머가 대기 도중 죽어도 이용자가 계속 막히지 않는다.
+
 ## 상태 확인·중지·재시도
 
 ```bash

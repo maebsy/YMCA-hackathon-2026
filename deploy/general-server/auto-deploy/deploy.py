@@ -22,6 +22,28 @@ class Deferred(RuntimeError):
     pass
 
 
+class DrainPending(Deferred):
+    """교체를 시작했고 진행 중인 작업을 기다리는 중. 새 작업 차단(drain)을 다음 실행까지 유지합니다."""
+
+
+# 교체 대기(drain) 정책.
+# 예전에는 60초만 기다린 뒤 차단을 풀어서, 이용자가 계속 들어오면 진행 중 작업이 0이 될 틈이 없어 교체가 끝없이 밀렸습니다.
+# 이제 한 번 시작한 대기는 작업이 끝날 때까지 새 작업만 막고 유지하되, 이용자를 무한정 막지 않게 상한을 둡니다.
+DRAIN_POLL_SECONDS = 5
+DRAIN_WAIT_PER_RUN = 8 * 60  # 한 번 실행에서 기다리는 시간 (서비스 TimeoutStartSec 25분 안)
+DRAIN_MAX_SECONDS = 20 * 60  # 대기 전체 상한: 백엔드 작업 시간 제한(LLM 15분)보다 넉넉히
+DRAIN_COOLDOWN_SECONDS = 10 * 60  # 상한을 넘겨 차단을 풀었으면, 그동안은 다시 막지 않음
+
+
+def drain_record(path):
+    """drain 파일의 시작 시각(epoch). 없거나 예전 형식(빈 파일)이면 None."""
+    try:
+        since = json.loads(path.read_text()).get("since")
+        return float(since) if since else None
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+
 def atomic(path, data):
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
@@ -217,11 +239,33 @@ class Deployer:
             process.kill()
             process.wait(timeout=5)
 
+    def paused(self):
+        """운영자가 --pause 로 멈췄으면 그 기록(dict), 아니면 None."""
+        try:
+            return json.loads((self.control/"paused.json").read_text())
+        except (OSError, ValueError):
+            return None
+
     def drain(self, bootstrap=False):
         self.stage = "drain"
         headers = {"X-Deployment-Token": (self.control/"control-token").read_text().strip()}
-        (self.control/"drain").touch()
-        for _ in range(30):
+        marker = self.control/"drain"
+        cooldown = self.control/"drain-cooldown.json"
+        since = drain_record(marker)
+        if since is None:
+            # 직전 대기가 상한을 넘겨 풀렸다면 잠시 이용자를 막지 않습니다
+            try:
+                until = float(json.loads(cooldown.read_text()).get("until", 0))
+            except (OSError, ValueError, AttributeError, TypeError):
+                until = 0
+            if time.time() < until:
+                raise Deferred("Recent drain timed out; not pausing new jobs again yet")
+            since = time.time()
+            atomic(marker, {"revision": self.revision, "since": since})
+        for _ in range(int(DRAIN_WAIT_PER_RUN / DRAIN_POLL_SECONDS)):
+            if self.paused():
+                # 기다리는 도중 운영자가 멈춤: 교체하지 않고 새 작업 차단을 바로 풉니다 (main 에서 drain 정리)
+                raise Deferred("Paused by operator while waiting; new jobs reopened")
             try:
                 data = get_json("http://127.0.0.1:8000/api/_deployment/status", headers)
             except urllib.error.HTTPError as exc:
@@ -230,9 +274,15 @@ class Deployer:
                     return  # Manual one-time migration from a pre-guard server; never enabled in timer.
                 raise Deferred("Backend deployment guard unavailable") from None
             if data.get("draining") is True and data.get("busy") == 0:
+                cooldown.unlink(missing_ok=True)
                 return
-            time.sleep(2)
-        raise Deferred("Active jobs: retry next timer without cancelling them")
+            if time.time() - since >= DRAIN_MAX_SECONDS:
+                # 작업이 상한 안에 끝나지 않음: 이용자를 계속 막지 않도록 차단을 풀고 잠시 쉰 뒤 다시 시도합니다
+                marker.unlink(missing_ok=True)
+                atomic(cooldown, {"until": time.time() + DRAIN_COOLDOWN_SECONDS})
+                raise Deferred("Active jobs did not finish within the drain limit; new jobs reopened")
+            time.sleep(DRAIN_POLL_SECONDS)
+        raise DrainPending("Active jobs: new jobs stay paused until they finish")
 
     def rollback(self):
         old = json.loads(self.transaction.read_text())
@@ -273,7 +323,16 @@ class Deployer:
             if self.transaction.exists():
                 self.stage = "recover_interrupted_switch"
                 self.rollback()
-            (self.control/"drain").unlink(missing_ok=True)
+            marker = self.control/"drain"
+            if self.paused():
+                # 운영자가 멈춤: 새 작업을 막고 있던 대기도 바로 풀어 이용자를 막지 않습니다
+                marker.unlink(missing_ok=True)
+                self.stage = "paused"
+                self.record("paused", reason=self.paused().get("reason", ""))
+                return
+            since = drain_record(marker)
+            if since is None or time.time() - since >= DRAIN_MAX_SECONDS:
+                marker.unlink(missing_ok=True)  # 이어서 기다릴 대기가 아니면 정리 (예전 빈 파일 포함)
             self.revision = self.head()
             if self.state.exists():
                 previous = json.loads(self.state.read_text())
@@ -281,6 +340,7 @@ class Deployer:
                     return
             applied = self.control/"applied.json"
             if applied.exists() and json.loads(applied.read_text()).get("revision") == self.revision and not args.retry:
+                marker.unlink(missing_ok=True)  # 바꿀 것이 없으면 남은 대기로 이용자를 막지 않습니다
                 return
             self.stage = "ci"
             if not self.ready(self.revision):
@@ -311,6 +371,46 @@ class Deployer:
             self.record("deployed")
 
 
+def pause(root, reason=""):
+    """자동 배포를 멈춥니다. 잠금 없이 바로 기록하므로 배포가 기다리는 중이어도 다음 확인(5초 안)에 멈춥니다."""
+    control = root / "auto-deploy"
+    control.mkdir(parents=True, exist_ok=True)
+    atomic(control/"paused.json", {"at": datetime.now(timezone.utc).isoformat(), "reason": reason[:200]})
+    # 교체 중(transaction)이 아니면 새 작업 차단을 바로 풀어 이용자를 막지 않습니다. 교체 중이면 교체가 끝나며 풀립니다
+    if not (control/"transaction.json").exists():
+        (control/"drain").unlink(missing_ok=True)
+
+
+def resume(root):
+    (root / "auto-deploy" / "paused.json").unlink(missing_ok=True)
+
+
+def show_status(root):
+    """멈춤·대기·진행 중 작업·적용 버전을 한 번에 보여 줍니다 (읽기만 함)."""
+    control = root / "auto-deploy"
+
+    def read(name):
+        try:
+            return json.loads((control/name).read_text())
+        except (OSError, ValueError):
+            return None
+    since = drain_record(control/"drain")
+    out = {
+        "paused": read("paused.json"),
+        "applied": (read("applied.json") or {}).get("revision"),
+        "last_run": read("status.json"),
+        "draining_since_seconds": round(time.time() - since) if since else ((control/"drain").exists() or None),
+        "drain_limit_seconds": DRAIN_MAX_SECONDS,
+        "cooldown_until": (read("drain-cooldown.json") or {}).get("until"),
+    }
+    try:
+        token = (control/"control-token").read_text().strip()
+        out["backend"] = get_json("http://127.0.0.1:8000/api/_deployment/status", {"X-Deployment-Token": token})
+    except (OSError, ValueError, urllib.error.URLError):
+        out["backend"] = "unavailable"
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.home()/"apps/72hours")
@@ -320,8 +420,24 @@ def main():
     parser.add_argument("--bootstrap", action="store_true", help="Operator-only first migration; inspect idle state first")
     parser.add_argument("--reviewed-schema-revision", help="Operator-reviewed exact SHA; never set in timer")
     parser.add_argument("--public-url", default=os.environ.get("DEPLOYMENT_PUBLIC_URL"))
+    control = parser.add_mutually_exclusive_group()
+    control.add_argument("--pause", metavar="REASON", nargs="?", const="",
+                         help="자동 배포 멈춤 (예: 시연·테스트 중). 기다리던 새 작업 차단도 바로 풂")
+    control.add_argument("--resume", action="store_true", help="자동 배포 다시 켜기 (다음 타이머에 이어서 진행)")
+    control.add_argument("--status", action="store_true", help="멈춤·대기·진행 중 작업·적용 버전 보기")
     args = parser.parse_args()
     os.umask(0o077)
+    if args.pause is not None:
+        pause(args.root, args.pause)
+        print("자동 배포를 멈췄습니다. 다시 켜려면 --resume", flush=True)
+        return 0
+    if args.resume:
+        resume(args.root)
+        print("자동 배포를 다시 켰습니다. 다음 타이머(최대 2분)에 이어서 진행합니다.", flush=True)
+        return 0
+    if args.status:
+        show_status(args.root)
+        return 0
     deployer = Deployer(args.root)
     try:
         deployer.execute(args)
@@ -329,7 +445,8 @@ def main():
         if not deployer.owns_lock:
             print("Deployment lock busy; left the active deployment untouched.", flush=True)
             return 0
-        if not deployer.transaction.exists():
+        # 작업을 기다리는 중(DrainPending)이면 새 작업 차단을 다음 실행까지 유지해 교체가 밀리지 않게 합니다
+        if not deployer.transaction.exists() and not isinstance(exc, DrainPending):
             (deployer.control/"drain").unlink(missing_ok=True)
         status = "deferred" if isinstance(exc, Deferred) else "failed"
         # No raw command/env/exception text in the status document or journal.

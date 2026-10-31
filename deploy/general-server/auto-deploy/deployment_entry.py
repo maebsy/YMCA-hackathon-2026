@@ -4,6 +4,10 @@ import hmac
 import json
 import os
 from pathlib import Path
+import time
+
+# deploy.py 의 DRAIN_MAX_SECONDS(20분)보다 길게. 타이머가 대기 도중 죽어도 이용자를 영원히 막지 않습니다
+STALE_DRAIN_SECONDS = 25 * 60
 
 
 class DeploymentGuard:
@@ -11,6 +15,16 @@ class DeploymentGuard:
         self.application = application
         self.root = Path(root)
         self.active = 0
+
+    def draining(self):
+        marker = self.root / "drain"
+        try:
+            since = json.loads(marker.read_text()).get("since")
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError, AttributeError):
+            return True  # 예전 형식(빈 파일)은 그대로 대기로 봅니다
+        return not (since and time.time() - float(since) > STALE_DRAIN_SECONDS)
 
     async def reply(self, send, status, value):
         body = json.dumps(value).encode()
@@ -57,10 +71,10 @@ class DeploymentGuard:
                 return await self.reply(send, 404, {"detail": "Not found"})
             try:
                 count = await self.busy()
-                return await self.reply(send, 200, {"busy": count, "draining": (self.root / "drain").exists()})
+                return await self.reply(send, 200, {"busy": count, "draining": self.draining()})
             except Exception:
                 return await self.reply(send, 503, {"detail": "Cannot verify idle state"})
-        if scope["method"] not in ("GET", "HEAD", "OPTIONS") and (self.root / "drain").exists():
+        if scope["method"] not in ("GET", "HEAD", "OPTIONS") and self.draining():
             return await self.reply(send, 503, {"detail": {"code": "DEPLOYMENT_DRAINING",
                 "message": "새 버전을 적용 중입니다. 잠시 후 다시 시도해 주세요."}})
         self.active += 1

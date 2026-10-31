@@ -196,3 +196,135 @@ class GuardTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DrainPolicyTests(unittest.TestCase):
+    """교체 대기: 이용자가 계속 들어와도 교체가 끝없이 밀리지 않고, 이용자를 무한정 막지도 않습니다."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.d = deploy.Deployer(self.root)
+        self.d.revision = REV
+        (self.d.control/"control-token").write_text("test-token")
+        self.marker = self.d.control/"drain"
+
+    def busy(self, *answers):
+        return patch.object(deploy, "get_json", side_effect=list(answers))
+
+    def test_pending_drain_keeps_new_jobs_paused_across_runs(self):
+        with patch.object(deploy, "get_json", return_value={"busy": 1, "draining": True}), patch.object(deploy.time, "sleep"):
+            with self.assertRaises(deploy.DrainPending):
+                self.d.drain()
+        first = deploy.drain_record(self.marker)
+        self.assertIsNotNone(first)
+        # main 은 DrainPending 이면 drain 을 지우지 않습니다 → 다음 실행 사이에도 새 작업이 막혀 있음
+        self.d.execute = Mock(side_effect=deploy.DrainPending("waiting"))
+        self.d.owns_lock = True
+        with patch.object(deploy, "Deployer", return_value=self.d), patch("sys.argv", ["deploy.py"]):
+            self.assertEqual(deploy.main(), 0)
+        self.assertEqual(deploy.drain_record(self.marker), first)  # 시작 시각도 그대로 이어짐
+
+    def test_next_run_continues_same_drain_and_switches_when_idle(self):
+        deploy.atomic(self.marker, {"revision": REV, "since": deploy.time.time() - 300})
+        with self.busy({"busy": 0, "draining": True}):
+            self.d.drain()  # 예외 없이 끝나면 교체 단계로 진행
+
+    def test_drain_limit_reopens_and_cools_down(self):
+        deploy.atomic(self.marker, {"revision": REV, "since": deploy.time.time() - deploy.DRAIN_MAX_SECONDS - 1})
+        with patch.object(deploy, "get_json", return_value={"busy": 2, "draining": True}), patch.object(deploy.time, "sleep"):
+            with self.assertRaisesRegex(deploy.Deferred, "drain limit") as caught:
+                self.d.drain()
+        self.assertNotIsInstance(caught.exception, deploy.DrainPending)
+        self.assertFalse(self.marker.exists())  # 이용자 차단을 풀었음
+        with self.assertRaisesRegex(deploy.Deferred, "not pausing"):
+            self.d.drain()  # 쉬는 동안은 다시 막지 않음
+        self.assertFalse(self.marker.exists())
+
+    def test_execute_clears_drain_when_nothing_to_deploy(self):
+        deploy.atomic(self.marker, {"revision": REV, "since": deploy.time.time()})
+        deploy.atomic(self.d.control/"applied.json", {"revision": REV})
+        self.d.head = lambda: REV
+        with patch.object(deploy, "locks", return_value=nullcontext()):
+            self.d.execute(SimpleNamespace(retry=False))
+        self.assertFalse(self.marker.exists())
+
+    def test_execute_drops_legacy_or_expired_drain(self):
+        self.marker.touch()  # 예전 형식
+        self.d.head = lambda: REV
+        self.d.ready = lambda revision: False
+        with patch.object(deploy, "locks", return_value=nullcontext()):
+            with self.assertRaises(deploy.Deferred):
+                self.d.execute(SimpleNamespace(retry=False))
+        self.assertFalse(self.marker.exists())
+
+
+class OperatorControlTests(unittest.TestCase):
+    """테스트·시연 중 자동 배포를 쉽게 멈추고 다시 켜기 (--pause / --resume / --status)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.control = self.root/"auto-deploy"
+        self.control.mkdir()
+        (self.control/"control-token").write_text("test-token")
+
+    def run_main(self, *argv):
+        with patch("sys.argv", ["deploy.py", "--root", str(self.root), *argv]):
+            return deploy.main()
+
+    def test_pause_reopens_jobs_and_stops_deploys_until_resume(self):
+        deploy.atomic(self.control/"drain", {"revision": REV, "since": deploy.time.time()})
+        self.assertEqual(self.run_main("--pause", "시연 중"), 0)
+        self.assertFalse((self.control/"drain").exists())
+        d = deploy.Deployer(self.root)
+        d.head = Mock(return_value=REV)
+        with patch.object(deploy, "locks", return_value=nullcontext()):
+            d.execute(SimpleNamespace(retry=False))
+        d.head.assert_not_called()  # 멈춘 동안은 main 조회·빌드·교체를 하지 않음
+        self.assertEqual(json.loads((self.control/"status.json").read_text())["status"], "paused")
+        self.assertEqual(self.run_main("--resume"), 0)
+        self.assertIsNone(d.paused())
+
+    def test_pause_during_wait_stops_waiting(self):
+        d = deploy.Deployer(self.root)
+        d.revision = REV
+        answers = iter([{"busy": 1, "draining": True}])
+
+        def status(*_):
+            deploy.pause(self.root, "테스트")  # 기다리는 도중 운영자가 멈춤
+            return next(answers)
+        with patch.object(deploy, "get_json", side_effect=status), patch.object(deploy.time, "sleep"):
+            with self.assertRaisesRegex(deploy.Deferred, "Paused") as caught:
+                d.drain()
+        self.assertNotIsInstance(caught.exception, deploy.DrainPending)
+
+    def test_pause_during_switch_leaves_drain_for_the_switch_to_finish(self):
+        deploy.atomic(self.control/"drain", {"revision": REV, "since": deploy.time.time()})
+        deploy.atomic(self.control/"transaction.json", {"backend": "a", "frontend": "b"})
+        deploy.pause(self.root)
+        self.assertTrue((self.control/"drain").exists())
+
+    def test_status_is_read_only(self):
+        with patch.object(deploy, "get_json", return_value={"busy": 2, "draining": False}), \
+                patch("builtins.print") as printed:
+            self.assertEqual(self.run_main("--status"), 0)
+        shown = json.loads(printed.call_args[0][0])
+        self.assertEqual(shown["backend"], {"busy": 2, "draining": False})
+        self.assertFalse((self.control/"status.json").exists())
+
+
+class StaleDrainGuardTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stale_drain_marker_no_longer_blocks_users(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            guard = DeploymentGuard(AsyncMock(), root)
+            (root/"drain").write_text(json.dumps({"since": deploy.time.time()}))
+            self.assertTrue(guard.draining())
+            (root/"drain").write_text(json.dumps({"since": deploy.time.time() - 26 * 60}))
+            self.assertFalse(guard.draining())  # 타이머가 대기 중 죽어도 이용자를 영원히 막지 않음
+            (root/"drain").touch()
+            (root/"drain").write_text("")
+            self.assertTrue(guard.draining())  # 예전 빈 파일은 그대로 대기

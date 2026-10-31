@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Finding, LogItem, OS, Hosting } from "@/types/security";
+import { McpHandoff } from "@/components/McpHandoff";
 
 interface WorkspaceTabProps {
   findings: Finding[];
@@ -610,6 +611,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                     <Sparkles className="w-3.5 h-3.5" /> AI 코딩툴에 지시문 복사
                   </button>
                 </div>
+                <McpHandoff os={os} onShowToast={onShowToast} />
               </div>
             </div>
           </div>

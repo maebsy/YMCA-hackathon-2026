@@ -3,13 +3,17 @@
 import React, { useState } from "react";
 import { AlertTriangle, Copy, Play } from "lucide-react";
 import { mockApiPayloads } from "@/data/mockData";
+import { plainReport } from "@/lib/api";
 
 interface ReportTabProps {
+  // 실제 검사 결과로 만든 리포트 입력 (없으면 아직 검사 전)
+  reportInput?: unknown;
   onShowToast: (msg: string) => void;
   onOpenLoginModal: () => void;
 }
 
 export const ReportTab: React.FC<ReportTabProps> = ({
+  reportInput,
   onShowToast,
   onOpenLoginModal,
 }) => {
@@ -26,6 +30,30 @@ export const ReportTab: React.FC<ReportTabProps> = ({
     'GET /api/orders?orderId=\' OR \'1\'=\'1 HTTP/1.1\nHost: demo-order-site.local\n\n→ Response: {"error": "Invalid orderId parameter"} (유출 0건)'
   );
   const [apiPreviewText, setApiPreviewText] = useState<string | null>(null);
+  const [realHtml, setRealHtml] = useState<string | null>(null);
+  const [realLoading, setRealLoading] = useState(false);
+
+  const makeRealReport = async () => {
+    if (!reportInput) return;
+    setRealLoading(true);
+    try {
+      setRealHtml(await plainReport(reportInput, "html"));
+    } catch (e) {
+      onShowToast(String((e as Error)?.message || e));
+    } finally {
+      setRealLoading(false);
+    }
+  };
+
+  const copyRealMarkdown = async () => {
+    if (!reportInput) return;
+    try {
+      await navigator.clipboard.writeText(await plainReport(reportInput, "markdown"));
+      onShowToast("실제 검사 리포트(Markdown)를 복사했습니다.");
+    } catch (e) {
+      onShowToast(String((e as Error)?.message || e));
+    }
+  };
 
   const runZapDemo = () => {
     setZapRunning(true);
@@ -74,6 +102,38 @@ export const ReportTab: React.FC<ReportTabProps> = ({
 
   return (
     <div className="space-y-8 animate-fadeIn">
+      <section className="rounded-xl border border-[#27272a] bg-[#0f0f10] p-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold text-[#fafafa]">실제 검사 리포트 (POST /api/reports/plain)</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={makeRealReport}
+              disabled={!reportInput || realLoading}
+              className="px-3 py-1.5 rounded bg-[#18181b] border border-[#27272a] text-sm text-[#fafafa] disabled:opacity-50 cursor-pointer"
+            >
+              {realLoading ? "만드는 중..." : "리포트 만들기"}
+            </button>
+            <button
+              onClick={copyRealMarkdown}
+              disabled={!reportInput}
+              className="px-3 py-1.5 rounded bg-[#18181b] border border-[#27272a] text-sm text-[#fafafa] disabled:opacity-50 cursor-pointer"
+            >
+              Markdown 복사
+            </button>
+          </div>
+        </div>
+        {!reportInput && (
+          <p className="text-sm text-[#a1a1aa]">워크스페이스에서 저장소를 검사하면 그 결과로 리포트를 만들 수 있습니다.</p>
+        )}
+        {realHtml && (
+          <iframe
+            title="실제 검사 리포트"
+            srcDoc={realHtml}
+            sandbox=""
+            className="w-full h-[640px] rounded-lg bg-white"
+          />
+        )}
+      </section>
       <p className="rounded-lg border border-[#ff9f43]/50 bg-[#ff9f43]/10 p-4 text-sm text-[#ff9f43]">
         예제 리포트 · 아래 완료 시간, 패치·검증 결과, 미검사 영역 수와 ZAP 응답은 고정 데모 데이터입니다.
         현재 워크스페이스의 해결 상태와 연동되지 않으며 실제 보안 조치 증빙이 아닙니다.

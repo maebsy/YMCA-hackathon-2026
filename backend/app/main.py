@@ -6,7 +6,7 @@ from sqlalchemy import text
 from app.db import engine, init_db
 from app.explain_jobs.config import job_settings
 from app.llm import create_explainer
-from app.routers import items, llm, reports
+from app.routers import items, llm, reports, scans
 
 
 @asynccontextmanager
@@ -46,4 +46,5 @@ else:
     api.include_router(items.router)
     api.include_router(llm.router)
 api.include_router(reports.router)
+api.include_router(scans.router)
 app.include_router(api)

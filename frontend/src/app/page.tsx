@@ -11,6 +11,8 @@ import { IncidentTab } from "@/components/tabs/IncidentTab";
 import { ReportTab } from "@/components/tabs/ReportTab";
 import { initialFindings, defaultLogs } from "@/data/mockData";
 import { TabType, OS, Hosting, Finding, LogItem } from "@/types/security";
+import { startScan, llmHealthy, explain, itemToFinding, mergeExplanation, now, saveLast, loadLast } from "@/lib/api";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>("workspace");
@@ -19,6 +21,10 @@ export default function Home() {
   const [selectedFindingId, setSelectedFindingId] = useState<string>("s1");
   const [logs, setLogs] = useState<LogItem[]>(defaultLogs);
   const [isScanning, setIsScanning] = useState(false);
+  // 실제 검사 상태: 직전 엔진 결과(재검사 비교용), 리포트 입력(scan·findings·explain_results)
+  const [lastResult, setLastResult] = useState<any>(null);
+  const [reportInput, setReportInput] = useState<any>(null);
+
   const [os, setOs] = useState<OS>("windows");
   const [hosting, setHosting] = useState<Hosting>("vercel");
   const [repoInput, setRepoInput] = useState(
@@ -30,10 +36,33 @@ export default function Home() {
   const [toastMessage, setToastMessage] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
 
+  // 새로고침해도 마지막 실제 검사 결과를 되살립니다 (브라우저 보관)
+  useEffect(() => {
+    const saved = loadLast<any>();
+    if (!saved?.findings?.length) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFindings(saved.findings);
+    setSelectedFindingId(saved.findings[0].id);
+    setLastResult(saved.result ?? null);
+    setReportInput(saved.reportInput ?? null);
+    if (saved.repoUrl) setRepoInput(saved.repoUrl);
+    if (saved.logs) setLogs(saved.logs);
+  }, []);
+
   // 72시간 실시간 카운트다운 타이머
   const [remainingSeconds, setRemainingSeconds] = useState(
     61 * 3600 + 12 * 60 + 40
   );
+
+  // 실제 검사 결과가 있으면 72시간 타이머를 첫 발견 시각(detected_at) 기준으로 맞춥니다
+  useEffect(() => {
+    const scan = reportInput?.scan;
+    if (!scan?.detected_at) return;
+    const deadline = new Date(scan.detected_at).getTime() + 72 * 3600 * 1000;
+    const left = scan.resolved_at ? 0 : Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRemainingSeconds(left);
+  }, [reportInput]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -83,65 +112,65 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // 검사 실행 시뮬레이션
-  const handleRunScan = (url: string) => {
+  // 실제 검사: /api/scans(보안엔진) → /api/llm/explain(GPU Red–Blue)
+  const handleRunScan = async (url: string) => {
     setIsScanning(true);
-    const repoPath = url.replace("https://github.com/", "");
-    const scanSteps: LogItem[] = [
-      {
-        time: "07:15:01",
-        step: "clone   ",
-        msg: `${repoPath} @ HEAD (권한 확인 후 수집)`,
-        status: "✓",
-        type: "ok",
-      },
-      {
-        time: "07:15:03",
-        step: "osv     ",
-        msg: "OSV-Scanner 의존성 CVE 대조 중...",
-        status: "✓ 완료",
-        type: "ok",
-      },
-      {
-        time: "07:15:05",
-        step: "opengrep",
-        msg: "Opengrep + 자체 바이브코딩 룰셋 21개 실행...",
-        status: "✓ 완료",
-        type: "ok",
-      },
-      {
-        time: "07:15:06",
-        step: "gitleaks",
-        msg: "Gitleaks 비밀키 및 .env 노출 스캔...",
-        status: "! 탐지됨",
-        type: "warn",
-      },
-      {
-        time: "07:15:07",
-        step: "cleanup ",
-        msg: "서버 내 클론된 소스 코드 즉시 파기 완료 (Zero-Retention)",
-        status: "✓ 삭제됨",
-        type: "ok",
-      },
-      {
-        time: "07:15:09",
-        step: "gpu-llm ",
-        msg: "Red–Blue 검증 루프 (Blue 작성 → Red 우회 검증) 완료",
-        status: "✓ 5건 완료",
-        type: "ok",
-      },
-    ];
-
+    const log = (step: string, msg: string, status: string, type: "ok" | "warn" = "ok") =>
+      setLogs((prev) => [...prev, { time: now(), step, msg, status, type }]);
     setLogs([]);
-    scanSteps.forEach((step, idx) => {
-      setTimeout(() => {
-        setLogs((prev) => [...prev, step]);
-        if (idx === scanSteps.length - 1) {
-          setIsScanning(false);
-          showToast("검사가 완료되었습니다. 지금 바로 조치할 항목을 확인하세요.");
-        }
-      }, (idx + 1) * 350);
-    });
+    const prev = lastResult?.target?.repo_url === url ? lastResult : null;
+    log("clone   ", `${url.replace("https://github.com/", "")} ${prev ? "재검사" : "검사"} 중 (OSV·Opengrep·Gitleaks·설정 검사)...`, "…");
+    const collected: LogItem[] = [];
+    const log2 = (step: string, msg: string, status: string, type: "ok" | "warn" = "ok") => {
+      collected.push({ time: now(), step, msg, status, type });
+      log(step, msg, status, type);
+    };
+    try {
+      const data = await startScan(url, prev);
+      for (const [tool, c] of Object.entries<any>(data.coverage)) {
+        log2(tool.padEnd(8), `${c.engine || tool} ${c.status}${c.message ? " · " + c.message.slice(0, 80) : ""}`,
+          `${c.count}건`, c.status === "ok" || c.status === "skipped" ? "ok" : "warn");
+      }
+      log2("cleanup ", "검사한 소스 코드 임시 폴더 삭제", "✓ 삭제됨");
+      if (data.comparison) {
+        const c = data.comparison;
+        log2("rescan  ", `새로 ${c.new ?? 0} · 계속 ${c.persisting ?? 0} · 해결 ${c.resolved ?? 0} · 확인불가 ${c.unverifiable ?? 0}`,
+          (c.new ?? 0) === 0 && (c.persisting ?? 0) === 0 ? "✓ 통과" : "! 남은 문제", (c.new ?? 0) + (c.persisting ?? 0) ? "warn" : "ok");
+      }
+      let mapped: Finding[] = (data.llm_input?.items || []).map(itemToFinding);
+      let explainResults: any[] = [];
+      const rInput = { scan: data.report_scan, findings: data.findings || [], explain_results: explainResults };
+      const persist = () => saveLast({ repoUrl: url, findings: mapped, result: data.result,
+        reportInput: { ...rInput, explain_results: explainResults }, logs: collected });
+      setFindings(mapped);
+      setLastResult(data.result);
+      setReportInput(rInput);
+      if (mapped[0]) setSelectedFindingId(mapped[0].id);
+      persist();
+      showToast(`${prev ? "재검사" : "검사"} 완료: ${mapped.length}건 (${data.duration_sec}초)`);
+
+      if (!data.findings?.length) return;
+      if (!(await llmHealthy())) {
+        log2("gpu-llm ", "GPU LLM 서버에 연결할 수 없어 엔진 결과만 표시합니다", "! 연결 안 됨", "warn");
+        persist();
+        return;
+      }
+      log("gpu-llm ", "Red–Blue 해석 중 (상위 5건)...", "…");
+      const open = (data.findings as any[]).filter((f) => f.status !== "code_resolved");
+      explainResults = await explain(open.slice(0, 5), os);
+      const byFp = new Map<string, any>();
+      for (const r of explainResults) for (const fp of [r.fingerprint, ...(r.covers || [])]) byFp.set(fp, r);
+      mapped = mapped.map((f) => (byFp.has(f.id) ? mergeExplanation(f, byFp.get(f.id)) : f));
+      setFindings(mapped);
+      setReportInput({ ...rInput, explain_results: explainResults });
+      log2("gpu-llm ", "Red–Blue 해석 완료", `✓ ${explainResults.filter((r) => r.status === "done").length}건`);
+      persist();
+    } catch (e: any) {
+      log("error   ", String(e?.message || e), "✗ 실패", "warn");
+      showToast(`검사 실패: ${e?.message || e}`);
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const handleToggleFindingFixed = (id: string) => {
@@ -189,7 +218,7 @@ export default function Home() {
       {/* 메인 콘텐츠 영역 */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-10 relative z-10">
         <p className="mb-6 rounded-lg border border-[#ff9f43]/50 bg-[#ff9f43]/10 p-3 font-mono text-xs text-[#ff9f43]">
-          데모 모드 · 로그인, 검사, 재검사, GPU 상태 및 공격 재현은 예제입니다.
+          실제 연결 · 검사·재검사는 보안엔진(/api/scans)과 GPU LLM(/api/llm/explain)을, 리포트 탭의 「실제 검사 리포트」는 /api/reports/plain을 호출합니다. 로그인·공격 재현·예제 리포트는 아직 예제입니다.
           실제 인증·보안 검증을 수행하지 않으며, 리포트를 실제 증빙으로 사용할 수 없습니다.
         </p>
         {activeTab === "workspace" && (
@@ -220,6 +249,7 @@ export default function Home() {
 
         {activeTab === "report" && (
           <ReportTab
+            reportInput={reportInput}
             onShowToast={showToast}
             onOpenLoginModal={() => setIsLoginModalOpen(true)}
           />

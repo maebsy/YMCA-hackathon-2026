@@ -1,0 +1,143 @@
+// 백엔드 연결: /api/* 는 next.config.ts rewrites 로 FastAPI(:8000)에 전달됩니다.
+import { Finding } from "@/types/security";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type EngineItem = any;
+type ExplainResult = any;
+
+const now = () => new Date().toTimeString().slice(0, 8);
+export { now };
+
+// 검사 접수 → 3초마다 진행 상태 조회 (검사는 1~3분 걸려서 응답을 기다리지 않고 작업 번호로 확인)
+export async function startScan(repoUrl: string, previous?: unknown, onStatus?: (s: string) => void) {
+  const res = await fetch("/api/scans", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ repo_url: repoUrl, previous: previous ?? null }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.detail?.message || data?.detail || `검사 접수 실패 (${res.status})`);
+  const started = Date.now();
+  while (Date.now() - started < 15 * 60 * 1000) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const st = await fetch(`/api/scans/${data.job_id}`);
+    const job = await st.json().catch(() => ({}));
+    if (!st.ok) throw new Error(job?.detail?.message || `검사 상태 조회 실패 (${st.status})`);
+    onStatus?.(job.status);
+    if (job.status === "done") return job.result;
+    if (job.status === "failed") throw new Error(job.error?.message || "검사 실패");
+  }
+  throw new Error("검사가 15분 안에 끝나지 않았습니다.");
+}
+
+export async function llmHealthy(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/llm/health");
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function explain(findings: unknown[], os: string) {
+  const res = await fetch("/api/llm/explain", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ findings, mode: "red_blue", environment: { os } }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.detail?.message || `LLM 해석 실패 (${res.status})`);
+  return data.results as ExplainResult[];
+}
+
+// 비전공자용 점검 리포트 (실제 검사 결과로). format=html 이면 인쇄용 HTML, markdown 이면 붙여 넣기용
+export async function plainReport(body: unknown, format: "html" | "markdown" = "html") {
+  const res = await fetch(`/api/reports/plain?format=${format}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`리포트 생성 실패 (${res.status}): ${text.slice(0, 200)}`);
+  return text;
+}
+
+// 마지막 검사 결과를 브라우저에 보관 (새로고침해도 유지). 서버 DB 저장은 추후 개발 예정
+const STORE_KEY = "72hours:last-scan:v1";
+export function saveLast(data: unknown) {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+  } catch {
+    /* 용량 초과·비공개 창이면 저장 없이 계속 */
+  }
+}
+export function loadLast<T>(): T | null {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+const CHANGE_LABEL: Record<string, string> = {
+  new: "새로 발견", persisting: "계속 남아 있음", resolved: "해결 확인", unverifiable: "확인 불가",
+};
+
+const SEV_DECISION: Record<string, Finding["decision"]> = {
+  critical: "act", high: "act", medium: "attend", low: "trackstar", unknown: "trackstar",
+};
+const DECISION_LABEL: Record<Finding["decision"], string> = {
+  act: "act · 지금 바로", attend: "attend · 이번 주", trackstar: "track · 지켜보기",
+};
+
+export function itemToFinding(it: EngineItem): Finding {
+  const decision = SEV_DECISION[it.severity] ?? "attend";
+  const tool = String(it.id || "").split(":")[0];
+  const cmd = it.fix_hint?.command || "";
+  return {
+    id: it.id,
+    decision,
+    decisionLabel: DECISION_LABEL[decision],
+    title: String(it.title ?? ""),
+    file: `${it.where || it.package?.name || ""} · ${tool}${it.cwe?.length ? " · " + it.cwe[0] : ""}`,
+    verdict: it.status === "code_resolved" ? "해결 확인"
+      : it.status === "runtime_check_needed" ? "키 재발급 필요"
+      : it.status === "out_of_scope" ? "확인 불가"
+      : CHANGE_LABEL[it.change] || "엔진 탐지",
+    verdictType: it.status === "code_resolved" ? "ok" : "warn",
+    confidence: `위험도 ${it.severity}`,
+    scope: it.kind,
+    fixed: it.status === "code_resolved",
+    desc: it.what || it.title,
+    redScenario: "GPU LLM 해석 대기 중 (Red–Blue 결과가 오면 채워집니다)",
+    why: [it.status_label, ...(it.flags || []).map((x: any) => (typeof x === "string" ? x : x?.note || x?.flag))]
+      .filter(Boolean)
+      .map(String),
+    commands: { windows: cmd, macos: cmd, linux: cmd },
+    aiPrompt: `[72hours 보안 수정 지시 | 규칙: ${it.rule_id}]\n대상 위치: ${it.where || "-"}\n${it.what || it.title}\n${it.fix_hint?.text || ""}`,
+  };
+}
+
+export function mergeExplanation(f: Finding, r: ExplainResult): Finding {
+  const e = r?.explanation;
+  if (!e) return f;
+  const cmds: Record<string, string> = {};
+  for (const a of e.guide?.actions || [])
+    for (const b of a.commands || []) cmds[b.os] = [cmds[b.os], `# ${a.title}`, ...(b.lines || [])].filter(Boolean).join("\n");
+  return {
+    ...f,
+    title: e.summary || f.title,
+    desc: e.why_risky || f.desc,
+    redScenario: e.attack_scenario || f.redScenario,
+    verdict: e.red_verdict === "pass" ? "Red 통과" : e.red_verdict ? "수동 확인" : "Blue 해석",
+    verdictType: e.red_verdict === "pass" ? "ok" : "warn",
+    why: (e.fix_steps || []).map((s: any) => `${s.title}: ${s.detail}`),
+    aiPrompt: e.ai_fix_prompt || f.aiPrompt,
+    commands: {
+      windows: cmds.windows || f.commands.windows,
+      macos: cmds.macos || f.commands.macos,
+      linux: cmds.linux || f.commands.linux,
+    },
+  };
+}

@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // 검사(/api/scans)는 clone·스캐너 실행으로 수십 초~수 분 걸립니다. 기본 프록시 제한(30초)을 10분으로 늘립니다
+  experimental: { proxyTimeout: 600_000 },
   // Docker 배포 빌드만 standalone. 기존 npm run build/start 실행 방식은 유지합니다.
   output: process.env.NEXT_STANDALONE === "true" ? "standalone" : undefined,
 };

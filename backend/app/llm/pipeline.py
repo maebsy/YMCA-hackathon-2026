@@ -28,6 +28,7 @@ from app.llm.intel import ThreatIntel
 from app.llm.remediation import build_guide
 from app.llm.risk import assess
 from app.llm.schemas import (
+    BROWSER_SECRET_REVIEW,
     BlueDraft,
     ContextAnalysis,
     ExplainResult,
@@ -233,7 +234,8 @@ class Explainer:
         explanation.attack_scenario = prompts.redact_secrets(review.data.attack_scenario)
         explanation.red_verdict = review.data.verdict
         explanation.red_rounds = rounds
-        explanation.needs_manual_review = review.data.verdict != "pass"
+        # 브라우저로 나가는 키처럼 Red 가 통과시켜도 사람이 권한을 확인해야 하는 경우는 그대로 둡니다 (#100)
+        explanation.needs_manual_review = review.data.verdict != "pass" or explanation.needs_manual_review
         return explanation
 
     async def _blue_draft(self, build):
@@ -273,6 +275,8 @@ class Explainer:
             ],
             ai_fix_prompt=redact(draft.ai_fix_prompt),
             false_positive_suspect=draft.false_positive_suspect,
+            needs_manual_review=briefing.signals.browser_secret,
+            manual_review_reason=BROWSER_SECRET_REVIEW if briefing.signals.browser_secret else None,
             # 모델이 오탐이 아니라고 하면서 이유를 적는 경우가 있어, 오탐 의심일 때만 남깁니다
             false_positive_reason=redact(draft.false_positive_reason) if draft.false_positive_suspect else None,
             context=analysis,

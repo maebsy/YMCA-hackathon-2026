@@ -10,7 +10,7 @@ import re
 from app.llm.schemas import BlueDraft, FindingInput, RedReview
 
 # 프롬프트를 고치면 올립니다. 결과마다 기록돼 평가에서 버전별로 비교할 수 있습니다
-PROMPT_VERSION = "2026-10-31.6"
+PROMPT_VERSION = "2026-11-01.1"
 
 _MASK = "[가림]"
 # (패턴, 바꿀 문자열). 값만 가리고 변수 이름은 남겨 모델이 맥락을 알 수 있게 합니다
@@ -135,9 +135,14 @@ BLUE_SYSTEM = f"""\
 - ai_fix_prompt는 사용자가 Cursor·Claude Code·Codex에 그대로 붙여 넣을 지시문입니다. 파일 경로, 줄 번호, 규칙 ID,
   고칠 방향, 확인 방법을 쓰고, 코드 원문과 비밀값은 넣지 않습니다.
 - 비밀값이 노출된 경우에는 코드에서 지우는 것만으로는 부족하고, 키를 폐기하고 새로 발급해야 한다고 반드시 씁니다.
+- 비밀값이 브라우저로 전달되는 곳(브라우저 코드, HTML 템플릿, NEXT_PUBLIC_ 같은 공개 환경 변수, 검색 위젯 설정)에 있으면:
+  환경 변수나 설정 파일로 옮겨도 빌드·렌더링 때 다시 페이지에 박혀 브라우저로 나가므로 노출은 그대로라고 씁니다.
+  먼저 키 발급 서비스의 관리 화면에서 권한을 확인하게 합니다. 검색 전용 같은 공개용 키면 허용 도메인·사용 가능한 인덱스·
+  호출 한도를 제한하게 하고, 쓰기·관리 권한이 있는 키면 폐기·재발급하고 그 기능은 서버(API 경로)에서만 키를 쓰게 옮기라고 씁니다.
 - 테스트 코드, 예시 값, 문서처럼 실제 서비스와 무관해 보이면 false_positive_suspect를 true로 하고 이유를 씁니다.
 - flags는 보안엔진이 붙인 표시이고, note에 뜻이 있습니다. 반드시 반영합니다.
-  likely_public_key는 오탐 의심의 근거로 씁니다. suppressed_by_comment·ignored_by_config는 경고만 숨긴 것이니
+  likely_public_key는 공개용 키일 수 있다는 표시일 뿐 권한이 확인된 것은 아닙니다. 이것만으로 false_positive_suspect를
+  true로 하지 않습니다. suppressed_by_comment·ignored_by_config는 경고만 숨긴 것이니
   숨김 주석·설정을 지우고 실제로 고치라고 씁니다. rotate_secret은 키 재발급을, third_party_code는 직접 고치기보다
   라이브러리 업데이트를 안내합니다.
 - fix_hint에 target_version·command가 있으면 그 버전과 명령을 그대로 씁니다. 다른 버전을 지어내지 않습니다.
@@ -171,6 +176,8 @@ RED_SYSTEM = f"""\
 - fix_steps의 단계끼리, 그리고 fix_steps와 ai_fix_prompt의 내용이 서로 맞는지
 - 사용 중인 라이브러리·DB의 실제 문법에 맞는지 (예: PostgreSQL은 $1, MySQL은 ? 자리표시자)
 - 비밀값 노출이면 키 폐기·재발급이 들어 있는지
+- 비밀값이 브라우저로 전달되는데 "환경 변수로 옮기기"만으로 해결된다고 하면 bypass입니다. 렌더링된 페이지에 키가 다시 나가는지,
+  키 권한 확인과 (공개용이면) 도메인·인덱스·한도 제한, (권한 있는 키면) 폐기와 서버 경계 뒤로 옮기기가 있는지 확인합니다.
 - flags에 suppressed_by_comment·ignored_by_config가 있으면 숨김 주석·설정을 지우는 단계가 있는지 (없으면 incomplete)
 - <analysis>에서 노출이 public이고 도달 가능하면, 그 경로가 정말 막히는지
 - <environment>의 OS·배포 환경과 맞지 않는 절차가 있는지 (예: Windows 사용자에게 macOS 전용 방법만 안내하면 incomplete)
@@ -210,7 +217,8 @@ CONTEXT_SYSTEM = f"""\
 {_COMMON_RULES}
 - <signals>는 경로·키워드로 뽑은 참고 신호입니다. 코드와 맞지 않으면 코드를 따릅니다.
 - 확인할 수 없으면 unknown·under_investigation으로 답하고 confidence를 낮춥니다. 근거 없이 not_affected로 판단하지 않습니다.
-- Next.js의 'use client' 파일, NEXT_PUBLIC_ 환경 변수, public/ 폴더는 브라우저로 그대로 전달됩니다.
+- Next.js의 'use client' 파일, NEXT_PUBLIC_ 환경 변수, public/ 폴더, HTML 템플릿(_layouts, .html, .liquid 등)과
+  그 안의 <script>·jsonify로 넘긴 값은 브라우저로 그대로 전달됩니다.
 - Supabase anon 키는 공개용이지만 RLS가 꺼진 테이블은 anon 키만으로 읽고 쓸 수 있습니다. service_role 키는 RLS를 무시합니다.
 - 의존성 취약점은 취약한 기능을 실제로 쓰는 코드가 보이지 않으면 reachable을 unknown으로 둡니다."""
 

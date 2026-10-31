@@ -87,8 +87,13 @@ def privacy_need(incident: IncidentInput, now: datetime) -> FilingNeed:
             )
         else:
             reasons.append("신고 기준(1천명 이상, 민감·고유식별정보, 외부 불법 접근)에 해당하지 않습니다.")
-    # 신고 대상이 아니어도 유출 사실을 정보주체에게 알려야 합니다 (법 제34조 제1항)
-    reasons.append("신고 대상과 상관없이 유출된 사람(정보주체)에게는 지체 없이 알려야 합니다.")
+    # 신고 대상이 아니어도 유출 사실을 정보주체에게 알려야 합니다 (법 제34조, 시행령 제39조: 72시간)
+    reasons.append(
+        f"신고 대상과 상관없이 유출된 사람(정보주체)에게는 알게 된 때부터 {legal.SUBJECT_NOTICE_HOURS}시간 이내에 알려야 합니다."
+    )
+    if pi.leaked == "suspected":
+        # 2026-09-11 신설: 확인 전이라도 가능성 통지 대상일 수 있습니다 (시행령 제39조의2)
+        reasons.append(legal.POSSIBILITY_NOTICE_NOTE + ".")
     d = deadline("개인정보 유출 신고 기한", legal.PRIVACY_BASIS, incident.discovered_at, legal.PRIVACY_HOURS, now)
     return FilingNeed(kind="privacy_72h", required=required, reasons=reasons, deadline=d if required else None)
 
@@ -222,6 +227,7 @@ def build_incident_report(req: FilingRequest, now: datetime) -> Report:
                 "접속 기록(로그)과 관련 파일은 지우거나 고치지 말고 그대로 보관하세요. 원인 분석의 증거입니다.",
                 "노출된 비밀번호·API 키는 새로 발급하고 이전 값은 폐기하세요.",
                 "개인정보가 빠져나갔거나 위조·변조·훼손(랜섬웨어 등)됐다면 개인정보 유출 신고(72시간)도 따로 확인하세요.",
+                legal.INCIDENT_USER_NOTICE_NOTE + ".",
                 legal.INCIDENT_FINE_NOTE + ".",
             ],
         ),
@@ -322,7 +328,9 @@ def build_privacy_report(req: FilingRequest, now: datetime) -> Report:
         )
 
     org = incident.organization.name or "저희 회사"
-    notice_title = f"[{org}] 개인정보 유출 사실을 알려 드립니다"
+    suspected = pi.leaked == "suspected"
+    # 확인 전이면 '유출 가능성' 통지로 씁니다 (시행령 제39조의2, 2026-09-11 시행)
+    notice_title = f"[{org}] 개인정보 유출{' 가능성' if suspected else ' 사실'}을 알려 드립니다"
     notice = [
         f"유출된 항목: {join_or_none(pi.items) or '(확인 중)'}",
         f"유출 시점과 경위: {incident.summary or '(확인 중)'}"
@@ -332,7 +340,8 @@ def build_privacy_report(req: FilingRequest, now: datetime) -> Report:
         f"피해 구제: {relief}",
         legal.NOTICE_DISPUTE,
         f"문의·피해 신고: {report_contact or '(담당 부서·연락처 작성 필요)'}",
-        "불편과 걱정을 드려 죄송합니다. 추가로 확인되는 내용은 바로 알려 드리겠습니다.",
+        ("유출이 확인되면 다시 알려 드리고, 유출이 아닌 것으로 확인되면 그 사실도 바로 알려 드리겠습니다. 불편과 걱정을 드려 죄송합니다."
+         if suspected else "불편과 걱정을 드려 죄송합니다. 추가로 확인되는 내용은 바로 알려 드리겠습니다."),
     ]
 
     if need.required:
@@ -354,7 +363,9 @@ def build_privacy_report(req: FilingRequest, now: datetime) -> Report:
         Section(
             heading="정보주체 통지문 초안",
             paragraphs=[
-                "유출된 분들께 보낼 안내문입니다. 이메일·문자·홈페이지 공지로 지체 없이 알리고, 연락이 닿지 않는 분이 있으면 홈페이지에 공지하세요.",
+                f"유출된 분들께 보낼 안내문입니다. 알게 된 때부터 {legal.SUBJECT_NOTICE_HOURS}시간 이내에 이메일·문자 등으로 알리고, "
+                "연락이 닿지 않는 분이 있으면 홈페이지에 30일 이상 게시하세요.",
+                *([legal.POSSIBILITY_NOTICE_NOTE + "."] if suspected else []),
             ],
             cards=[Card(title=notice_title, paragraphs=notice)],
         ),
@@ -364,7 +375,7 @@ def build_privacy_report(req: FilingRequest, now: datetime) -> Report:
                 "유출 경로(취약점·계정)를 먼저 막고, 빠져나간 데이터가 공개된 곳이 있으면 삭제를 요청하세요.",
                 "비밀번호가 유출됐다면 해당 회원의 비밀번호를 초기화하고 재설정을 안내하세요.",
                 "외부 해킹이 원인이면 침해사고 신고(24시간)도 따로 해야 합니다.",
-                legal.PRIVACY_SCOPE_NOTE + ".",
+                legal.LEAK_SCOPE_NOTE + ".",
                 legal.PRIVACY_FINE_NOTE + ".",
             ],
         ),

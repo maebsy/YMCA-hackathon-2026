@@ -94,7 +94,7 @@ function useIncidentState() {
     }
     const gaps = getAssessmentGaps(form, kind);
     let body: FilingRequest;
-    try { body = buildFilingRequest(form, evidence.map(item => item.finding)); }
+    try { body = buildFilingRequest(form, evidence.map(item => item.finding), evidence.map(item => item.repo)); }
     catch (caught) { setErrors(previous => ({ ...previous, [kind]: message(caught) })); return; }
     const token = ++sequence.current[kind];
     const requestedRevision = version.current;

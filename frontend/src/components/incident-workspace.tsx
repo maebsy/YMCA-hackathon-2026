@@ -6,7 +6,7 @@ import { useIncident, type IncidentEvidence } from "./incident-provider";
 import { useRepository } from "./repository-provider";
 import { Notice } from "./ui/notice";
 import { useClipboard } from "./ui/clipboard";
-import { autoSuggestions, draftBlockers, getAssessmentGaps, incidentTypeLabels, koreaNow, mergeActions, remainingQuestions, scanActions, scanCheckLine, urgentEvidence, type RemainingQuestion } from "@/lib/incident";
+import { autoSuggestions, draftBlockers, getAssessmentGaps, incidentTypeLabels, koreaNow, mergeActions, remainingQuestions, scanActions, scanCheckLine, scanSummary, urgentEvidence, type RemainingQuestion } from "@/lib/incident";
 import type { Deadline, FilingKind, IncidentForm, IncidentType } from "@/types/incident";
 
 const kinds: FilingKind[] = ["incident_24h", "privacy_72h"];
@@ -117,8 +117,29 @@ function ScanImport() {
   const actions = [scanCheckLine(repository.resultRepo, repository.findings), ...scanActions(repository.findings, repository.pendingIds)];
   const current = d.form.actions.split(/\r?\n/).map(line => line.trim());
   const fresh = actions.filter(line => !current.includes(line));
+  const candidates: IncidentEvidence[] = (repository.reportInput.findings ?? []).flatMap(value => {
+    if (!value || typeof value !== "object" || !("fingerprint" in value) || typeof value.fingerprint !== "string") return [];
+    const finding = value as Record<string, unknown>;
+    return [{ repo: repository.resultRepo, fingerprint: String(finding.fingerprint), title: String(finding.title || finding.fingerprint), finding: value }];
+  });
+  const scannedAt = typeof repository.reportInput.scan?.scanned_at === "string" ? repository.reportInput.scan.scanned_at : undefined;
+  const summary = scanSummary(repository.resultRepo, repository.reportInput.findings ?? [], scannedAt);
+  const toSelect = urgentEvidence(candidates).filter(item => !d.evidence.some(value => value.repo === item.repo && value.fingerprint === item.fingerprint));
+  const filledFromScan = !fresh.length && !toSelect.length && d.form.summary.includes(summary);
+  // 검사 결과로 초안의 빈 칸을 한 번에 채웁니다. 이미 적은 내용은 덮어쓰지 않고, 확인한 사실에는 덧붙입니다
+  function fillFromScan() {
+    const facts: Partial<IncidentForm> = {};
+    if (fresh.length) facts.actions = mergeActions(d.form.actions, fresh);
+    if (!d.form.summary.includes(summary)) facts.summary = d.form.summary.trim() ? `${d.form.summary.trim()}\n${summary}` : summary;
+    d.applyFacts(facts);
+    toSelect.forEach(item => d.toggleEvidence(item));
+  }
   return <section className="incident-scan" aria-labelledby="incident-scan-title">
     <div className="incident-scan-heading"><GitBranch size={18}/><div><h3 id="incident-scan-title">검사 기록에서 가져오기</h3><code>{repository.resultRepo}</code></div></div>
+    <div className="incident-scan-fill">
+      <button type="button" className="button" disabled={filledFromScan} onClick={fillFromScan}>{filledFromScan ? <><Check size={15}/>검사 결과로 채움</> : "검사 결과로 초안 채우기"}</button>
+      <p className="field-hint">확인한 사실(점검 요약), 조치 기록(점검 실시·수정·재검사), 원인 후보(위험도 높은 발견 최대 10건), 피해 시스템(검사한 저장소)을 채웁니다. 이미 적은 칸은 지우지 않습니다. 취약점은 침해 사실이 아니니 실제 피해 여부는 직접 확인해 고쳐 주세요.</p>
+    </div>
     {actions.length ? <>
       <ul className="incident-bullets">{actions.slice(0, 4).map(line => <li key={line}>{line}</li>)}{actions.length > 4 && <li>외 {actions.length - 4}건</li>}</ul>
       <button type="button" className="button secondary" disabled={!fresh.length} onClick={() => d.applyFacts({ actions: mergeActions(d.form.actions, fresh) })}>

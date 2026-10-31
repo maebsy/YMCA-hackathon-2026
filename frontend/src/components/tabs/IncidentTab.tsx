@@ -64,13 +64,18 @@ export const IncidentTab: React.FC<IncidentTabProps> = ({ onShowToast }) => {
 5. 담당부서 및 연락처 (영향 인원 포함)
  - ${parsedContact}`;
 
-  const currentDraft = reportType === "24h" ? draft24h : draft72h;
+  const currentDraft = `[데모 초안 · 실제 신고용 아님]
+아래 탐지·조치·재검사 기록은 예제 데이터이며 실제 검증 결과가 아닙니다. 실제 신고 전 확인된 기록으로 교체해야 합니다.
 
-  const handleCopyDraft = () => {
-    navigator.clipboard
-      .writeText(currentDraft)
-      .then(() => onShowToast("신고서 초안이 클립보드에 복사되었습니다."))
-      .catch(() => onShowToast("신고서 초안이 클립보드에 복사되었습니다."));
+${reportType === "24h" ? draft24h : draft72h}`;
+
+  const handleCopyDraft = async () => {
+    try {
+      await navigator.clipboard.writeText(currentDraft);
+      onShowToast("신고서 초안이 클립보드에 복사되었습니다.");
+    } catch {
+      onShowToast("복사에 실패했습니다. 클립보드 권한을 확인하거나 초안을 직접 선택해 복사해 주세요.");
+    }
   };
 
   return (

@@ -1,3 +1,13 @@
+# 72hours 프론트엔드 프로토타입
+
+로그인·스캔·재검사·GPU 상태·공격 재현·리포트는 데모 데이터입니다. 실제 인증이나 보안 검증을 수행하지 않으며, 예제 리포트를 실제 조치 증빙으로 사용할 수 없습니다.
+
+Node.js와 npm을 설치한 뒤 이 디렉터리에서 `npm ci`를 먼저 실행하세요. `npm run lint`와 `npm run build`로 검증할 수 있습니다.
+
+Tailwind CSS는 설치된 `@tailwindcss/turbopack` 로더로 빌드합니다. 브라우저의 Tailwind CDN 스크립트를 사용하지 않습니다. Google Fonts 연결 실패 시 시스템 폰트를 사용합니다.
+
+신고서 입력은 탭 전환 동안 유지되며, 페이지 새로고침 시 초기화됩니다.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

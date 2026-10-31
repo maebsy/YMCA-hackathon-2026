@@ -57,6 +57,14 @@ def handler(public):
                 return self.respond(body, '.json')
             if path == '/validation/history.html':
                 return self.respond(Path(__file__).with_name('history.html').read_bytes(), '.html')
+            if path == '/validation/quality.html':
+                return self.respond(Path(__file__).with_name('quality.html').read_bytes(), '.html')
+            if path == '/validation/engine-quality.json':
+                quality = public.parent/'engine-quality-latest.json'
+                if not quality.is_file():
+                    self.send_error(404)
+                    return
+                return self.respond(quality.read_bytes(), '.json')
             archive = re.fullmatch(r'/validation/runs/(\d{16,22})/([a-z0-9-]+\.(?:html|json|png|md))', path)
             if archive:
                 root = public.parent/'releases'/archive[1]

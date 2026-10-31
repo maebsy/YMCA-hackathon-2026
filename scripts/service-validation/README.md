@@ -1,5 +1,20 @@
 # 실제 서비스 반복 검증
 
+## 엔진의 설계 적합성: 성공 응답과 분리해 검사
+
+`/validation/quality.html`은 배포된 엔진 자체를 정답이 있는 합성 사례로 검사한 비교표입니다. 각 행에 기대 결과, 실제 결과, 설계 근거를 나란히 제공합니다. 공개 저장소에 알려지지 않은 취약점이 더 있을 수 있으므로 서비스 실행 성공만으로 탐지 정확도를 계산하지 않습니다.
+
+- 배포본 `security_engine/rules`의 `ruleid`/`ok` 사례를 실제 Opengrep으로 검사하고 파일·행·규칙별 TP/FN/TN/FP를 기록합니다. 팀 규칙 회귀 사례이며 독립 실세계 평가 데이터셋은 아닙니다.
+- 별도로 만든 위험 SQL/매개변수 SQL, 합성 비밀키, `.env`·공개 백업 파일, 취약/수정 lodash 잠금 파일을 실제 검사합니다. 합성 소스는 실행하지 않습니다.
+- OSV 기대값은 GHSA-35jh-r3h4-6jhm(CVE-2021-23337)의 lodash 4.17.21 수정 경계를 기준으로 합니다. 다른 신규 CVE가 없다고 가정하지 않습니다.
+- 정규화의 분류·위험도·CWE·중복·집계, 원본 fingerprint→LLM 입력→패키지 covers→리포트 항목 보존을 확인합니다.
+- SQL 수정, 줄 이동, 비밀키 삭제, 도구 미실행에 따른 재검사 상태 전이를 실제 비교합니다. 삭제한 키가 완전 해결로 표시되면 실패입니다.
+- 이전 검사 없이 Git 이력에만 남은 키를 찾는지 확인해 설계 문구와 현재 구현 범위의 차이도 표시합니다. 관련 이슈 #87.
+
+검증은 일반 서버에서 현재 배포본과 동일한 venv/스캐너로 별도 프로세스를 실행합니다. 서비스 DB와 사용자 저장소를 수정하지 않습니다. API 키를 읽거나 GPU LLM을 새로 호출하지 않습니다. `engine-quality.json`에 배포 커밋·규칙 SHA-256·스캐너 버전·정답 사례·변환 추적·리포트를 기록합니다. 이 검증의 리포트는 합성 사례이며 실제 사용자 사고 리포트가 아닙니다.
+
+`campaign.py --server-ssh`는 매 회차 이 검증도 자동 실행합니다(별도 최대 5분). 공개 실행 폴더에 `quality.html`/`engine-quality.json`을 포함해 과거 실행의 비교 결과도 고정해서 볼 수 있습니다. 로컬 개발·Linux 재현은 `engine_quality.py --source <배포 소스> --output <결과 JSON>`입니다. 검사기 실행 파일 환경 변수는 엔진 README를 따릅니다.
+
 ## 지속 운영과 팀 공유
 
 이 작업은 Codex의 현재 대화에 연결된 **30분 간격 반복 작업**으로 운영합니다. 운영자는 PC와 Codex 앱을 켜 두고, 서버 진단·게시가 필요하면 VPN을 유지해야 합니다. 반복 작업은 직접 결과를 비교하고 검증 도구를 보강합니다. 같은 실패로 중복 이슈를 만들지 않고, 새 실패·원인 확정·해결 확인·실행 차단처럼 필요한 변화만 알립니다. 예약은 OS 서비스/cron이 아니라 Codex에서 관리합니다.
@@ -78,7 +93,7 @@ python -m unittest discover -s scripts/service-validation -p test_validation.py 
 
 ```powershell
 ssh hk-server 'mkdir -p apps/72hours/validation/code'
-scp scripts/service-validation/serve.py scripts/service-validation/history.html scripts/service-validation/diagnostics.py scripts/service-validation/server_diagnose.py scripts/service-validation/install_server.py scripts/service-validation/enable_route.py hk-server:apps/72hours/validation/code/
+scp scripts/service-validation/serve.py scripts/service-validation/history.html scripts/service-validation/quality.html scripts/service-validation/engine_quality.py scripts/service-validation/evidence.py scripts/service-validation/diagnostics.py scripts/service-validation/server_diagnose.py scripts/service-validation/install_server.py scripts/service-validation/enable_route.py hk-server:apps/72hours/validation/code/
 python scripts/service-validation/publish.py --ssh hk-server --output outputs/my-validation
 ssh hk-server 'python3 apps/72hours/validation/code/install_server.py && python3 apps/72hours/validation/code/enable_route.py'
 ```

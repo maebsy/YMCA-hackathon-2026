@@ -87,6 +87,19 @@ def main():
             data = json.loads((output/'private/state.json').read_text(encoding='utf-8'))
             evidence = Evidence(output, data['settings'], True)
             evidence.data['campaign'] = {'sequence': index, 'discovery': discovery}
+            if args.server_ssh:
+                from quality_probe import collect
+                try:
+                    evidence.data['engine_quality'] = collect(args.server_ssh, evidence.public)
+                    evidence.check(evidence.data, '엔진 설계 적합성 정답 검증',
+                                   'pass' if evidence.data['engine_quality']['status']=='passed' else 'fail',
+                                   evidence.data['engine_quality'])
+                except (RuntimeError, OSError, ValueError, subprocess.SubprocessError):
+                    evidence.check(evidence.data, '엔진 설계 적합성 정답 검증', 'fail',
+                                   '실행·수집 실패. 이전 결과를 이번 결과로 재사용하지 않습니다.')
+                if evidence.data.get('engine_quality',{}).get('status') != 'passed':
+                    evidence.data['status'] = 'failed'
+                    result.returncode = 1
             evidence.save()
             if args.publish:
                 publish(args.server_ssh, output)

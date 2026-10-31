@@ -17,6 +17,7 @@ from serve import history
 from server_diagnose import diagnose
 from diagnostics import failures
 from campaign import lock
+from engine_quality import evaluate_labels
 import subprocess
 import sys
 
@@ -151,6 +152,18 @@ class ValidationTests(unittest.TestCase):
         public = json.loads((self.e.public/'failures.json').read_text(encoding='utf-8'))
         self.assertEqual(public[0]['cause_status'], 'unconfirmed')
         self.assertIn('POST', (self.e.public/'handoff.md').read_text(encoding='utf-8'))
+
+    def test_oracle_detects_false_positive_and_false_negative(self):
+        labels = [{'file':'app.js','line':2,'rule':'vibe-coding/sql','expected':True},
+                  {'file':'safe.js','line':5,'rule':'vibe-coding/sql','expected':False}]
+        detected = [{'rule_id':'vibe-coding/sql','location':{'file':'safe.js','start_line':5,'end_line':5}}]
+        self.assertEqual([r['outcome'] for r in evaluate_labels(labels, detected)], ['FN', 'FP'])
+
+    def test_oracle_does_not_accept_wrong_rule_or_other_file(self):
+        labels = [{'file':'app.js','line':2,'rule':'vibe-coding/sql','expected':True}]
+        detected = [{'rule_id':'vibe-coding/sql','location':{'file':'other.js','start_line':2,'end_line':2}},
+                    {'rule_id':'vibe-coding/eval','location':{'file':'app.js','start_line':2,'end_line':2}}]
+        self.assertEqual(evaluate_labels(labels, detected)[0]['outcome'], 'FN')
 
 
 if __name__ == '__main__':

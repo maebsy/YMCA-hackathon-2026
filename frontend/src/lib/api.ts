@@ -42,7 +42,7 @@ export async function llmHealthy(): Promise<boolean> {
 
 // 백엔드 임시 해석 대기열(PreviewJobs)이 동시에 실행하는 작업 수와 같게 둡니다 (#59).
 // 한 건씩 기다리면 GPU 슬롯 하나가 계속 놀고, 이보다 많이 보내면 대기열만 차서 다른 사용자가 밀립니다.
-export const LLM_PARALLEL = 2;
+export const LLM_PARALLEL = 5;
 
 export type Settled<R> = { ok: true; value: R } | { ok: false; error: unknown };
 

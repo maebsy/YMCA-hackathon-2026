@@ -136,8 +136,12 @@ test('invalid or large limits stay bounded', async () => {
   assert.equal(called, false);
 });
 
-test('frontend parallelism matches the backend preview queue running slots', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../../backend/app/llm/preview_jobs.py'), 'utf8');
-  const running = Number(/running=(\d+)/.exec(source)?.[1]);
-  assert.equal(LLM_PARALLEL, running);
+test('frontend asks for all top findings at once without exceeding backend running slots', () => {
+  // 한 사용자의 상위 5건이 자기 요청 뒤에 줄 서지 않게 한 번에 보내되, 서버 전체 동시 실행 수(#145)는 넘지 않습니다
+  const config = fs.readFileSync(path.join(__dirname, '../../backend/app/config.py'), 'utf8');
+  const queue = fs.readFileSync(path.join(__dirname, '../../backend/app/llm/preview_jobs.py'), 'utf8');
+  const configured = Number(/llm_parallel_jobs: int = (\d+)/.exec(config)?.[1]);
+  const fallback = Number(/running=(\d+)/.exec(queue)?.[1]);
+  assert.equal(LLM_PARALLEL, 5);
+  assert.ok(LLM_PARALLEL <= configured && configured === fallback, `${LLM_PARALLEL} <= ${configured} == ${fallback}`);
 });

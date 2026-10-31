@@ -93,9 +93,12 @@ def _dependency_upgrades(findings: list[dict]) -> list[dict]:
             "max_severity": "unknown",
         })
         tv = (f.get("remediation") or {}).get("target_version")
-        if tv:
+        # 같은 생태계 규칙으로 읽을 수 있는 목표만 비교한다. 읽을 수 없으면 추측해서 고르지 않는다 (#92)
+        new_key = version_key(tv, p["ecosystem"]) if tv else None
+        if new_key is not None:
             plan["fixes"].append(f["fingerprint"])
-            if not plan["target_version"] or version_key(tv) > version_key(plan["target_version"]):
+            old_key = version_key(plan["target_version"], p["ecosystem"]) if plan["target_version"] else None
+            if old_key is None or new_key > old_key:
                 plan["target_version"] = tv
         else:
             plan["unfixable"].append(f["fingerprint"])

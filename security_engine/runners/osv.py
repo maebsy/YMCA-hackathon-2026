@@ -147,7 +147,7 @@ def parse(data: dict, target: Path, opts: ScanOptions | None = None) -> list[dic
                             refs.append(r["url"])
                 primary = _primary_id(ids, aliases)
                 title = main.get("summary") or (main.get("details") or "").split("\n")[0] or primary
-                recommended = pick_fix_version(version, fixed)
+                recommended = pick_fix_version(version, fixed, eco)
                 finding = {
                     "fingerprint": fp.make(TOOL, eco, name, primary, lockfile),
                     "tool": TOOL,

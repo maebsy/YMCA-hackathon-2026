@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { explain, itemToFinding, llmHealthy, loadLast, mergeExplanation, now, saveLast, startScan } from "@/lib/api";
+import { explain, itemToFinding, LLM_PARALLEL, llmHealthy, loadLast, mergeExplanation, now, runLimited, saveLast, startScan } from "@/lib/api";
 import type { Finding, Hosting, LogItem, OS } from "@/types/security";
 
 type JsonRecord = Record<string, unknown>;
@@ -156,19 +156,23 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
         if (!active()) return;
         const selected = open.slice(0, 5) as JsonRecord[];
         let explanations: JsonRecord[] = [];
-        // Publish each completed item before requesting the next, as in #55.
-        for (const [index, finding] of selected.entries()) {
+        let finished = 0;
+        // Request as many items as the backend runs at once (LLM_PARALLEL, #91) and publish each one as soon as it finishes.
+        log("LLM", `Red–Blue 해석 ${selected.length}건 시작 (동시 ${Math.min(LLM_PARALLEL, selected.length)}건). 끝나기 전 항목은 엔진 결과입니다.`, "해석 중");
+        await runLimited(selected, async finding => {
+          if (!active()) return [];
+          const received: unknown = await explain([finding], selectedOS, selectedHosting);
+          if (!Array.isArray(received) || !received.every(record)) throw new Error("추가 해석의 응답 형식이 올바르지 않습니다.");
+          return received as JsonRecord[];
+        }, (index, outcome) => {
           if (!active()) return;
-          log("LLM", `Red–Blue 해석 중 (${index + 1}/${selected.length}). 나머지는 엔진 결과입니다.`, "해석 중");
-          try {
-            const received: unknown = await explain([finding], selectedOS, selectedHosting);
-            if (!active()) return;
-            if (!Array.isArray(received) || !received.every(record)) throw new Error("추가 해석의 응답 형식이 올바르지 않습니다.");
-            explanations = [...explanations, ...received];
-          } catch (error) {
-            if (!active()) return;
+          const finding = selected[index];
+          finished += 1;
+          if (outcome.ok) explanations = [...explanations, ...outcome.value];
+          else {
             explanations = [...explanations, { fingerprint: finding.fingerprint ?? finding.id, covers: finding.covers,
               status: "failed", error_code: "LLM_ERROR" }];
+            const error = outcome.error;
             log("LLM", `${index + 1}번째 해석 실패: ${error instanceof Error ? error.message : "연결 오류"} · 이전 해석과 엔진 결과를 유지합니다.`, "해석 실패", "warn");
           }
           const byFingerprint = new Map<string, JsonRecord>();
@@ -176,8 +180,9 @@ export function RepositoryProvider({ children }: { children: ReactNode }) {
             if (typeof fingerprint === "string") byFingerprint.set(fingerprint, explanation);
           mapped = mapped.map(item => byFingerprint.has(item.id) ? mergeExplanation(item, byFingerprint.get(item.id)) : item);
           reportInput = { ...reportInput, explain_results: explanations };
-          publish(`추가 해석 ${index + 1}/${selected.length}건 처리. 엔진 결과와 완료된 해석을 표시합니다.`);
-        }
+          publish(`추가 해석 ${finished}/${selected.length}건 처리. 엔진 결과와 완료된 해석을 표시합니다.`);
+        });
+        if (!active()) return;
         const failed = explanations.filter(item => item.status === "failed").length;
         log("LLM", `추가 해석 완료 ${explanations.filter(item => item.status === "done").length} · 실패 ${failed}. 코드 해결 여부는 엔진 상태로 표시합니다.`, "해석 종료", failed ? "warn" : "ok");
         publish(failed ? "일부 AI 해석에 실패했습니다. 엔진 결과와 완료된 해석은 유지됩니다." : "엔진 결과와 추가 AI 해석을 표시합니다.");

@@ -40,6 +40,39 @@ export async function llmHealthy(): Promise<boolean> {
   }
 }
 
+// 백엔드 임시 해석 대기열(PreviewJobs)이 동시에 실행하는 작업 수와 같게 둡니다 (#59).
+// 한 건씩 기다리면 GPU 슬롯 하나가 계속 놀고, 이보다 많이 보내면 대기열만 차서 다른 사용자가 밀립니다.
+export const LLM_PARALLEL = 2;
+
+export type Settled<R> = { ok: true; value: R } | { ok: false; error: unknown };
+
+/**
+ * items를 최대 limit건씩 동시에 처리하고, 한 건이 끝날 때마다 onSettled로 바로 알려 줍니다.
+ * 실패한 건이 있어도 나머지는 계속 처리합니다. 무제한 Promise.all이 아니라 limit개의 작업자가 차례로 가져갑니다.
+ */
+export async function runLimited<T, R>(
+  items: T[],
+  run: (item: T, index: number) => Promise<R>,
+  onSettled: (index: number, outcome: Settled<R>) => void,
+  limit = LLM_PARALLEL,
+): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      let outcome: Settled<R>;
+      try {
+        outcome = { ok: true, value: await run(items[index], index) };
+      } catch (error) {
+        outcome = { ok: false, error };
+      }
+      onSettled(index, outcome);
+    }
+  };
+  const workers = Math.max(1, Math.min(Math.floor(limit) || 1, items.length));
+  await Promise.all(Array.from({ length: workers }, worker));
+}
+
 export async function explain(findings: unknown[], os: string, hosting = "unknown") {
   const res = await fetch("/api/llm/explain/tasks", {
     method: "POST",

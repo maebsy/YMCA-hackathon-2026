@@ -164,15 +164,19 @@ await check("Rejected optional AI cannot erase successful engine results", async
   provider.unmount();
 });
 
-await check("Delayed AI enrichment preserves selection/environment and publishes each item before the next", async () => {
+await check("Delayed AI enrichment preserves selection/environment and keeps LLM_PARALLEL requests in flight (#91)", async () => {
   const ai = deferred();
+  let inFlight = 0, peak = 0;
   const data = result(repoA, [item("resolved", "code_resolved"), ...Array.from({ length: 6 }, (_, index) => item(String(index)))]);
-  const provider = mountProvider({ scan: async () => data, health: async () => true, explain: findings =>
-    findings[0].id === "opengrep:0" ? ai.promise : Promise.resolve([]) });
+  const provider = mountProvider({ scan: async () => data, health: async () => true, explain: findings => {
+    inFlight++; peak = Math.max(peak, inFlight);
+    return (findings[0].id === "opengrep:0" ? ai.promise : Promise.resolve([])).finally(() => { inFlight--; });
+  } });
   provider.value.setOS("linux"); provider.flush();
   provider.value.setHosting("netlify"); provider.flush();
   const running = provider.value.runScan(repoA); provider.flush();
-  await provider.until(() => provider.calls.explanations.length === 1);
+  await provider.until(() => provider.calls.explanations.length >= 2);
+  assert.equal(peak, realAPI.LLM_PARALLEL, "The second item must not wait for the slow first one");
   assert.equal(provider.value.isScanning, true); assert.equal(provider.value.findings.length, 7);
   provider.value.selectFinding("opengrep:1"); provider.flush();
   ai.resolve([{ fingerprint: "opengrep:0", status: "done", explanation: { summary: "Enriched explanation", red_verdict: "pass" } }]);
@@ -182,6 +186,7 @@ await check("Delayed AI enrichment preserves selection/environment and publishes
   assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:1").fixed, false);
   assert.equal(provider.value.findings.find(finding => finding.id === "opengrep:resolved").fixed, true);
   assert.equal(provider.calls.explanations[0].os, "linux"); assert.equal(provider.calls.explanations.length, 5);
+  assert.equal(peak, realAPI.LLM_PARALLEL, "Never more than LLM_PARALLEL explanation requests at once");
   assert.ok(provider.calls.explanations.every(call => call.findings.length === 1));
   assert.equal(provider.calls.explanations[0].hosting, "netlify");
   assert.ok(provider.calls.explanations[0].findings.every(finding => finding.status !== "code_resolved"));
@@ -197,9 +202,8 @@ await check("A later failed AI item retains earlier explanations and continues t
     health: async () => true, explain: findings => findings[0].id === "opengrep:first" ? Promise.resolve([first])
       : findings[0].id === "opengrep:second" ? second.promise : Promise.resolve([]) });
   const running = provider.value.runScan(repoA); provider.flush();
-  await provider.until(() => provider.calls.explanations.length === 2);
-  assert.equal(provider.value.isScanning, true);
-  assert.equal(provider.value.findings[0].title, "First complete");
+  await provider.until(() => provider.value.findings[0]?.title === "First complete" && provider.calls.explanations.length === 3);
+  assert.equal(provider.value.isScanning, true, "The slow second item must not block the third (#91)");
   assert.equal(provider.calls.saved.at(-1).reportInput.explain_results[0].fingerprint, first.fingerprint);
   second.reject(new Error("second timed out"));
   await running; provider.flush();

@@ -9,9 +9,11 @@ export default function Page() {
     <div className="workspace-heading">
       <p className="eyebrow">MCP · AI CODING TOOLS</p>
       <h1>쓰던 AI 코딩 도구에서 바로 고칩니다.</h1>
-      <p>72hours를 MCP로 연결하면 Cursor·Claude Code·Codex 안에서 &ldquo;이 저장소 점검해 줘&rdquo; 한마디로 검사 → 수정 지시 → 재검사 → 실검증까지 이어집니다. 아래에서 도구를 고르고 한 줄을 붙여 넣으세요.</p>
+      <p>72hours를 MCP로 연결하면 Cursor·Claude Code·Codex 안에서 &ldquo;이 저장소 점검해 줘&rdquo; 한마디로 검사 → 수정 지시 → 재검사 → 실제검증까지 이어집니다. 아래에서 도구를 고르고 한 줄을 붙여 넣으세요.</p>
     </div>
     <McpConnect/>
+    {/* /mcp/connect 는 MCP 서버가 응답하는 연결 키 발급 화면이라 앱 내부 이동이 아닌 일반 링크로 엽니다 (#187) */}
+    <p className="mcp-connect-key"><a className="button primary" href="/mcp/connect">검사 결과로 연결 키 발급하기</a></p>
     <ol className="mcp-steps">
       <li><strong>연결</strong> 도구를 고르고 명령(또는 지시문)을 한 번 붙여 넣습니다.</li>
       <li><strong>점검</strong> AI에게 &ldquo;이 저장소 점검해 줘&rdquo;라고 말하면 72hours가 검사하고 위험한 항목부터 알려 줍니다.</li>

@@ -121,4 +121,4 @@ def pick_sandbox(trusted: bool):
         return DockerSandbox()
     if trusted:
         return LocalSandbox()
-    raise SandboxError("사용자 저장소 실검증에는 Docker(격리)가 필요합니다. 서버에 Docker가 없습니다.")
+    raise SandboxError("사용자 저장소 실제검증에는 Docker(격리)가 필요합니다. 서버에 Docker가 없습니다.")

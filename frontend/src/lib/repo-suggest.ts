@@ -5,20 +5,18 @@ function validOwner(owner: string): boolean {
   return /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(owner) && !owner.includes("--");
 }
 
-/** Full addresses and Pages sites supply their own prefix. */
-export function showGithubPrefix(value: string): boolean {
-  return !/^http|github\.com|github\.io/i.test(value.trim());
-}
-
+/** Expand only owner/repository shorthand; validate the resulting address at submission. */
 export function repositoryInputUrl(value: string): string {
   const trimmed = value.trim();
-  return showGithubPrefix(trimmed) ? `https://github.com/${trimmed}` : trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const owner = /^([^/]+)\//.exec(trimmed)?.[1];
+  return owner && validOwner(owner) ? `https://github.com/${trimmed}` : trimmed;
 }
 
 export function parseRepoPrefix(value: string): RepoPrefix | null {
   const github = /^(?:https:\/\/)?github\.com\/([^/]+)\/([a-z\d_.-]*)$/i.exec(value);
   const pages = /^(?:https:\/\/)?([^/.]+)\.github\.io\/([a-z\d_.-]*)$/i.exec(value);
-  const short = showGithubPrefix(value) ? /^([^/]+)\/([a-z\d_.-]*)$/i.exec(value) : null;
+  const short = /^([^/]+)\/([a-z\d_.-]*)$/i.exec(value);
   const match = github ?? pages ?? short;
   return match && validOwner(match[1]) ? { owner: match[1], partial: match[2] } : null;
 }

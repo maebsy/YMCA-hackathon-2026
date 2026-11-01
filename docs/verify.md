@@ -66,3 +66,9 @@ AI 모드는 `mode`만 `ai`로 바꿉니다. `target`은 `demo`만 허용하고 
 ## 실행 결과 보관
 
 현재 검증 근거는 커밋·Node/Docker 버전·모드·재사용 여부와 함께 API 응답을 보관합니다. 새 실행을 확인하려면 `reused=false`를, Docker 격리를 확인하려면 `sandbox=docker`와 수정 전후의 격리 항목을 확인합니다. 공격별 전후 결과와 기능 테스트 결과도 함께 남깁니다. 두 데모 공격의 성공 사례만으로 서비스 전체의 탐지율·오탐률·패치 정확도를 산출할 수 없습니다.
+
+## 운영 서버에서 실행한 결과: 기준 수정본 모드
+
+- 날짜: **2026-11-01**. 운영 서버의 백엔드·Docker에 연결한 MCP `verify_demo(mode="reference")`로 실행했습니다([PR #141](https://github.com/maebsy/YMCA-hackathon-2026/pull/141)의 "운영 서버 실측", 머지 커밋 `e6faa7e`).
+- 결과: 28.2초, `status=verified`, `sandbox=docker`, `isolation_confirmed=true`, SQL 인젝션·반사형 XSS 모두 `verified`.
+- 대상은 위와 같은 데모 과녁이며, AI 모드와 사용자 저장소 실행 결과는 아닙니다.

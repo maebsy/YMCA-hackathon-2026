@@ -1,19 +1,19 @@
-# 외부 자원 활용 내역
+# 외부 자원 활용 내역 (ⓕ)
 
-라이브러리·모델·데이터셋·API·AI 개발 도구의 활용 기록입니다. 자원을 교체하는 PR에서 이 표도 함께 갱신합니다. 버전은 도입·검증 당시 기록이며 설치 파일과 lockfile을 함께 확인합니다. 구현된 선택형 인증·내부 비교·과거 배포 자원도 포함하므로, 모든 항목이 공개 데모에서 동시에 활성화되었다는 뜻은 아닙니다.
-
-해커톤 제출 시에는 이 기록을 **발표자료의 외부 자원 활용 표**(구분·명칭·용도·라이선스)에도 반영해야 합니다. README의 링크만으로 제출 요건을 대체하지 않습니다.
+> **대회 규정: 여기 적지 않은 외부 자원을 쓴 사실이 확인되면 실격입니다.**
+> 라이브러리·모델·데이터셋·API를 추가하는 **그 PR에서** 이 표도 같이 고치세요.
+> 제출 직전에 이 표를 공식 제출 양식으로 옮깁니다.
 
 ## 오픈소스 (라이브러리·프레임워크·모델·데이터셋)
 
 | 명칭 | 버전 | 용도 | 라이선스 | 출처 |
 |---|---|---|---|---|
 | FastAPI | 0.162.0 | 백엔드 API 서버 | MIT | https://github.com/fastapi/fastapi |
-| Caddy | 2.11.7 | 일반 서버의 웹·API·MCP 프록시. 접근 인증은 선택 운영 구성 | Apache-2.0 | https://github.com/caddyserver/caddy |
+| Caddy | 2.11.7 | 일반 서버의 웹·API 프록시, 공개 시연 HTTPS 및 접근 인증 | Apache-2.0 | https://github.com/caddyserver/caddy |
 | cloudflared | 2026.10.7 | 승인된 시연용 HTTPS 터널 클라이언트, 공식 SHA-256 고정 검증 | Apache-2.0 | https://github.com/cloudflare/cloudflared |
 | ngrok 에이전트 | 3.39.13 (sha256 233e0647849913e6404150c1e9c5e4f31c1368aefee330958d038d7afecb8f2e, 공식 배포 파일 ngrok-v3-stable-linux-amd64.tgz) | 공인 IP 없는 일반 서버를 고정 HTTPS 주소(무료 고정 도메인)로 공개, 웹·API·원격 MCP 진입점. 사용자 영역 설치 | ngrok 이용약관 (상용 소프트웨어, 무료 요금제) | https://ngrok.com/download |
 | mcp-publisher (MCP Registry CLI) | 1.8.7 (sha256 cdb42bfe6a5e1cba7526e007ac13f13261ed35224386fee8a34ed2c2e8e778d4, 공식 배포 파일 mcp-publisher_windows_amd64.tar.gz) | 운영자 PC에서 `registry/server.json` 검증·공식 MCP Registry 등록 (서비스 실행에는 쓰지 않음) | Apache-2.0 (일부 MIT, 전환 중) | https://github.com/modelcontextprotocol/registry |
-| Node.js | 24.19.0 | Next.js 프론트엔드와 실검증 과녁의 실행 환경 | MIT 및 포함 구성요소별 라이선스 | https://nodejs.org/ |
+| Node.js | 24.19.0 | 별도 담당자가 구현할 프론트엔드의 서버 실행 환경 | MIT 및 포함 구성요소별 라이선스 | https://nodejs.org/ |
 | Node.js 공식 Docker 이미지 | 24.19.0-bookworm-slim | Next.js 개발·standalone 배포 컨테이너 | MIT (포함 Debian 패키지는 각 라이선스) | https://hub.docker.com/_/node |
 | Next.js | 16.4.3 | 프론트엔드 웹 대시보드 및 SSR/App Router 프레임워크 | MIT | https://github.com/vercel/next.js |
 | React & React-DOM | 19.3.0 | 사용자 인터페이스 렌더링 및 상태 관리 라이브러리 | MIT | https://github.com/facebook/react |
@@ -66,11 +66,13 @@
 
 | 명칭 | 용도 | 라이선스·이용약관 | 출처 |
 |---|---|---|---|
-| Supabase | 선택형 PostgreSQL 서비스 스키마·Auth access token 검증. 공개 데모의 SQLite/미인증 경로와 구분 | Supabase Terms of Service | https://supabase.com |
+| Supabase | 팀 공용 PostgreSQL DB 호스팅, 로그인·Auth 서버의 access token 검증 (#7/#26) | Supabase Terms of Service | https://supabase.com |
 | Cloudflare Quick Tunnels | 공인 IP 없이 일반 서버의 시연 웹/API를 임시 HTTPS 주소로 공개 | Cloudflare 이용약관 | https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/ |
 | ngrok 무료 고정 도메인 | 재시작해도 바뀌지 않는 시연 공개 주소(oboe-handiness-enroll.ngrok-free.dev). 무료 요금제는 브라우저 첫 방문에 경고 안내 페이지가 한 번 표시됨 | ngrok 이용약관 | https://ngrok.com/docs/universal-gateway/free-plan-limits/ |
 | 공식 MCP Registry (registry.modelcontextprotocol.io) | 원격 MCP 서버 `io.github.maebsy/72hours`의 주소·설명 공개 등록(배포 채널). GitHub 계정 인증으로 네임스페이스 확인 | MCP Registry 이용약관, 코드 Apache-2.0 | https://registry.modelcontextprotocol.io |
 | Hugging Face Hub | 모델 내려받기 (가중치는 GPU 서버에서만 실행) | Hugging Face Terms of Service | https://huggingface.co |
+| Google OAuth (Google Identity) | Google 계정으로 가입·로그인. 개발 초기 화면(#39)에서 사용했고 #82에서 제거, 현재 코드에서는 사용하지 않음 | Google APIs Terms of Service | https://developers.google.com/identity |
+| GitHub OAuth Apps | GitHub 계정으로 가입·로그인. 개발 초기 화면(#39)에서 사용했고 #82에서 제거, 현재 코드에서는 사용하지 않음 | GitHub Terms of Service | https://docs.github.com/apps/oauth-apps |
 | GitHub REST API: 공개 저장소 목록(자동완성) | 공개 owner의 최근 갱신 저장소 최대 100개를 비인증 조회(토큰 미전송, IP당 시간당 60회 제한) | GitHub 이용약관·API 사용 제한 | https://docs.github.com/rest/repos/repos#list-repositories-for-a-user |
 | OSV.dev API (api.osv.dev) | OSV-Scanner가 취약점 DB 조회 (무료, 키 없음) | OSV.dev 이용약관, 데이터는 출처(GitHub Advisory 등)별 라이선스 — 제출 전 확인 | https://osv.dev |
 | OSV GHSA-35jh-r3h4-6jhm / CVE-2021-23337 | 합성 lodash 4.17.15→4.17.21 정답 사례의 탐지·수정 경계 검증 근거 | GitHub Advisory Database CC-BY-4.0, OSV 이용약관 | https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm |
@@ -84,9 +86,7 @@
 
 ## 사전 보유 코드
 
-| 명칭 | 용도 | 라이선스 | 출처 |
-|---|---|---|---|
-| 확인 기록 없음 | 기존 빈 항목만으로 사전 보유 코드가 없었다고 단정하지 않습니다. 제출팀이 사용 여부를 확인한 뒤 내역 또는 '해당 없음'을 기록해야 합니다. | 해당 내역 확인 후 기재 | 팀 확인 필요 |
+해당 없음. 주제 공개(10/30 10:00) 전 커밋은 GitHub 저장소 생성 시 자동으로 만들어진 `README.md` 2줄(`f2e4b3a`, 10/29)뿐이며 코드가 아닙니다.
 
 ## 기타 (AI 도구, 디자인 에셋, 폰트 등)
 

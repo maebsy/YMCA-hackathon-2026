@@ -338,7 +338,7 @@ class ServiceAPI:
                 break
             await sleep(POLL_SECONDS)
         out = {'verify_job_id': job, 'mode': mode, 'status': state.get('status'), 'reused': state.get('reused'),
-               'scope': '데모 과녁(demo-vulnerable-site) 전용입니다. 사용자 저장소 실검증은 아직 지원하지 않습니다.'}
+               'scope': '데모 과녁(demo-vulnerable-site) 전용입니다. 사용자 저장소 실제검증은 아직 지원하지 않습니다.'}
         r = state.get('result') or {}
         if r:
             out.update(verdict=r.get('status'), sandbox=r.get('sandbox'), isolation_confirmed=r.get('isolation_confirmed'),
@@ -348,7 +348,7 @@ class ServiceAPI:
                                        'before': (a.get('before_evidence') or '')[:160],
                                        'after': (a.get('after_evidence') or '')[:160]}) for a in r.get('attacks') or []])
         if state.get('status') not in ('done', 'failed'):
-            out['next'] = (f'실검증이 아직 진행 중입니다. 잠시 뒤 verify_demo(verify_job_id="{job}")로 이어서 확인하세요. '
+            out['next'] = (f'실제검증이 아직 진행 중입니다. 잠시 뒤 verify_demo(verify_job_id="{job}")로 이어서 확인하세요. '
                            '같은 mode로 다시 불러도 새로 접수하지 않고 이 작업을 이어 봅니다.')
         return out
 
@@ -363,7 +363,7 @@ class ServiceAPI:
                     state = {}  # 404: 만료가 확인된 영수증만 버린다
                 except ValueError as exc:
                     # 503·타임아웃 같은 일시 오류: 작업은 살아 있을 수 있으니 영수증을 지키고 재접수하지 않는다
-                    raise ValueError(f'진행 중인 실검증({job}) 상태를 확인하지 못했습니다. 잠시 뒤 '
+                    raise ValueError(f'진행 중인 실제검증({job}) 상태를 확인하지 못했습니다. 잠시 뒤 '
                                      f'verify_demo(verify_job_id="{job}")로 다시 확인하세요. 새로 접수하지 않았습니다.') from exc
                 if state.get('status') in ('queued', 'running'):
                     return job
@@ -371,7 +371,7 @@ class ServiceAPI:
             started = await self.request('POST', '/api/verify', {'target': 'demo', 'mode': mode})
             job = started.get('job_id', '')
             if not re.fullmatch(r'[a-f0-9]{32}', job):
-                raise ValueError('실검증 작업 식별자를 확인할 수 없습니다.')
+                raise ValueError('실제검증 작업 식별자를 확인할 수 없습니다.')
             if started.get('status') in ('queued', 'running'):
                 self.verify_running[mode] = job
             return job

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CircleCheck, CircleQuestionMark, CircleX, FlaskConical, LoaderCircle, Play, RotateCcw, Sparkles } from "lucide-react";
 import { attackVerdictLabels, isolationLabels, requestLine, runVerify, testsLabel, attemptsLine, verdictHelp, verdictLabels, type AttackDefinition, type AttackOutcome, type VerifyJob, type VerifyMode } from "@/lib/verify";
 
 type Phase = "idle" | "queued" | "running" | "done" | "error";
 const phaseText: Partial<Record<Phase, string>> = {
-  queued: "실검증을 접수했습니다. 순서를 기다리는 중입니다…",
+  queued: "실제검증을 접수했습니다. 순서를 기다리는 중입니다…",
   running: "격리 환경에서 수정 전·후 앱을 띄워 공격하고 기능 테스트를 돌리는 중입니다…",
 };
 const aiRunning = "GPU의 Red가 공격을, Blue가 수정본을 만들고 Docker 격리 환경에서 수정 전·후를 실행하는 중입니다…";
@@ -100,6 +101,8 @@ function Result({ job }: { job: VerifyJob }) {
 }
 
 export default function VerifyPanel() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [phase, setPhase] = useState<Phase>("idle");
   const [job, setJob] = useState<VerifyJob | null>(null);
   const [error, setError] = useState("");
@@ -108,17 +111,20 @@ export default function VerifyPanel() {
   const busy = phase === "queued" || phase === "running";
 
   useEffect(() => () => { run.current++; }, []);
-  // 취약점 상세의 '실검증으로 확인하기'(/verify?run=reference)로 들어오면 바로 실행합니다. 한 번만 실행하고 주소에서 지웁니다
+  // Consume the request only when its timer runs. Strict Mode may cancel the
+  // first effect setup; removing the query before then would lose the request.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const requested = params.get("run");
+    const requested = searchParams.get("run");
     if (requested !== "reference" && requested !== "ai") return;
-    // Next.js가 쓰는 history state(__NA 등)는 그대로 두고 주소의 ?run=만 지웁니다
-    window.history.replaceState(window.history.state, "", window.location.pathname);
-    const timer = window.setTimeout(() => { void start(requested); }, 0);
+    const timer = window.setTimeout(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("run");
+      router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
+      void start(requested);
+    }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams, router]);
   useEffect(() => {
     if (!busy) return;
     const started = Date.now();
@@ -138,7 +144,7 @@ export default function VerifyPanel() {
       setJob(done); setPhase("done");
     } catch (caught) {
       if (token !== run.current) return;
-      setError(caught instanceof Error ? caught.message : "실검증을 실행하지 못했습니다.");
+      setError(caught instanceof Error ? caught.message : "실제검증을 실행하지 못했습니다.");
       setPhase("error");
     }
   }
@@ -146,17 +152,17 @@ export default function VerifyPanel() {
   return <section className="vp-panel" aria-labelledby="verify-title">
     <div className="vp-head">
       <FlaskConical size={22} aria-hidden className="vp-accent"/>
-      <h2 id="verify-title">Red–Blue 실검증 · 데모 과녁</h2>
+      <h2 id="verify-title">Red–Blue 실제검증 · 데모 과녁</h2>
     </div>
     <p className="vp-muted">일부러 취약하게 만든 작은 사이트(<code>demo-vulnerable-site</code>)를 수정 전·후 두 번 띄워 같은 공격을 보냅니다. 수정 전에는 공격이 통하고, 수정 후에는 막히며, 기능 테스트는 그대로 통과하는지 실제 실행 결과로 확인합니다.</p>
     <div className="vp-actions">
       <button type="button" className="vp-button" onClick={() => void start("reference")} disabled={busy}>
         {busy && mode === "reference" ? <LoaderCircle size={16} className="vp-spin" aria-hidden/> : job?.mode === "reference" ? <RotateCcw size={16} aria-hidden/> : <Play size={16} aria-hidden/>}
-        {busy && mode === "reference" ? "실검증 진행 중" : "기준 수정본으로 실행"}
+        {busy && mode === "reference" ? "실제검증 진행 중" : "기준 수정본으로 실행"}
       </button>
       <button type="button" className="vp-button" onClick={() => void start("ai")} disabled={busy}>
         {busy && mode === "ai" ? <LoaderCircle size={16} className="vp-spin" aria-hidden/> : <Sparkles size={16} aria-hidden/>}
-        {busy && mode === "ai" ? "AI 실검증 진행 중" : "AI(Red·Blue) 수정본으로 실행"}
+        {busy && mode === "ai" ? "AI 실제검증 진행 중" : "AI(Red·Blue) 수정본으로 실행"}
       </button>
       <p className="vp-status" role="status">{busy ? `${phase === "running" && mode === "ai" ? aiRunning : phaseText[phase]} ${elapsed}초` : ""}</p>
     </div>

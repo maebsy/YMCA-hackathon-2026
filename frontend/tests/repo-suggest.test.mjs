@@ -568,9 +568,64 @@ test("short owner prefetch and completion preserve the short input", async () =>
   hook.unmount();
 });
 
-test("fixed prefix hides for addresses and Pages and rejects short domain lookalikes", () => {
-  const { showGithubPrefix, parseRepoPrefix } = loadSuggestions();
-  for (const value of ["", "alice", "alice/repo"]) assert.equal(showGithubPrefix(value), true);
-  for (const value of ["HTTP://example.com", "https://github.com/x/y", "GitHub.COM/x/y", "Alice.GITHUB.IO"]) assert.equal(showGithubPrefix(value), false);
+test("autocomplete rejects short domain lookalikes", () => {
+  const { parseRepoPrefix } = loadSuggestions();
   for (const value of ["example.com/repo", "alice.github.io.evil/repo", "-alice/repo", "a--b/repo"]) assert.equal(parseRepoPrefix(value), null);
+});
+
+test("shorthand expansion distinguishes Pages hosts from repository names", () => {
+  const { repositoryInputUrl, parseRepoPrefix } = loadSuggestions();
+  for (const [value, , address, owner, partial] of [
+    ["papawolf42/papawolf42.github.io", true, "https://github.com/papawolf42/papawolf42.github.io", "papawolf42", "papawolf42.github.io"],
+    ["owner/name.github.io", true, "https://github.com/owner/name.github.io", "owner", "name.github.io"],
+    ["owner/repo.github.com", true, "https://github.com/owner/repo.github.com", "owner", "repo.github.com"],
+    ["x.github.io", false, "x.github.io", null, null],
+    ["x.github.io/proj", false, "x.github.io/proj", "x", "proj"],
+    ["github.com/x/y", false, "github.com/x/y", "x", "y"],
+    ["https://github.com/x/y", false, "https://github.com/x/y", "x", "y"],
+    [" X.GITHUB.IO/proj ", false, "X.GITHUB.IO/proj", null, null],
+    ["httparty/repo", true, "https://github.com/httparty/repo", "httparty", "repo"],
+    ["HttpClient/project", true, "https://github.com/HttpClient/project", "HttpClient", "project"],
+  ]) {
+    assert.equal(repositoryInputUrl(value), address, value);
+    assert.deepEqual(plain(parseRepoPrefix(value)), owner ? { owner, partial } : null, value);
+  }
+});
+
+test("http owners remain shorthand while only a scheme with :// counts as a URL", () => {
+  const { repositoryInputUrl } = loadSuggestions();
+  for (const value of ["httparty/repo", "HttpClient/project"]) {
+    assert.equal(repositoryInputUrl(value), `https://github.com/${value}`);
+  }
+  for (const value of ["https://github.com/alice/repo", "HTTP://example.com/repo", "http://github.com/alice/repo"]) {
+    assert.equal(repositoryInputUrl(value), value);
+  }
+});
+
+test("all input styles and http owners prefetch, complete and select without changing format", async () => {
+  for (const base of ["alice/", "github.com/alice/", "alice.github.io/", "httparty/", "HttpClient/"]) {
+    const calls = [];
+    const hook = mountAutocomplete(async owner => { calls.push(owner); return ["function-face", "future"]; });
+    hook.change(base.slice(0,-1)); hook.advance(350);
+    assert.equal(calls.length, 1, base);
+    hook.change(base); await hook.settle();
+    assert.equal(hook.output.suggestions.length, 2, base);
+    hook.change(`${base}f`); await hook.settle();
+    assert.equal(hook.value, `${base}function-face`, base);
+    assert.equal(hook.input.selectionStart, `${base}f`.length);
+    hook.output.select("future");
+    assert.equal(hook.value, `${base}future`, base);
+    hook.unmount();
+  }
+});
+
+test("inline completion and dropdown selection retain repository names containing github.io", async () => {
+  const hook = mountAutocomplete(async () => ["name.github.io", "next.github.io"]);
+  hook.change("owner/name.github.i"); await hook.settle();
+  assert.equal(hook.value, "owner/name.github.io");
+  assert.equal(hook.input.selectionStart, "owner/name.github.i".length);
+  assert.equal(hook.input.selectionEnd, hook.value.length);
+  hook.output.select("next.github.io");
+  assert.equal(hook.value, "owner/next.github.io");
+  hook.unmount();
 });

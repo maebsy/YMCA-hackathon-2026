@@ -9,7 +9,7 @@ export default function Page() {
     <div className="workspace-heading">
       <p className="eyebrow">MCP · AI CODING TOOLS</p>
       <h1>쓰던 AI 코딩 도구에서 바로 고칩니다.</h1>
-      <p>72hours를 MCP로 연결하면 Cursor·Claude Code·Codex 안에서 &ldquo;이 저장소 점검해 줘&rdquo; 한마디로 검사 → 수정 지시 → 재검사 → 실검증까지 이어집니다. 아래에서 도구를 고르고 한 줄을 붙여 넣으세요.</p>
+      <p>72hours를 MCP로 연결하면 Cursor·Claude Code·Codex 안에서 &ldquo;이 저장소 점검해 줘&rdquo; 한마디로 검사 → 수정 지시 → 재검사 → 실제검증까지 이어집니다. 아래에서 도구를 고르고 한 줄을 붙여 넣으세요.</p>
     </div>
     <McpConnect/>
     <ol className="mcp-steps">

@@ -103,13 +103,13 @@ test('runVerify fetches an already finished POST once without waiting for a time
 });
 
 test('runVerify shows the server message when the server cannot run it', async () => {
-  fakeFetch([[503, {detail: {code: 'VERIFY_UNAVAILABLE', message: '이 서버에는 실검증을 실행할 환경(Docker 또는 Node 22.5 이상)이 없습니다.'}}]]);
+  fakeFetch([[503, {detail: {code: 'VERIFY_UNAVAILABLE', message: '이 서버에는 실제검증을 실행할 환경(Docker 또는 Node 22.5 이상)이 없습니다.'}}]]);
   await assert.rejects(runVerify({intervalMs: 0}), /Docker 또는 Node/);
 });
 
 test('runVerify reports a failed job with its message', async () => {
-  fakeFetch([[202, {job_id: 'j2', status: 'queued'}], [200, {job_id: 'j2', status: 'failed', reused: false, error: {code: 'VERIFY_ERROR', message: '실검증 실행 중 오류가 났습니다.'}}]]);
-  await assert.rejects(runVerify({intervalMs: 0}), /실검증 실행 중 오류/);
+  fakeFetch([[202, {job_id: 'j2', status: 'queued'}], [200, {job_id: 'j2', status: 'failed', reused: false, error: {code: 'VERIFY_ERROR', message: '실제검증 실행 중 오류가 났습니다.'}}]]);
+  await assert.rejects(runVerify({intervalMs: 0}), /실제검증 실행 중 오류/);
 });
 
 test('ai mode keeps Red reasons, Blue summaries and skipped items; old responses default to reference', () => {

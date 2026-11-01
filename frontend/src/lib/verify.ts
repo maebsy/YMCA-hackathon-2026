@@ -104,7 +104,7 @@ export function verdictHelp(job: Pick<VerifyJob, "mode" | "result">): string[] {
   if (result.status === "fix_failed" && /수정 후 앱이/.test(result.message)) return [
     "수정본을 적용한 앱이 시작되지 않거나 요청에 응답하지 않았습니다. 수정이 앱 기능을 망가뜨렸다는 뜻이라, 이 수정본은 그대로 쓰면 안 됩니다.",
     job.mode === "ai"
-      ? "AI(Blue)가 만든 수정본에서 자주 생기는 문제입니다(예: 응답을 보내는 줄까지 지움). 실검증이 이런 잘못된 수정을 배포 전에 걸러낸 결과입니다. 아래 '수정 내용 보기'에서 무엇이 바뀌었는지 확인하고, 다시 실행하거나 기준 수정본과 비교해 보세요."
+      ? "AI(Blue)가 만든 수정본에서 자주 생기는 문제입니다(예: 응답을 보내는 줄까지 지움). 실제검증이 이런 잘못된 수정을 배포 전에 걸러낸 결과입니다. 아래 '수정 내용 보기'에서 무엇이 바뀌었는지 확인하고, 다시 실행하거나 기준 수정본과 비교해 보세요."
       : "아래 '수정 내용 보기'에서 무엇이 바뀌었는지 확인하세요.",
   ];
   if (result.status === "fix_failed") return ["수정 후에도 공격이 통하거나, 수정 전에는 통과하던 기능 테스트가 깨졌습니다. 공격별 결과와 기능 테스트를 확인하세요."];
@@ -150,24 +150,24 @@ export async function runVerify(options: { mode?: VerifyMode; onStatus?: (status
   const { mode = "reference", onStatus, intervalMs = 2000, timeoutMs = 10 * 60 * 1000, isCancelled } = options;
   const res = await fetch("/api/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: "demo", mode }) });
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw apiError(data, `실검증 접수 실패 (${res.status})`);
+  if (!res.ok) throw apiError(data, `실제검증 접수 실패 (${res.status})`);
   const jobId = record(data) && typeof data.job_id === "string" ? data.job_id : null;
-  if (!jobId) throw new Error("실검증 접수 응답이 올바르지 않습니다.");
+  if (!jobId) throw new Error("실제검증 접수 응답이 올바르지 않습니다.");
   let waitBeforePoll = !record(data) || data.status !== "done";
   if (waitBeforePoll) onStatus?.("queued");
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     if (waitBeforePoll) await new Promise(resolve => setTimeout(resolve, intervalMs));
     waitBeforePoll = true;
-    if (isCancelled?.()) throw new Error("실검증 조회를 멈췄습니다.");
+    if (isCancelled?.()) throw new Error("실제검증 조회를 멈췄습니다.");
     const response = await fetch(`/api/verify/${encodeURIComponent(jobId)}`, { cache: "no-store" });
     const body: unknown = await response.json().catch(() => ({}));
-    if (!response.ok) throw apiError(body, `실검증 상태 조회 실패 (${response.status})`);
+    if (!response.ok) throw apiError(body, `실제검증 상태 조회 실패 (${response.status})`);
     const job = parseVerifyJob(body);
-    if (!job) throw new Error("실검증 응답 형식이 올바르지 않습니다.");
-    if (job.status === "failed") throw new Error(job.error?.message || "실검증에 실패했습니다.");
+    if (!job) throw new Error("실제검증 응답 형식이 올바르지 않습니다.");
+    if (job.status === "failed") throw new Error(job.error?.message || "실제검증에 실패했습니다.");
     if (job.status === "done") return job;
     onStatus?.(job.status);
   }
-  throw new Error("실검증이 10분 안에 끝나지 않았습니다.");
+  throw new Error("실제검증이 10분 안에 끝나지 않았습니다.");
 }

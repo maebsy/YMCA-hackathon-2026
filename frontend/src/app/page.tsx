@@ -49,7 +49,7 @@ export default function Home() {
       </div>
       <button className="hero-motion-toggle" type="button" aria-pressed={motionPaused} aria-label={motionPaused ? "숫자 배경 애니메이션 재생" : "숫자 배경 애니메이션 일시 정지"} onClick={() => setMotionPaused(value => !value)}>{motionPaused ? <Play size={13} aria-hidden="true"/> : <Pause size={13} aria-hidden="true"/>}<span>{motionPaused ? "배경 재생" : "배경 정지"}</span></button>
       <p className="eyebrow"><span className="status-dot"/> SECURITY FOR BUILDERS</p>
-      <h1><span className="hero-title-line">코드 <span className="hero-security-word">보안,</span></span><br/><span className="hero-title-accent">주소 하나면 됩니다.</span></h1>
+      <h1><span className="hero-title-line">코드 <span className="hero-security-word">보안</span></span><br/><span className="hero-title-accent">주소 하나면 됩니다.</span></h1>
     </div>
     <section className="entry-panel card" aria-label="GitHub 저장소 점검">
       <div className="entry-panel-top"><label htmlFor="repository">공개 GitHub 저장소</label></div>

@@ -343,7 +343,13 @@ export default function IncidentWorkspace() {
   const d = useIncident();
   const heading = useRef<HTMLDivElement>(null);
   const step = d.step > 0 ? 1 : 0;
-  useEffect(() => { heading.current?.focus({ preventScroll: true }); heading.current?.scrollIntoView({ block: "start" }); }, [step]);
+  const previousStep = useRef(step);
+  useEffect(() => {
+    if (previousStep.current === step) return;
+    previousStep.current = step;
+    heading.current?.focus({ preventScroll: true });
+    heading.current?.scrollIntoView({ block: "start" });
+  }, [step]);
   const labels = ["사실 확인", "신고 준비"];
   return <div className="incident-workspace">
     <nav className="incident-steps" aria-label="사고 신고 지원 단계"><ol>{labels.map((label, index) => <li key={label}><button aria-current={step === index ? "step" : undefined} disabled={index > 0 && !d.assessment} onClick={() => d.setStep(index)}><span>{step > index ? <Check size={14}/> : `0${index + 1}`}</span><strong>{label}</strong></button></li>)}</ol></nav>

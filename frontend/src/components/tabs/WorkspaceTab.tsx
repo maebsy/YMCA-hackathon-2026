@@ -207,7 +207,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                 SLA & Golden Time
               </span>
             </div>
-            <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/40">
+            <span className="font-mono text-[0.6875rem] px-2 py-0.5 rounded bg-[#ff9f43]/15 text-[#ff9f43] border border-[#ff9f43]/40">
               24h·48h 재알림 켜짐
             </span>
           </div>
@@ -224,19 +224,19 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
 
             <div className="grid grid-cols-4 gap-2 font-mono">
               <div className="p-2.5 rounded-lg bg-[#0a0a0a] border border-[#27272a]">
-                <span className="text-[11px] text-[#a1a1aa] block">지금 바로</span>
+                <span className="text-[0.6875rem] text-[#a1a1aa] block">지금 바로</span>
                 <b className="text-xl text-[#ff5f56]">{actCount}</b>
               </div>
               <div className="p-2.5 rounded-lg bg-[#0a0a0a] border border-[#27272a]">
-                <span className="text-[11px] text-[#a1a1aa] block">이번 주</span>
+                <span className="text-[0.6875rem] text-[#a1a1aa] block">이번 주</span>
                 <b className="text-xl text-[#ff9f43]">{attendCount}</b>
               </div>
               <div className="p-2.5 rounded-lg bg-[#0a0a0a] border border-[#27272a]">
-                <span className="text-[11px] text-[#a1a1aa] block">지켜보기</span>
+                <span className="text-[0.6875rem] text-[#a1a1aa] block">지켜보기</span>
                 <b className="text-xl text-[#ffd43b]">{trackCount}</b>
               </div>
               <div className="p-2.5 rounded-lg bg-[#0a0a0a] border border-[#27272a]">
-                <span className="text-[11px] text-[#a1a1aa] block">미검사</span>
+                <span className="text-[0.6875rem] text-[#a1a1aa] block">미검사</span>
                 <b className="text-xl text-[#d4ff3a]">0</b>
               </div>
             </div>
@@ -282,7 +282,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
             </button>
           </div>
         </div>
-        <div className="p-5 bg-[#0a0a0a] font-mono text-xs sm:text-[13px] leading-relaxed overflow-x-auto space-y-1">
+        <div className="p-5 bg-[#0a0a0a] font-mono text-xs sm:text-[0.8125rem] leading-relaxed overflow-x-auto space-y-1">
           {logs.length === 0 && <p className="text-[#a1a1aa]">검사를 시작하면 실제 엔진 진행 기록이 표시됩니다.</p>}
           {logs.map((l, idx) => (
             <div key={idx} className="scan-log-row flex items-center gap-3">
@@ -314,7 +314,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
             <span className="font-mono text-xs text-[#a1a1aa]">
               탐지된 취약점 목록 (SSVC 우선순위)
             </span>
-            <span className="font-mono text-[11px] text-[#a1a1aa]">
+            <span className="font-mono text-[0.6875rem] text-[#a1a1aa]">
               클릭하여 조치 가이드 확인
             </span>
           </div>
@@ -369,7 +369,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                     </div>
                   </div>
                   <span
-                    className={`font-mono text-[11px] px-2 py-0.5 rounded border shrink-0 ${verdictColor}`}
+                    className={`font-mono text-[0.6875rem] px-2 py-0.5 rounded border shrink-0 ${verdictColor}`}
                   >
                     {item.fixed ? "엔진 검증 완료" : pendingIds.includes(item.id) ? "재검증 대기" : item.verdict}
                   </span>
@@ -476,7 +476,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 rounded-lg bg-[#0a0a0a] border border-[#27272a] flex flex-col justify-between space-y-3">
                   <div>
-                    <span className="font-mono text-[11px] text-[#d4ff3a] uppercase tracking-wider block mb-2">
+                    <span className="font-mono text-[0.6875rem] text-[#d4ff3a] uppercase tracking-wider block mb-2">
                       왜 지금인가 (CISA SSVC)
                     </span>
                     <ul className="text-xs sm:text-sm space-y-2 text-[#fafafa] list-disc pl-4">
@@ -485,14 +485,14 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                       ))}
                     </ul>
                   </div>
-                  <span className="font-mono text-[11px] text-[#a1a1aa] pt-2 border-t border-[#27272a]">
+                  <span className="font-mono text-[0.6875rem] text-[#a1a1aa] pt-2 border-t border-[#27272a]">
                     {compact ? "엔진의 근거와 안내를 함께 검토하세요." : "risk.factors[].reason"}
                   </span>
                 </div>
 
                 <div className="p-4 rounded-lg bg-[#0a0a0a] border border-[#27272a] flex flex-col justify-between space-y-3">
                   <div className="space-y-2.5">
-                    <span className="font-mono text-[11px] text-[#d4ff3a] uppercase tracking-wider">
+                    <span className="font-mono text-[0.6875rem] text-[#d4ff3a] uppercase tracking-wider">
                       이렇게 고치세요 (터미널 명령)
                     </span>
                     {/* OS 탭 */}
@@ -544,7 +544,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                       <Copy className="w-3.5 h-3.5" /> 명령어 복사
                     </button>
                   </div>
-                  <span className="font-mono text-[11px] text-[#a1a1aa]">
+                  <span className="font-mono text-[0.6875rem] text-[#a1a1aa]">
                     표시 OS: {os === "windows" ? "Windows" : os === "macos" ? "macOS" : "Linux"} · 보기 설정은 서버로 보내지 않습니다.
                   </span>
                 </div>
@@ -554,14 +554,14 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               <div className="p-4 rounded-lg bg-[#0a0a0a] border border-[#d4ff3a]/40 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full bg-[#d4ff3a] text-black font-mono text-[11px] font-bold">
+                    <span className="px-2 py-0.5 rounded-full bg-[#d4ff3a] text-black font-mono text-[0.6875rem] font-bold">
                       {compact ? "AI 수정 요청" : "④ MCP 연동"}
                     </span>
                     <span className="font-mono text-xs font-bold text-white">
                       Cursor · Claude Code · Codex 수정 지시문
                     </span>
                   </div>
-                  <span className="font-mono text-[11px] text-[#a1a1aa]">
+                  <span className="font-mono text-[0.6875rem] text-[#a1a1aa]">
                     {compact ? "적용 전 내용을 검토하세요. 명령은 실행되지 않습니다." : "코드 원문 미포함 (파일·줄·규칙 ID만 전달)"}
                   </span>
                 </div>
@@ -569,7 +569,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                   {selectedFinding.aiPrompt}
                 </pre>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-[11px] text-[#a1a1aa]">
+                  <span className="font-mono text-[0.6875rem] text-[#a1a1aa]">
                     {compact ? "복사 후 코딩 도구에 직접 전달하거나 아래 MCP 연결을 사용하세요." : <>MCP 도구: <code>list_findings</code>, <code>get_fix_prompt</code> · 프롬프트: <code>fix_finding</code></>}
                   </span>
                   <button

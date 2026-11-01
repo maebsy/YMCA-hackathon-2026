@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
-import { ArrowRight, Code2, LoaderCircle, Pause, Play } from "lucide-react";
+import { ArrowRight, Code2, LoaderCircle, Pause, Play, ShieldCheck, Sparkles, Unplug } from "lucide-react";
 import { normalizeRepositoryUrl, useRepository } from "@/components/repository-provider";
 import { useRepoAutocomplete } from "@/lib/use-repo-autocomplete";
 import { repositoryInputUrl, showGithubPrefix } from "@/lib/repo-suggest";
@@ -77,5 +78,25 @@ export default function Home() {
       {mcpInline && <McpConnect embedded/>}
     </section>
     {!mcpInline && <McpConnect/>}
+    <section className="home-features" aria-labelledby="home-features-title">
+      <div className="home-features-heading">
+        <div><p className="eyebrow">FIND. UNDERSTAND. FIX.</p><h2 id="home-features-title">발견에서 수정까지, 한 흐름으로.</h2></div>
+        <Link className="text-link" href="/help">검사 범위 알아보기<ArrowRight size={15} aria-hidden="true"/></Link>
+      </div>
+      <div className="home-feature-grid">
+        <article className="home-feature">
+          <div className="home-feature-top"><span className="home-feature-icon"><ShieldCheck size={26} strokeWidth={1.6} aria-hidden="true"/></span><span className="home-feature-step" aria-hidden="true">01 / FIND</span></div>
+          <h3>엔진으로 발견</h3><p>코드·의존성·비밀정보의<br/>실제 관찰 근거를 확인하세요.</p>
+        </article>
+        <article className="home-feature">
+          <div className="home-feature-top"><span className="home-feature-icon"><Sparkles size={26} strokeWidth={1.6} aria-hidden="true"/></span><span className="home-feature-step" aria-hidden="true">02 / UNDERSTAND</span></div>
+          <h3>GPU로 해석</h3><p>연결 가능한 경우 Red–Blue가<br/>위험과 수정 방향을 설명합니다.</p>
+        </article>
+        <article className="home-feature">
+          <div className="home-feature-top"><span className="home-feature-icon"><Unplug size={26} strokeWidth={1.6} aria-hidden="true"/></span><span className="home-feature-step" aria-hidden="true">03 / FIX</span></div>
+          <h3>MCP로 전달</h3><p>결과를 코딩 도구에 전달하고<br/>수정 후 다시 검사하세요.</p>
+        </article>
+      </div>
+    </section>
   </main>;
 }

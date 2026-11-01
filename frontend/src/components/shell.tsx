@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { Moon, ShieldCheck, Sun } from "lucide-react";
+import { Moon, ShieldAlert, ShieldCheck, Sun } from "lucide-react";
 import { useRepository } from "@/components/repository-provider";
 import { REPOSITORY_PROGRESS_PATH, REPOSITORY_RESULT_PATH } from "@/lib/repository-routes";
 
@@ -40,7 +40,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         {/* 핵심 기능 세 가지는 따로 강조합니다 (최종 멘토링: 실검증·MCP·사고 신고가 카테고리로 잘 보여야 함) */}
         <Link className="nav-core" href="/verify" aria-current={pathname === "/verify" ? "page" : undefined}>실검증</Link>
         <Link className="nav-core" href="/mcp" aria-current={pathname === "/mcp" ? "page" : undefined}>MCP로 전달</Link>
-        <Link className="nav-core" href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}>사고 신고 24h·72h</Link>
+        <Link className="header-incident-link" href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}><ShieldAlert size={16} aria-hidden="true"/>72시간 사고 신고</Link>
         <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>사용법</Link>
         <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label="밝은 테마와 어두운 테마 전환"><Sun className="sun-icon" size={18}/><Moon className="moon-icon" size={18}/></button>
       </nav>

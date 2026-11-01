@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CircleCheck, CircleQuestionMark, CircleX, FlaskConical, LoaderCircle, Play, RotateCcw, Sparkles } from "lucide-react";
 import { attackVerdictLabels, isolationLabels, requestLine, runVerify, testsLabel, attemptsLine, verdictHelp, verdictLabels, type AttackDefinition, type AttackOutcome, type VerifyJob, type VerifyMode } from "@/lib/verify";
 
@@ -100,6 +101,8 @@ function Result({ job }: { job: VerifyJob }) {
 }
 
 export default function VerifyPanel() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [phase, setPhase] = useState<Phase>("idle");
   const [job, setJob] = useState<VerifyJob | null>(null);
   const [error, setError] = useState("");
@@ -108,17 +111,20 @@ export default function VerifyPanel() {
   const busy = phase === "queued" || phase === "running";
 
   useEffect(() => () => { run.current++; }, []);
-  // 취약점 상세의 '실검증으로 확인하기'(/verify?run=reference)로 들어오면 바로 실행합니다. 한 번만 실행하고 주소에서 지웁니다
+  // Consume the request only when its timer runs. Strict Mode may cancel the
+  // first effect setup; removing the query before then would lose the request.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const requested = params.get("run");
+    const requested = searchParams.get("run");
     if (requested !== "reference" && requested !== "ai") return;
-    // Next.js가 쓰는 history state(__NA 등)는 그대로 두고 주소의 ?run=만 지웁니다
-    window.history.replaceState(window.history.state, "", window.location.pathname);
-    const timer = window.setTimeout(() => { void start(requested); }, 0);
+    const timer = window.setTimeout(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("run");
+      router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
+      void start(requested);
+    }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams, router]);
   useEffect(() => {
     if (!busy) return;
     const started = Date.now();

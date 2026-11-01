@@ -26,7 +26,7 @@ export default function RepositoryWorkspace() {
   const progressRepo = repository.phase === "done" || repository.reportError ? repository.resultRepo : repository.repoInput;
   const showProgress = repository.phase !== "idle";
   return <main id="main" className="workspace container repository-page" tabIndex={-1}>
-    <div className="repository-progress-heading"><h1 className="repository-small-title">저장소 검사</h1><p>결과가 준비되면 자동으로 결과 화면으로 이동합니다.</p><p>저장소 주소가 검사 서버로 전송되며 서버의 로그인·접근 정책이 적용됩니다. 공개 저장소만 입력하세요.</p></div>
+    <div className="repository-progress-heading"><h1 className="repository-small-title">저장소 검사</h1>{repository.phase === "done" && repository.result ? <p>검사가 끝났습니다. 결과 보기로 확인하세요.</p> : repository.isScanning ? <p>결과가 준비되면 자동으로 결과 화면으로 이동합니다.</p> : null}<p>저장소 주소가 검사 서버로 전송되며 서버의 로그인·접근 정책이 적용됩니다. 공개 저장소만 입력하세요.</p></div>
     {showProgress && <ProgressH key={repository.startedAt ?? repository.resultRepo} repo={progressRepo.replace(/^https:\/\//, "")} phase={repository.phase} startedAt={repository.startedAt}
       logs={repository.logs.map(log => `[${log.time}] ${log.step} · ${log.msg} · ${log.status}`)} explained={repository.explained}
       counts={repository.result && ["done", "explaining", "reporting"].includes(repository.phase) ? { total: repository.findings.length, open: repository.findings.length - verified } : undefined}

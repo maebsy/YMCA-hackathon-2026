@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { ArrowUpRight, BookOpen, Code2, LifeBuoy, Moon, ShieldCheck, Sun } from "lucide-react";
+import { ArrowUpRight, Code2, Moon, ShieldCheck, Sun } from "lucide-react";
 import { useRepository } from "@/components/repository-provider";
 import { REPOSITORY_PROGRESS_PATH, REPOSITORY_RESULT_PATH } from "@/lib/repository-routes";
 
@@ -44,26 +44,18 @@ export default function Shell({ children }: { children: ReactNode }) {
     </header>
     {children}
     <footer className="site-footer corporate-footer">
-      <div className="container footer-grid">
-        <div className="footer-brand-block">
+      <div className="container footer-main">
+        <div className="footer-identity">
           <Link className="footer-brand-link" href="/" aria-label="72hours 홈으로"><Brand/></Link>
           <p className="footer-tagline">만드는 사람 곁의 보안 가이드.</p>
-          <p className="footer-description">발견부터 수정과 재검사까지,<br/>작은 서비스의 더 안전한 다음 단계를 함께합니다.</p>
-          <span className="footer-signature"><ShieldCheck size={15} aria-hidden="true"/>SECURITY FOR BUILDERS</span>
         </div>
-        <nav className="footer-link-group" aria-label="푸터 서비스">
-          <h2><ShieldCheck size={16} aria-hidden="true"/>서비스</h2>
-          <Link href={repositoryHref}>{repositoryLabel}<ArrowUpRight size={14} aria-hidden="true"/></Link>
-          <Link href="/incident">사고 신고 준비<ArrowUpRight size={14} aria-hidden="true"/></Link>
-          <Link href="/verify">데모 실검증<ArrowUpRight size={14} aria-hidden="true"/></Link>
-        </nav>
-        <nav className="footer-link-group" aria-label="푸터 리소스">
-          <h2><BookOpen size={16} aria-hidden="true"/>리소스</h2>
-          <Link href="/help"><span><LifeBuoy size={15} aria-hidden="true"/>사용 방법과 검사 범위</span><ArrowUpRight size={14} aria-hidden="true"/></Link>
-          <a href="https://github.com/maebsy/YMCA-hackathon-2026" target="_blank" rel="noopener noreferrer" aria-label="GitHub 프로젝트 (새 탭)"><span><Code2 size={15} aria-hidden="true"/>GitHub 프로젝트</span><ArrowUpRight size={14} aria-hidden="true"/></a>
+        <nav className="footer-nav" aria-label="푸터 메뉴">
+          <Link href="/help">도움말</Link>
+          <Link href="/incident">사고 신고</Link>
+          <a href="https://github.com/maebsy/YMCA-hackathon-2026" target="_blank" rel="noopener noreferrer" aria-label="GitHub 프로젝트 (새 탭)"><Code2 size={15} aria-hidden="true"/>GitHub<ArrowUpRight size={13} aria-hidden="true"/></a>
         </nav>
       </div>
-      <div className="container footer-bottom"><p>© 2026 72hours. All rights reserved.</p><p>만드는 사람을 위한 더 안전한 웹.</p></div>
+      <div className="container footer-bottom"><p>© 2026 72hours.</p><p>Security for builders.</p></div>
     </footer>
   </div>;
 }

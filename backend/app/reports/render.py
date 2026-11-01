@@ -159,15 +159,17 @@ def _h_card(card: Card) -> str:
 
 
 def _h_section(s: Section) -> str:
-    return (
-        f"<section><h2>{_e(s.heading)}</h2>"
-        + "".join(f"<p>{_e(p)}</p>" for p in s.paragraphs)
+    body = (
+        "".join(f"<p>{_e(p)}</p>" for p in s.paragraphs)
         + _h_fields(s.fields)
         + _h_list(s.steps, True)
         + _h_list(s.bullets, False)
         + "".join(_h_card(c) for c in s.cards)
-        + "</section>"
     )
+    if s.collapsed:
+        # 긴 섹션은 접어 둡니다. 스크립트 없이 동작하는 <details> 라 샌드박스 iframe·인쇄에서도 됩니다
+        return f'<section><details><summary><h2 style="display:inline">{_e(s.heading)}</h2> <span class="hint">눌러서 펼치기</span></summary>{body}</details></section>'
+    return f"<section><h2>{_e(s.heading)}</h2>{body}</section>"
 
 
 def to_html(report: Report) -> str:

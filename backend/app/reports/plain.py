@@ -378,6 +378,7 @@ def build_plain_report(req: PlainReportRequest, now: datetime) -> Report:
     overview = Section(
         heading="한눈에 보기",
         paragraphs=[verdict],
+        bullets=summary_lines(open_items, now_items, bool(unchecked or recheck)),
         fields=[
             FormField(label="점검한 곳", value=" · ".join(x for x in (site, scan.site_url, scan.repo) if x)),
             FormField(label="검사 시각", value=fmt_time(scan.scanned_at)),
@@ -413,6 +414,7 @@ def build_plain_report(req: PlainReportRequest, now: datetime) -> Report:
         sections.append(
             Section(
                 heading="고칠 것 자세히",
+                collapsed=True,
                 paragraphs=[
                     "급한 순서로 정리했습니다. '공격 검증 통과'는 고치는 방법을 공격자 관점에서 다시 시험해 막히는 것을 확인했다는 뜻입니다."
                 ],
@@ -424,6 +426,7 @@ def build_plain_report(req: PlainReportRequest, now: datetime) -> Report:
         sections.append(
             Section(
                 heading="이번에 검사하지 못한 영역",
+                collapsed=True,
                 paragraphs=[
                     "아래 영역은 이번 검사에서 확인하지 못했습니다. 문제가 없다는 뜻이 아니니, 원인을 해결한 뒤 다시 검사해 주세요."
                 ],
@@ -441,10 +444,10 @@ def build_plain_report(req: PlainReportRequest, now: datetime) -> Report:
             )
         )
     if resolved:
-        sections.append(Section(heading="해결된 것", bullets=[redact_secrets(i.finding.title) for i in resolved]))
+        sections.append(Section(heading="해결된 것", bullets=[redact_secrets(i.finding.title) for i in resolved], collapsed=True))
 
     if terms := glossary_for(open_items + recheck):
-        sections.append(Section(heading="용어 풀이", bullets=terms))
+        sections.append(Section(heading="용어 풀이", bullets=terms, collapsed=True))
 
     sections.append(next_steps(open_items, completed, bool(unchecked or recheck)))
 
@@ -461,6 +464,21 @@ def build_plain_report(req: PlainReportRequest, now: datetime) -> Report:
         deadline=timer,
         sections=sections,
     )
+
+
+def summary_lines(open_items: list[Item], now_items: list[Item], needs_rescan: bool) -> list[str]:
+    """리포트 맨 위 3줄 요약: 지금 고칠 것 / 가장 위험한 것 / 다음 할 일."""
+    if not open_items:
+        return ["고칠 문제가 없습니다.", "가장 위험한 것: 없음",
+                "다음 할 일: " + ("검사하지 못한 영역을 확인하고 다시 검사하세요." if needs_rescan else "코드를 바꿀 때마다 다시 검사하세요.")]
+    top = open_items[0]
+    loc = location(top.finding)
+    first = top.explanation.fix_steps[0].title if top.explanation and top.explanation.fix_steps else None
+    return [
+        f"지금 바로 고칠 것 {len(now_items)}건, 전체 {len(open_items)}건",
+        f"가장 위험한 것: {redact_secrets(top.title)}" + (f" ({loc})" if loc else ""),
+        "다음 할 일: " + (f"{first} → 고친 뒤 다시 검사" if first else "아래 '지금 바로 할 일'부터 고치고 다시 검사"),
+    ]
 
 
 def next_steps(open_items: list[Item], completed: bool, needs_rescan: bool = False) -> Section:

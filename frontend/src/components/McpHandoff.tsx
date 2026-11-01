@@ -39,7 +39,7 @@ const unsupportedOnServer = () => false;
 const clock = () => new Date().toTimeString().slice(0, 8);
 
 const btn =
-  "px-3 py-1.5 rounded border font-mono text-[11px] font-bold transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer";
+  "px-3 py-1.5 rounded border font-mono text-[0.6875rem] font-bold transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer";
 
 export const McpHandoff: React.FC<Props> = ({ os, onShowToast }) => {
   const raw = useSyncExternalStore(subscribe, readLast, readNothing);
@@ -150,7 +150,7 @@ export const McpHandoff: React.FC<Props> = ({ os, onShowToast }) => {
 
   return (
     <div className="pt-3 border-t border-[#27272a] space-y-2" data-testid="mcp-handoff">
-      <div className="font-mono text-[11px] text-[#a1a1aa]">
+      <div className="font-mono text-[0.6875rem] text-[#a1a1aa]">
         {handoff.ok ? (
           <>
             검사 대상 <code>{handoff.repository}</code>@<code>{handoff.revision.slice(0, 7)}</code> · 전달 가능{" "}
@@ -166,7 +166,7 @@ export const McpHandoff: React.FC<Props> = ({ os, onShowToast }) => {
       {status && (
         <div
           data-testid="mcp-autosave-status"
-          className={`font-mono text-[11px] ${save.state === "on" ? "text-[#d4ff3a]" : "text-[#a1a1aa]"}`}
+          className={`font-mono text-[0.6875rem] ${save.state === "on" ? "text-[#d4ff3a]" : "text-[#a1a1aa]"}`}
         >
           {status}
         </div>
@@ -194,7 +194,7 @@ export const McpHandoff: React.FC<Props> = ({ os, onShowToast }) => {
           <Copy className="w-3.5 h-3.5" /> MCP 설정 복사 (최초 1회)
         </button>
       </div>
-      <p className="font-mono text-[11px] text-[#71717a] leading-relaxed">
+      <p className="font-mono text-[0.6875rem] text-[#71717a] leading-relaxed">
         처음 한 번 자동 저장을 켜고 설정을 AI 코딩툴(Cursor·Claude Code)의 MCP 설정에 붙여 넣으면, 그 뒤로는 검사만 해도
         에이전트가 <code>list_findings</code>로 최신 목록을 보고 <code>get_fix_prompt</code>로 Red 검증을 통과한 수정 지시만
         받습니다. 재검사해도 설정을 고치거나 재시작할 필요가 없습니다.

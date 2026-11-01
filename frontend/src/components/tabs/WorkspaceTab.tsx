@@ -590,7 +590,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                       고친 코드가 이 공격({selectedFinding.cwe})을 실제로 막는지 격리 환경에서 수정 전·후를 실행해 확인합니다. 지금은 데모 과녁으로 같은 종류의 공격을 재현합니다.
                     </span>
                     <Link href="/verify?run=reference" className="px-3 py-1.5 rounded border border-[#d4ff3a] text-[#d4ff3a] font-mono text-xs font-bold hover:bg-[#d4ff3a]/10 transition">
-                      실검증으로 확인하기 →
+                      실제검증으로 확인하기 →
                     </Link>
                   </div>
                 )}

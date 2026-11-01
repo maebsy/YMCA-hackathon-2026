@@ -7,7 +7,7 @@ import { attackVerdictLabels, isolationLabels, requestLine, runVerify, testsLabe
 
 type Phase = "idle" | "queued" | "running" | "done" | "error";
 const phaseText: Partial<Record<Phase, string>> = {
-  queued: "실검증을 접수했습니다. 순서를 기다리는 중입니다…",
+  queued: "실제검증을 접수했습니다. 순서를 기다리는 중입니다…",
   running: "격리 환경에서 수정 전·후 앱을 띄워 공격하고 기능 테스트를 돌리는 중입니다…",
 };
 const aiRunning = "GPU의 Red가 공격을, Blue가 수정본을 만들고 Docker 격리 환경에서 수정 전·후를 실행하는 중입니다…";
@@ -144,7 +144,7 @@ export default function VerifyPanel() {
       setJob(done); setPhase("done");
     } catch (caught) {
       if (token !== run.current) return;
-      setError(caught instanceof Error ? caught.message : "실검증을 실행하지 못했습니다.");
+      setError(caught instanceof Error ? caught.message : "실제검증을 실행하지 못했습니다.");
       setPhase("error");
     }
   }
@@ -152,17 +152,17 @@ export default function VerifyPanel() {
   return <section className="vp-panel" aria-labelledby="verify-title">
     <div className="vp-head">
       <FlaskConical size={22} aria-hidden className="vp-accent"/>
-      <h2 id="verify-title">Red–Blue 실검증 · 데모 과녁</h2>
+      <h2 id="verify-title">Red–Blue 실제검증 · 데모 과녁</h2>
     </div>
     <p className="vp-muted">일부러 취약하게 만든 작은 사이트(<code>demo-vulnerable-site</code>)를 수정 전·후 두 번 띄워 같은 공격을 보냅니다. 수정 전에는 공격이 통하고, 수정 후에는 막히며, 기능 테스트는 그대로 통과하는지 실제 실행 결과로 확인합니다.</p>
     <div className="vp-actions">
       <button type="button" className="vp-button" onClick={() => void start("reference")} disabled={busy}>
         {busy && mode === "reference" ? <LoaderCircle size={16} className="vp-spin" aria-hidden/> : job?.mode === "reference" ? <RotateCcw size={16} aria-hidden/> : <Play size={16} aria-hidden/>}
-        {busy && mode === "reference" ? "실검증 진행 중" : "기준 수정본으로 실행"}
+        {busy && mode === "reference" ? "실제검증 진행 중" : "기준 수정본으로 실행"}
       </button>
       <button type="button" className="vp-button" onClick={() => void start("ai")} disabled={busy}>
         {busy && mode === "ai" ? <LoaderCircle size={16} className="vp-spin" aria-hidden/> : <Sparkles size={16} aria-hidden/>}
-        {busy && mode === "ai" ? "AI 실검증 진행 중" : "AI(Red·Blue) 수정본으로 실행"}
+        {busy && mode === "ai" ? "AI 실제검증 진행 중" : "AI(Red·Blue) 수정본으로 실행"}
       </button>
       <p className="vp-status" role="status">{busy ? `${phase === "running" && mode === "ai" ? aiRunning : phaseText[phase]} ${elapsed}초` : ""}</p>
     </div>

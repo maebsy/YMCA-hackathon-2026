@@ -7,7 +7,7 @@ import IncidentWorkspace from "./incident-workspace";
 type View = "incident" | "help";
 const titles: Record<View, [string, string, string]> = {
   incident: ["INCIDENT · REPORTING SUPPORT", "확인한 사실부터, 신고 준비까지.", "필요한 사실만 답하면 신고 대상·기한과 두 신고서 초안을 함께 만듭니다. 이후 비어 있는 칸만 이어서 묻습니다."],
-  help: ["HELP & SCOPE", "한 장으로 보는 서비스 흐름", "저장소 검사부터 실검증, MCP 전달, 24·72시간 사고 신고까지 어떻게 이어지는지 먼저 보세요."],
+  help: ["HELP & SCOPE", "한 장으로 보는 서비스 흐름", "저장소 검사부터 실제검증, MCP 전달, 24·72시간 사고 신고까지 어떻게 이어지는지 먼저 보세요."],
 };
 // 도움말 첫 화면의 서비스 흐름 그림. 각 단계는 실제 화면으로 이어집니다
 const flow: { step: string; title: string; text: string; href: string; tone?: "core" | "branch" }[] = [
@@ -17,7 +17,7 @@ const flow: { step: string; title: string; text: string; href: string; tone?: "c
   { step: "4", title: "결과·리포트", text: "3줄 요약과 수정 지시문", href: "/report", tone: "core" },
 ];
 const branches: { title: string; text: string; href: string; label: string }[] = [
-  { title: "실검증", text: "고친 코드를 격리 환경에서 실제로 공격해 막히는지 확인", href: "/verify", label: "Red–Blue" },
+  { title: "실제검증", text: "고친 코드를 격리 환경에서 실제로 공격해 막히는지 확인", href: "/verify", label: "Red–Blue" },
   { title: "MCP로 전달", text: "수정 지시를 Cursor·Claude Code 같은 AI 코딩 도구로 바로 보냄", href: "/mcp-guide", label: "MCP" },
   { title: "사고 신고", text: "사고가 의심되면 검사 기록으로 24시간·72시간 신고서 초안", href: "/incident", label: "24h · 72h" },
 ];

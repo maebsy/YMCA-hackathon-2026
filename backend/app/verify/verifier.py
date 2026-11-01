@@ -93,7 +93,7 @@ def verify(req: VerifyRequest, *, trusted: bool = False) -> VerifyResult:
     # 사용자 저장소는 '격리돼 있다'를 실행 결과로 확인해야만 판정을 내놓습니다 (코드상 옵션만으로는 부족).
     if not trusted and not isolation.confirmed:
         return VerifyResult(status="error", sandbox=sandbox.name,
-                            message="샌드박스 격리를 확인하지 못해 실검증 결과를 내지 않습니다: "
+                            message="샌드박스 격리를 확인하지 못해 실제검증 결과를 내지 않습니다: "
                                     + ", ".join(k for k, val in isolation.model_dump().items() if val is not True),
                             before_tests=before_tests, after_tests=after_tests, duration_sec=elapsed(), **iso)
 

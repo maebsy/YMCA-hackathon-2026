@@ -94,7 +94,7 @@ export default function RepositoryResult() {
       logs={repository.logs} onRunScan={url => rescan(url)} isScanning={repository.isScanning}
       os={repository.os} onChangeOS={repository.setOS} countdown=""
       onShowToast={repository.showMessage} repoInput={repository.repoInput} onChangeRepoInput={repository.setRepoInput}/></div>
-    <section className="card incident-entry"><FlaskConical size={22}/><div><h2>고친 코드, 공격을 막아낼까요?</h2><p className="muted">격리된 환경에서 고치기 전과 후에 같은 공격을 직접 실행해 봅니다. 기능이 그대로인지도 함께 확인합니다. 지금은 데모 사이트로 보여 드립니다.</p><Link className="text-link" href="/verify">실검증 보기 <ArrowRight size={15}/></Link></div></section>
+    <section className="card incident-entry"><FlaskConical size={22}/><div><h2>고친 코드, 공격을 막아낼까요?</h2><p className="muted">격리된 환경에서 고치기 전과 후에 같은 공격을 직접 실행해 봅니다. 기능이 그대로인지도 함께 확인합니다. 지금은 데모 사이트로 보여 드립니다.</p><Link className="text-link" href="/verify">실제검증 보기 <ArrowRight size={15}/></Link></div></section>
     <section className="card incident-entry"><ShieldAlert size={22}/><div><h2>해킹이 의심되나요?</h2><p className="muted">이 점검 기록으로 침해사고(24시간)·개인정보 유출(72시간) 신고서 초안을 만듭니다. 취약점이 있다고 곧 침해된 것은 아니니 실제 피해는 직접 확인해 주세요.</p><Link className="button" href="/incident?from=scan">신고서 초안 만들기 <ArrowRight size={15}/></Link></div></section>
     <Link className="text-link" href="/"><ArrowLeft size={15}/>다른 저장소 점검하기</Link>
   </main>;

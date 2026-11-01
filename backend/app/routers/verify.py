@@ -193,7 +193,7 @@ async def start_verify(request: Request, response: Response, jobs: JobsDep, user
     if not (DEMO / "verify" / "attacks.json").is_file():
         raise _unavailable("이 서버에는 데모 과녁(demo-vulnerable-site)이 없습니다.")
     if not await run_in_threadpool(_runtime_ready):
-        raise _unavailable("이 서버에는 실검증을 실행할 환경(Docker 또는 Node 22.5 이상)이 없습니다.")
+        raise _unavailable("이 서버에는 실제검증을 실행할 환경(Docker 또는 Node 22.5 이상)이 없습니다.")
     attacks, patch = _demo_inputs()
     # npm 스크립트와 같은 명령을 node로 바로 실행합니다 (Windows 개발 PC에서는 shell 없이 npm을 띄울 수 없음).
     # 테스트 출력은 TAP로 고정합니다. Node 23부터 기본 출력이 바뀌어 probe가 통과·실패 건수를 못 읽습니다
@@ -218,7 +218,7 @@ async def _start_ai(request: Request, jobs: VerifyJobs, user) -> dict:
     if not (DEMO / "server.js").is_file():
         raise _unavailable("이 서버에는 데모 과녁(demo-vulnerable-site)이 없습니다.")
     if not await run_in_threadpool(docker_available):
-        raise _unavailable("AI 수정본 실검증은 Docker 격리가 있는 서버에서만 실행합니다.")
+        raise _unavailable("AI 수정본 실제검증은 Docker 격리가 있는 서버에서만 실행합니다.")
     explainer = getattr(request.app.state, "explainer", None)
     if explainer is None:
         raise _unavailable("이 서버에는 LLM 연결이 설정되어 있지 않습니다.")
@@ -228,7 +228,7 @@ async def _start_ai(request: Request, jobs: VerifyJobs, user) -> dict:
         raise _unavailable("GPU LLM 서버에 연결할 수 없습니다.") from exc
     findings = _demo_findings()
     if not findings:
-        raise _unavailable("데모 과녁에서 실검증할 탐지 결과를 찾지 못했습니다.")
+        raise _unavailable("데모 과녁에서 실제검증할 탐지 결과를 찾지 못했습니다.")
     extra = {"target": "demo-ai", "mode": "ai",
              "findings": [f.model_dump(include={"fingerprint", "rule_id", "title", "severity", "start_line"})
                           for f in findings]}

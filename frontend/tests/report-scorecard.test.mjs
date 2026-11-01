@@ -15,7 +15,7 @@ test("scorecard uses raw report severity, classification, tool and source coordi
   assert.equal(rows[0].rule,"sql.rule"); assert.equal(rows[0].fullLocation,"src/db.ts:42");
   assert.equal(rows[0].severity,"critical"); assert.equal(rows[0].kind,"SQL 인젝션");
   assert.equal(rows[0].tool,"Semgrep"); assert.equal(rows[0].location,"db.ts:42");
-  assert.equal(rows[1].action,"해결 확인"); assert.equal(rows[2].action,"재검증 대기"); assert.equal(rows[2].title,"쉬운 제목");
+  assert.equal(rows[1].action,"해결"); assert.equal(rows[2].action,"확인 중"); assert.equal(rows[2].title,"쉬운 제목");
 });
 test("unknown data stays unknown; missing columns are dashes rather than fabricated engine values", () => {
   const rows = scoreRows([{ fingerprint:"empty",severity:"unrecognized" }],[],[]);

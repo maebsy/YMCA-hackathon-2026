@@ -312,10 +312,10 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
         <div className="lg:col-span-5 bg-[#111113] border border-[#27272a] rounded-xl overflow-hidden">
           <div className="chrome-bar justify-between">
             <span className="font-mono text-xs text-[#a1a1aa]">
-              탐지된 취약점 목록 (SSVC 우선순위)
+              우선순위 순
             </span>
             <span className="font-mono text-[0.6875rem] text-[#a1a1aa]">
-              클릭하여 조치 가이드 확인
+              눌러서 고치는 법 보기
             </span>
           </div>
           <div className="divide-y divide-[#27272a]">
@@ -371,7 +371,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
                   <span
                     className={`font-mono text-[0.6875rem] px-2 py-0.5 rounded border shrink-0 ${verdictColor}`}
                   >
-                    {item.fixed ? "엔진 검증 완료" : pendingIds.includes(item.id) ? "재검증 대기" : item.verdict}
+                    {item.fixed ? "해결" : pendingIds.includes(item.id) ? "확인 중" : item.verdict}
                   </span>
                 </button>
               );
@@ -404,7 +404,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>
-                  {compact ? selectedFinding.fixed ? "엔진 검증 완료" : pendingIds.includes(selectedFinding.id) ? "조치 표시 취소" : "조치함 · 재검증 대기" : hasRealScan ? "조치 후 실제 재검사" : selectedFinding.fixed
+                  {compact ? selectedFinding.fixed ? "해결" : pendingIds.includes(selectedFinding.id) ? "표시 취소" : "고쳤어요 · 재검사로 확인" : hasRealScan ? "조치 후 실제 재검사" : selectedFinding.fixed
                     ? "↺ 미해결 상태로 되돌리기"
                     : "✓ 조치 완료 및 재검사 검증"}
                 </span>

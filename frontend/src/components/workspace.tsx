@@ -7,11 +7,42 @@ import IncidentWorkspace from "./incident-workspace";
 type View = "incident" | "help";
 const titles: Record<View, [string, string, string]> = {
   incident: ["INCIDENT · REPORTING SUPPORT", "확인한 사실부터, 신고 준비까지.", "필요한 사실만 답하면 신고 대상·기한과 두 신고서 초안을 함께 만듭니다. 이후 비어 있는 칸만 이어서 묻습니다."],
-  help: ["HELP & SCOPE", "시작하기 전에 알아두세요.", "GitHub 저장소 검사부터 수정 안내와 결과 전달까지 안내합니다."],
+  help: ["HELP & SCOPE", "한 장으로 보는 서비스 흐름", "저장소 검사부터 실검증, MCP 전달, 24·72시간 사고 신고까지 어떻게 이어지는지 먼저 보세요."],
 };
+// 도움말 첫 화면의 서비스 흐름 그림. 각 단계는 실제 화면으로 이어집니다
+const flow: { step: string; title: string; text: string; href: string; tone?: "core" | "branch" }[] = [
+  { step: "1", title: "저장소 입력", text: "공개 GitHub 주소 하나", href: "/" },
+  { step: "2", title: "보안엔진 검사", text: "코드·부품·비밀키·설정 4종", href: "/repository" },
+  { step: "3", title: "AI 쉬운 설명", text: "GPU Red–Blue가 위험·수정 방법 설명", href: "/repository" },
+  { step: "4", title: "결과·리포트", text: "3줄 요약과 수정 지시문", href: "/report", tone: "core" },
+];
+const branches: { title: string; text: string; href: string; label: string }[] = [
+  { title: "실검증", text: "고친 코드를 격리 환경에서 실제로 공격해 막히는지 확인", href: "/verify", label: "Red–Blue" },
+  { title: "MCP로 전달", text: "수정 지시를 Cursor·Claude Code 같은 AI 코딩 도구로 바로 보냄", href: "/report", label: "MCP" },
+  { title: "사고 신고", text: "사고가 의심되면 검사 기록으로 24시간·72시간 신고서 초안", href: "/incident", label: "24h · 72h" },
+];
+
+function FlowDiagram() {
+  return <article className="card help-flow" aria-labelledby="help-flow-title">
+    <h2 id="help-flow-title">72hours는 이렇게 이어집니다</h2>
+    <ol className="help-flow-main">{flow.map((node, index) => <li key={node.step} data-tone={node.tone}>
+      <Link href={node.href}><span className="help-flow-step">{node.step}</span><strong>{node.title}</strong><small>{node.text}</small></Link>
+      {index < flow.length - 1 && <ArrowRight className="help-flow-arrow" size={18} aria-hidden="true"/>}
+    </li>)}</ol>
+    <p className="help-flow-fork" aria-hidden="true">결과에서 필요한 것으로 이어서</p>
+    <ul className="help-flow-branches">{branches.map(branch => <li key={branch.title}>
+      <Link href={branch.href}><span className="help-flow-label">{branch.label}</span><strong>{branch.title}</strong><small>{branch.text}</small></Link>
+    </li>)}</ul>
+    <p className="muted help-flow-note">고친 뒤에는 같은 저장소를 다시 검사하면 해결된 항목이 ‘해결 확인’으로 바뀝니다. 각 상자를 누르면 그 화면으로 갑니다.</p>
+  </article>;
+}
+
 function Help() {
   return <section className="help-content">
-      <article className="card">
+      <FlowDiagram/>
+      <details className="card help-more">
+        <summary><h2>단계별 자세한 설명과 검사 범위</h2><span className="muted">눌러서 펼치기</span></summary>
+      <article>
         <CircleHelp size={24} className="accent"/><h2>GitHub 주소로 시작하고, 한 단계씩.</h2>
         <ol className="repair-steps">
           <li><span>1</span><div><h3>공개 GitHub 저장소 입력</h3><p>홈에서 https://github.com/owner/repository 형식의 저장소 루트 주소를 입력하세요. 파일 경로, 로그인 정보, 쿼리와 해시가 있는 주소는 받지 않습니다. 실행하면 저장소 주소를 검사 서버로 보냅니다.</p></div></li>
@@ -21,7 +52,7 @@ function Help() {
           <li><span>5</span><div><h3>사고가 의심되면 신고 준비</h3><p>사고 사실을 기록하고 침해사고·개인정보 유출 신고의 대상과 기한을 각각 확인하세요. 공통 사실로 두 신고서 초안을 만들고 보완할 항목과 공식 제출처를 확인합니다. 저장소 검사 없이도 시작할 수 있습니다.</p></div></li>
         </ol>
       </article>
-      <article className="card">
+      <article>
         <h2>검사 범위와 결과 보관</h2>
         <p><Link className="text-link" href="/repository">검사 결과와 진행 상황 보기 <ArrowRight size={14}/></Link></p>
         <dl className="help-definitions">
@@ -33,6 +64,7 @@ function Help() {
           <div><dt>신고·통지와 기한</dt><dd>기관 신고와 정보주체 통지는 별도입니다. 통지 의무와 유출 가능성 통지는 현재 자동 판정 범위에 포함되지 않습니다. 초안의 법령·제재 안내와 최신 서식은 공식 기관에서 확인하세요. 문서 생성·다운로드는 기관 접수나 통지 완료를 뜻하지 않습니다. 신고 기한은 사고 인지 시각 기준이며 검사 후 수정에 걸린 시간과 구분합니다.</dd></div>
         </dl>
       </article>
+      </details>
   </section>;
 }
 

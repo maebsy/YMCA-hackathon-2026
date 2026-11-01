@@ -1,0 +1,87 @@
+/* Interior routes: 10% larger type than the home page, with open section layouts. */
+html:has(.app-shell > main:not(.entry)) { font-size:132%; }
+
+@scope (.app-shell) to (.legacy-workspace) {
+  main.workspace { padding-block:54px 88px; }
+  main.workspace .back-link { margin-bottom:32px; }
+  main.workspace .workspace-heading { margin-bottom:44px; }
+  main.workspace .workspace-heading>p:last-child { max-width:780px; font-size:.875rem; line-height:1.9; margin-top:18px; }
+  main.workspace .repository-progress-heading { max-width:850px; margin-bottom:40px; }
+  main.workspace .repository-progress-heading h1 { font-size:2rem; letter-spacing:-.045em; line-height:1.35; margin-bottom:20px; }
+  main.workspace .repository-progress-heading p { font-size:.8125rem; line-height:1.9; }
+  main.workspace .repository-progress-heading p:last-child { font-size:.75rem; margin-top:12px; }
+  main.workspace .field-hint { font-size:.75rem; line-height:1.9; }
+  main.workspace .notice { padding:18px 0 18px 20px; border:0; border-left:2px solid var(--accent); border-radius:0; background:transparent; }
+
+  main.workspace .help-content { gap:52px; }
+  main.workspace .help-content>.card { padding:0; border:0; border-radius:0; background:transparent; }
+  main.workspace .help-content>.card+.card { border-top:1px solid var(--border); padding-top:42px; }
+  main.workspace .help-content h2 { margin-bottom:28px; font-size:1.375rem; }
+  main.workspace .help-content .repair-steps { gap:0; }
+  main.workspace .help-content .repair-steps li { gap:22px; padding-block:22px; border-bottom:1px solid var(--border); }
+  main.workspace .help-content .repair-steps li:last-child { border:0; }
+  main.workspace .help-content .repair-steps li>span { background:transparent; color:var(--accent); font-family:var(--mono); }
+  main.workspace .help-content .repair-steps h3 { font-size:.875rem; margin-bottom:10px; }
+  main.workspace .help-content .repair-steps p,
+  main.workspace .help-definitions dd { max-width:850px; font-size:.8125rem; line-height:1.95; }
+  main.workspace .help-definitions>div+div { margin-top:30px; }
+  main.workspace .help-definitions dt { font-size:.875rem; margin-bottom:10px; }
+
+  main.workspace .incident-panel,
+  main.workspace .incident-document,
+  main.workspace .incident-duty { padding:12px 0 32px; border:0; border-radius:0; background:transparent; }
+  main.workspace .incident-panel-intro { margin-bottom:32px; }
+  main.workspace .incident-panel form { margin-top:34px; }
+  main.workspace .incident-fields { gap:8px 28px; }
+  main.workspace .incident-panel .form-field { margin-bottom:28px; }
+  main.workspace .incident-documents { gap:36px; }
+  main.workspace .incident-document+.incident-document,
+  main.workspace .incident-duty+.incident-duty { border-top:1px solid var(--border); padding-top:32px; }
+  main.workspace .incident-scan { border:0; border-bottom:1px solid var(--border); border-radius:0; background:transparent; padding:0 0 26px; }
+
+  main.workspace .repository-report { padding:0; border:0; border-radius:0; background:transparent; }
+  main.workspace .repository-result-heading { margin-block:38px 24px; }
+  main.workspace .repository-small-title { font-size:1.5rem; }
+  main.workspace .count-grid { border:0; border-radius:0; background:transparent; margin-block:30px; }
+  main.workspace .count-grid>div { padding:20px 24px; }
+  @media(max-width:700px) {
+    main.workspace { padding-block:32px 60px; }
+    main.workspace .workspace-heading { margin-bottom:32px; }
+    main.workspace .workspace-heading h1 { font-size:1.625rem; line-height:1.45; }
+    main.workspace .repository-progress-heading h1 { font-size:1.75rem; }
+    main.workspace .help-content { gap:36px; }
+    main.workspace .help-content h2 { font-size:1.125rem; }
+    main.workspace .help-content .repair-steps li { gap:13px; padding-block:20px; }
+    main.workspace .incident-fields { gap:8px 18px; }
+    main.workspace .count-grid>div { padding:18px 12px; }
+  }
+}
+
+/* Route styles sit outside flow.css's legacy-workspace scope. Keep status and input borders. */
+main.workspace .ph-progress { border:0; border-radius:0; background:transparent; }
+main.workspace .ph-summary { padding:22px 0; }
+main.workspace .ph-stages { padding-left:0; padding-right:30px; overflow-y:auto; }
+main.workspace .ph-step-list { flex:none; grid-template-rows:none; gap:22px; }
+main.workspace .ph-step { min-height:72px; }
+main.workspace .ph-step-copy { overflow:visible; }
+main.workspace .ph-outcome { height:auto; min-height:50px; overflow:visible; }
+main.workspace .ph-console { border:1px solid var(--line); border-radius:10px; }
+main.workspace .ph-console-heading { background:var(--surface); }
+main.workspace .scorecard { border:0; border-radius:0; background:transparent; }
+main.workspace .score-heading { padding:10px 0 20px; }
+main.workspace .score-heading h1 { font-size:1.5rem; }
+main.workspace .score-totals { padding:0 0 24px; }
+main.workspace .score-row { padding-block:22px; }
+main.workspace .score-title { white-space:normal; line-height:1.6; }
+main.vp-page { width:calc(100% - 2 * var(--page-gutter)); max-width:var(--page-width); padding-block:54px 88px; gap:32px; }
+main.vp-page .vp-heading { max-width:850px; gap:14px; }
+main.vp-page .vp-heading h1 { font-size:2rem; letter-spacing:-.045em; }
+main.vp-page .vp-panel { border:0; border-top:1px solid var(--line); border-radius:0; background:transparent; padding:30px 0; gap:24px; }
+main.vp-page .vp-heading p { font-size:.875rem; line-height:1.9; }
+@media(min-width:721px) { main.workspace .ph-columns { height:560px; gap:24px; } }
+@media(max-width:720px) {
+  main.workspace .ph-stages { padding:14px 0 24px; }
+  main.workspace .ph-summary { gap:14px; }
+  main.vp-page { padding-block:32px 60px; gap:26px; }
+  main.vp-page .vp-heading h1 { font-size:1.625rem; }
+}

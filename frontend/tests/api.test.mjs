@@ -33,7 +33,7 @@ test('SSVC priority and factors replace the severity fallback', () => {
     fix_steps:[{title:'Upgrade', detail:'Upgrade dependency'}],
   }});
   assert.equal(result.decision, 'act');
-  assert.match(result.decisionLabel, /지금 바로/);
+  assert.equal(result.decisionLabel, "지금");
   assert.ok(result.why.includes('Publicly exploitable'));
 });
 

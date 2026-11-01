@@ -399,7 +399,7 @@ test("header destination, label and aria-current follow scanning, result and emp
     assert.equal(incident.props["aria-current"], route === "/incident" ? "page" : undefined);
     assert.equal(links.find(node => node.props.href === "/help").props.children, "사용법");
     assert.equal(links.find(node => node.props.href === "/verify").props.children, "실검증");
-    assert.equal(links.find(node => node.props.href === "/mcp").props.children, "MCP로 전달");
+    assert.equal(links.some(node => node.props.href === "/mcp"), false);  // 공개 서버에서 /mcp는 MCP 서버가 받음 (#187)
     assert.equal(nodes(nav).find(node => node.type === "button").props.className, "icon-button theme-toggle");
   }
   pathname = "/";

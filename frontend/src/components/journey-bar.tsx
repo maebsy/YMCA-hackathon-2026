@@ -12,6 +12,7 @@ const MAIN = [
 ] as const;
 const NEXT = [
   { path: "/verify", label: "실검증" },
+  { path: "/mcp/connect", label: "MCP 연결", external: true },
   { path: "/incident", label: "사고 신고 24h·72h" },
 ] as const;
 const SHOWN = new Set<string>([...MAIN.map(step => step.path), ...NEXT.map(step => step.path)]);
@@ -23,7 +24,7 @@ export default function JourneyBar() {
   const hasResult = !!repository.result;
   const current = MAIN.findIndex(step => step.path === pathname);
   // 결과가 있으면 결과 화면까지는 지난 단계로 봅니다. 검사 중이면 2단계가 진행 중입니다
-  // 실검증·사고 신고 화면에서는 검사 결과가 있을 때만 앞 단계를 지난 것으로 봅니다
+  // 실검증·MCP·사고 신고 화면에서는 검사 결과가 있을 때만 앞 단계를 지난 것으로 봅니다
   const reached = current >= 0 ? current : hasResult ? 3 : 0;
   function state(index: number) {
     if (index === current) return "current";
@@ -45,7 +46,7 @@ export default function JourneyBar() {
       {NEXT.map(step => {
         const isCurrent = pathname === step.path;
         return <li key={step.path} data-state={isCurrent ? "current" : "branch"} aria-current={isCurrent ? "step" : undefined}>
-          {isCurrent ? <span>{step.label}</span> : <Link href={step.path}>{step.label}</Link>}
+          {isCurrent ? <span>{step.label}</span> : "external" in step ? <a href={step.path}>{step.label}</a> : <Link href={step.path}>{step.label}</Link>}
         </li>;
       })}
     </ol>

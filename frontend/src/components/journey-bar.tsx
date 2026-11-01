@@ -11,7 +11,7 @@ const MAIN = [
   { path: "/report", label: "결과·리포트" },
 ] as const;
 const NEXT = [
-  { path: "/verify", label: "실제검증" },
+  { path: "/verify", label: "실검증" },
   { path: "/mcp-guide", label: "MCP로 전달" },
   { path: "/incident", label: "사고 신고 72h" },
 ] as const;

@@ -46,13 +46,13 @@ export function RepositoryReport() {
     finally { anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
   }
   return <section className="card repository-report" aria-labelledby="repository-report-title">
-    <div className="repository-document-heading"><h2 id="repository-report-title"><FileText size={17}/>검사 리포트</h2>
+    <div className="repository-document-heading"><h2 id="repository-report-title"><FileText size={17}/>리포트</h2>
       <div className="repository-document-actions"><span role="status">{feedback}</span>
-        <button type="button" disabled={!repository.reportMarkdown || repository.isScanning} onClick={() => void copy()}><Clipboard size={13}/>MD 복사</button>
-        <button type="button" disabled={!repository.reportMarkdown || repository.isScanning} onClick={download}><Download size={13}/>MD 다운로드</button>
+        <button type="button" disabled={!repository.reportMarkdown || repository.isScanning} onClick={() => void copy()}><Clipboard size={13}/>복사</button>
+        <button type="button" disabled={!repository.reportMarkdown || repository.isScanning} onClick={download}><Download size={13}/>내려받기</button>
       </div>
     </div>
-    {repository.reportHtml ? <iframe className="repository-report-frame" title="실제 저장소 검사 리포트" srcDoc={reportDocumentHtml(repository.reportHtml)} sandbox="allow-same-origin" onLoad={event => {
+    {repository.reportHtml ? <iframe className="repository-report-frame" title="저장소 점검 리포트" srcDoc={reportDocumentHtml(repository.reportHtml)} sandbox="allow-same-origin" onLoad={event => {
       documentCleanup.current?.();
       // Same-origin access permits measuring; scripts remain blocked by sandbox.
       documentCleanup.current = mountReportDocument(event.currentTarget);
@@ -85,17 +85,17 @@ export default function RepositoryResult() {
   return <main id="main" className="workspace container repository-page" tabIndex={-1}>
     <ReportScorecard key={`${repository.resultRepo}:${repository.startedAt ?? "restored"}`} rows={scoreRows(repository.reportInput?.findings ?? [], repository.findings, repository.pendingIds)}
       identity={`${repository.resultRepo}:${repository.startedAt ?? "restored"}`} fresh={repository.startedAt !== undefined && repository.phase === "done"}><RepositoryReport/></ReportScorecard>
-    {repository.llmPending && <p className="field-hint" role="status">언어모델 쉬운 설명을 이어서 만드는 중입니다{repository.explained ? ` (${explainedText(repository.explained)})` : ""}. 끝나면 리포트와 취약점 상세에 자동으로 반영됩니다.</p>}
-    <div className="repository-result-heading"><h1 className="repository-small-title">취약점 상세</h1><button className="button secondary" type="button" disabled={repository.isScanning} onClick={() => rescan()}>재검사</button></div>
+    {repository.llmPending && <p className="field-hint" role="status">AI 분석을 이어서 하고 있어요{repository.explained ? ` (${explainedText(repository.explained)})` : ""}. 끝나는 대로 반영됩니다.</p>}
+    <div className="repository-result-heading"><h1 className="repository-small-title">찾은 문제</h1><button className="button secondary" type="button" disabled={repository.isScanning} onClick={() => rescan()}>재검사</button></div>
     {/* The document does not include manual pending counts, so retain this breakdown below it. */}
-    <dl className="count-grid"><div><dt>엔진 발견 항목</dt><dd>{repository.findings.length}<small>건</small></dd></div><div><dt>미해결 · 미조치</dt><dd>{repository.findings.length - verified - pending}<small>건</small></dd></div><div><dt>재검증 대기</dt><dd className="accent">{pending}<small>건</small></dd></div><div><dt>엔진 해결 확인</dt><dd>{verified}<small>건</small></dd></div></dl>
+    <dl className="count-grid"><div><dt>전체</dt><dd>{repository.findings.length}<small>건</small></dd></div><div><dt>남음</dt><dd>{repository.findings.length - verified - pending}<small>건</small></dd></div><div><dt>확인 중</dt><dd className="accent">{pending}<small>건</small></dd></div><div><dt>해결</dt><dd>{verified}<small>건</small></dd></div></dl>
     <div className="legacy-workspace"><WorkspaceTab compact hasRealScan={!!repository.result} hasResult={!!repository.result} pendingIds={repository.pendingIds} findings={repository.findings}
       onToggleFindingFixed={repository.togglePending} selectedFindingId={repository.selectedFindingId} onSelectFindingId={repository.selectFinding}
       logs={repository.logs} onRunScan={url => rescan(url)} isScanning={repository.isScanning}
       os={repository.os} onChangeOS={repository.setOS} countdown=""
       onShowToast={repository.showMessage} repoInput={repository.repoInput} onChangeRepoInput={repository.setRepoInput}/></div>
-    <section className="card incident-entry"><FlaskConical size={22}/><div><h2>고친 코드가 실제로 공격을 막을까요?</h2><p className="muted">Red가 공격하고 Blue가 고친 뒤, 격리 환경에서 수정 전·후를 직접 실행해 공격이 막히고 기능은 그대로인지 확인합니다. 지금은 데모 사이트로 시연하며, 내 저장소 실검증은 GitHub 로그인으로 소유권을 확인한 뒤 켭니다.</p><Link className="text-link" href="/verify">Red–Blue 실검증 보기 <ArrowRight size={15}/></Link></div></section>
-    <section className="card incident-entry"><ShieldAlert size={22}/><div><h2>실제 사고가 의심되나요? 24시간·72시간 신고 초안</h2><p className="muted">이 검사 기록(점검 요약·조치 기록·위험도 높은 발견·검사한 저장소)으로 침해사고(24시간)·개인정보 유출(72시간) 신고서 초안을 바로 만듭니다. 취약점이 곧 침해 사실은 아니니, 실제 피해 여부는 직접 확인해 고쳐 주세요.</p><Link className="button" href="/incident?from=scan">검사 기록으로 신고 초안 만들기 <ArrowRight size={15}/></Link></div></section>
-    <Link className="text-link" href="/"><ArrowLeft size={15}/>GitHub 주소 입력으로 돌아가기</Link>
+    <section className="card incident-entry"><FlaskConical size={22}/><div><h2>고친 코드, 공격을 막아낼까요?</h2><p className="muted">격리된 환경에서 고치기 전과 후에 같은 공격을 직접 실행해 봅니다. 기능이 그대로인지도 함께 확인합니다. 지금은 데모 사이트로 보여 드립니다.</p><Link className="text-link" href="/verify">실검증 보기 <ArrowRight size={15}/></Link></div></section>
+    <section className="card incident-entry"><ShieldAlert size={22}/><div><h2>해킹이 의심되나요?</h2><p className="muted">이 점검 기록으로 침해사고(24시간)·개인정보 유출(72시간) 신고서 초안을 만듭니다. 취약점이 있다고 곧 침해된 것은 아니니 실제 피해는 직접 확인해 주세요.</p><Link className="button" href="/incident?from=scan">신고서 초안 만들기 <ArrowRight size={15}/></Link></div></section>
+    <Link className="text-link" href="/"><ArrowLeft size={15}/>다른 저장소 점검하기</Link>
   </main>;
 }

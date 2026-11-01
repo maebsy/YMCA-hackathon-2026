@@ -34,7 +34,7 @@ export default function Home() {
     if (!repository.restored) return;
     const url = normalizeRepositoryUrl(repositoryInputUrl(repository.repoInput));
     if (!url) {
-      setError("owner/repository 또는 owner.github.io 형식의 공개 GitHub 주소를 입력해 주세요.");
+      setError("공개 GitHub 저장소 주소를 넣어 주세요. 예: github.com/owner/repo");
       input.current?.focus();
       return;
     }
@@ -49,9 +49,9 @@ export default function Home() {
       </div>
       <button className="hero-motion-toggle" type="button" aria-pressed={motionPaused} aria-label={motionPaused ? "숫자 배경 애니메이션 재생" : "숫자 배경 애니메이션 일시 정지"} onClick={() => setMotionPaused(value => !value)}>{motionPaused ? <Play size={13} aria-hidden="true"/> : <Pause size={13} aria-hidden="true"/>}<span>{motionPaused ? "배경 재생" : "배경 정지"}</span></button>
       <p className="eyebrow"><span className="status-dot"/> SECURITY FOR BUILDERS</p>
-      <h1><span className="hero-title-line">내 코드의 <span className="hero-security-word">보안,</span></span><br/><span className="hero-title-accent">GitHub 주소로 점검하세요.</span></h1>
+      <h1><span className="hero-title-line">코드 <span className="hero-security-word">보안,</span></span><br/><span className="hero-title-accent">주소 하나면 됩니다.</span></h1>
     </div>
-    <section className="entry-panel card" aria-label="GitHub 저장소 실제 검사">
+    <section className="entry-panel card" aria-label="GitHub 저장소 점검">
       <div className="entry-panel-top"><label htmlFor="repository">공개 GitHub 저장소</label></div>
       <form onSubmit={submit} noValidate>
         <div className="url-form-row">
@@ -68,11 +68,11 @@ export default function Home() {
               })}
             </ul>
           </div>
-          <button className="button primary" type="submit" disabled={!repository.restored}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : null}{repository.isScanning ? "진행 중인 검사 보기" : "실제 검사 시작"}<ArrowRight size={16}/></button>
+          <button className="button primary" type="submit" disabled={!repository.restored}>{repository.isScanning ? <LoaderCircle className="spin" size={16}/> : null}{repository.isScanning ? "진행 상황 보기" : "점검하기"}<ArrowRight size={16}/></button>
         </div>
         {error && <p id="repository-error" className="form-error" role="alert">{error}</p>}
         <p className="sr-only" aria-live="polite" aria-atomic="true">{autocomplete.announcement}</p>
-        <p id="repository-hint" className="field-hint">owner/repository 또는 owner.github.io를 입력하세요.<br/>GitHub Pages는 해당 저장소로 변환해 검사합니다.</p>
+        <p id="repository-hint" className="field-hint">github.com/owner/repo 또는 owner.github.io</p>
       </form>
       {mcpInline && <McpConnect embedded/>}
     </section>

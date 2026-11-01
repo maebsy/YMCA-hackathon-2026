@@ -12,7 +12,7 @@ const MAIN = [
 ] as const;
 const NEXT = [
   { path: "/verify", label: "실검증" },
-  { path: "/mcp", label: "MCP로 전달" },
+  { path: "/mcp-guide", label: "MCP로 전달" },
   { path: "/incident", label: "사고 신고 24h·72h" },
 ] as const;
 const SHOWN = new Set<string>([...MAIN.map(step => step.path), ...NEXT.map(step => step.path)]);

@@ -1,13 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useSyncExternalStore, type FormEvent } from "react";
-import { ArrowRight, Code2, LoaderCircle } from "lucide-react";
+import { useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
+import { ArrowRight, Code2, LoaderCircle, Pause, Play } from "lucide-react";
 import { normalizeRepositoryUrl, useRepository } from "@/components/repository-provider";
 import { useRepoAutocomplete } from "@/lib/use-repo-autocomplete";
 import { repositoryInputUrl, showGithubPrefix } from "@/lib/repo-suggest";
 import McpConnect from "@/components/mcp-connect";
 import "./repo-suggest.css";
+
+const binaryStreams = Array.from({ length: 24 }, (_, column) =>
+  Array.from({ length: 42 }, (_, row) => ((column * 7 + row * 3) % 11 < 5 ? "0" : "1")).join(""));
 
 const noSubscribe = () => () => {};
 const readMcpInline = () => new URLSearchParams(window.location.search).get("mcp") === "inline";
@@ -17,6 +20,7 @@ export default function Home() {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
+  const [motionPaused, setMotionPaused] = useState(false);
   // 비교용 배치: /?mcp=inline 이면 MCP 연결을 검사 카드 안에 함께 보여 줍니다.
   const mcpInline = useSyncExternalStore(noSubscribe, readMcpInline, () => false);
   const autocomplete = useRepoAutocomplete({ value: repository.repoInput, setValue: repository.setRepoInput, inputRef: input });
@@ -39,9 +43,13 @@ export default function Home() {
     router.push("/repository");
   }
   return <main id="main" className="entry container" tabIndex={-1}>
-    <div className="entry-intro">
+    <div className="entry-intro" data-paused={motionPaused ? "true" : undefined}>
+      <div className="binary-background" aria-hidden="true">
+        {binaryStreams.map((stream, index) => <div className="binary-column" key={index} style={{ "--column": index, "--duration": `${19 + index % 7 * 3}s`, "--delay": `${-index * 2.7}s` } as CSSProperties}><span>{stream}</span><span>{stream}</span></div>)}
+      </div>
+      <button className="hero-motion-toggle" type="button" aria-pressed={motionPaused} aria-label={motionPaused ? "숫자 배경 애니메이션 재생" : "숫자 배경 애니메이션 일시 정지"} onClick={() => setMotionPaused(value => !value)}>{motionPaused ? <Play size={13} aria-hidden="true"/> : <Pause size={13} aria-hidden="true"/>}<span>{motionPaused ? "배경 재생" : "배경 정지"}</span></button>
       <p className="eyebrow"><span className="status-dot"/> SECURITY FOR BUILDERS</p>
-      <h1>내 코드의 보안,<br/>GitHub 주소로 점검하세요.</h1>
+      <h1><span className="hero-title-line">내 코드의 <span className="hero-security-word">보안,</span></span><br/><span className="hero-title-accent">GitHub 주소로 점검하세요.</span></h1>
     </div>
     <section className="entry-panel card" aria-label="GitHub 저장소 실제 검사">
       <div className="entry-panel-top"><label htmlFor="repository">공개 GitHub 저장소</label></div>

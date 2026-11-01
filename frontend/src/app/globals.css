@@ -117,7 +117,7 @@ body {
 
 /* SSVC 위험도 알약 배지 (프론트 레퍼런스 1:1 매칭) */
 .pill-act {
-  font: 700 11px var(--mono);
+  font: 700 0.6875rem var(--mono);
   padding: 3px 9px;
   border-radius: 999px;
   color: var(--act);
@@ -126,7 +126,7 @@ body {
 }
 
 .pill-attend {
-  font: 700 11px var(--mono);
+  font: 700 0.6875rem var(--mono);
   padding: 3px 9px;
   border-radius: 999px;
   color: var(--attend);
@@ -135,7 +135,7 @@ body {
 }
 
 .pill-trackstar {
-  font: 700 11px var(--mono);
+  font: 700 0.6875rem var(--mono);
   padding: 3px 9px;
   border-radius: 999px;
   color: var(--trackstar);
@@ -144,7 +144,7 @@ body {
 }
 
 .pill-ok {
-  font: 700 11px var(--mono);
+  font: 700 0.6875rem var(--mono);
   padding: 3px 9px;
   border-radius: 999px;
   color: var(--accent);

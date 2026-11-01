@@ -129,7 +129,8 @@ BLUE_PATCH_SYSTEM = """\
 - 따옴표 종류나 공백만 바꾸는 것은 수정이 아니다. 예시(Node.js/Express, 한 줄씩 바꾸면 된다):
   · SQL: db.query("... WHERE id = " + id)  →  db.query("... WHERE id = ?", id)
   · HTML 출력: const q = req.query.q || "";  →
-    const q = String(req.query.q || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const q = String(req.query.q || "").replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
+    (특수문자를 숫자 엔티티로 바꾼다. 따옴표 종류를 바꿔도 문법이 깨지지 않는 형태이니 이 형태를 그대로 쓴다)
 - 한 줄만 고치면 되면 start_line과 end_line을 같은 줄로 둔다. 응답을 보내는 줄(res.send, res.json)은 범위에 넣지 않는다.
 - 코드 블록 표시(```)를 넣지 않는다. summary는 무엇을 고쳤는지 한국어 한두 문장. JSON만 출력한다."""
 

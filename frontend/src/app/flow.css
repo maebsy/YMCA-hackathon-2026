@@ -246,3 +246,18 @@ summary { cursor:pointer; font-size:0.75rem; }
   .help-flow-branches { grid-template-columns:1fr; }
   .help-flow-fork { text-align:left; }
 }
+/* 모든 화면 위의 서비스 진행 단계 */
+.journey-bar { margin-top:14px; }
+.journey-bar ol { list-style:none; margin:0; padding:8px 10px; display:flex; flex-wrap:wrap; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; font-size:13px; }
+.journey-bar li > a, .journey-bar li > span { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; color:var(--muted); text-decoration:none; }
+.journey-bar li > a:hover { color:var(--text, inherit); }
+.journey-index { display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%; border:1px solid currentColor; font-size:11px; }
+.journey-bar li[data-state="done"] > * { color:var(--text, inherit); }
+.journey-bar li[data-state="done"] .journey-index { background:var(--accent); border-color:var(--accent); color:#0a0a0a; }
+.journey-bar li[data-state="active"] > * { color:var(--accent); }
+.journey-bar li[data-state="current"] > * { background:var(--accent); color:#0a0a0a; font-weight:700; }
+.journey-bar li[data-state="current"] .journey-index { border-color:#0a0a0a; }
+.journey-bar li:not(:last-child):not(.journey-split)::after { content:""; display:inline-block; width:14px; height:1px; background:var(--line); margin-left:6px; vertical-align:middle; }
+.journey-bar li[data-state="branch"] > a { border:1px dashed var(--line); }
+.journey-split { color:var(--accent); padding:0 2px; }
+@media (max-width: 720px) { .journey-bar ol { border-radius:14px; } }

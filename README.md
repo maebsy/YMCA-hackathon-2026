@@ -1,6 +1,8 @@
 # YMCA-hackathon-2026
 코디세이 AI 해커톤 2026 | 이노베이션아카데미 (2026.10.30 ~ 11.02)
 
+72hours는 웹과 원격 MCP에서 공개 GitHub 저장소를 검사하고, AI 해석·수정 지시·재검사·리포트까지 연결합니다. [문서 안내](docs/README.md)에서 현재 지원 범위와 개발·운영 문서를 확인하세요. MCP 이용자는 [연결 안내](integrations/mcp-handoff/DISTRIBUTION.md)를 따르며, 아래 설치 절차는 프로젝트를 직접 실행하는 개발자를 위한 것입니다.
+
 ## 개발 시작하기
 
 ```bash
@@ -46,7 +48,9 @@ docker compose -f compose.yaml -f compose.production.yaml up --build --detach --
 
 프록시 주소는 배포 **빌드 시** 확정됩니다. Compose의 `frontend.build.args.BACKEND_ORIGIN`을 바꾸면 이미지를 다시 빌드해야 합니다. Docker 없이 실행하면 기존 `127.0.0.1:8000` 기본값과 `npm run build/start`가 유지되며, 필요하면 서버 환경 변수 `BACKEND_ORIGIN`을 설정합니다. 브라우저 공개 변수(`NEXT_PUBLIC_*`)는 사용하지 않습니다.
 
-이 구성은 기존 일반 서버의 systemd/Caddy/GPU 터널을 자동 전환하지 않습니다. 공개 시연은 기존 인증 프록시를 거쳐 연결해야 합니다. 현재 프론트의 예제 데이터·OAuth·스캔 접수 같은 기능 통합은 별도 작업이며 Compose 기동이 전체 서비스 연동 완료를 뜻하지는 않습니다. Supabase를 지정해도 기본 Compose의 개발 DB 컨테이너는 함께 뜨지만 API는 지정한 Supabase에 연결합니다. 비동기 모드는 스키마와 별도 worker 준비 후 활성화합니다.
+웹의 검사·리포트와 원격 MCP 연동은 구현되어 있습니다. 다만 기본 Compose의 백엔드 이미지는 `security_engine` 모듈과 외부 스캐너를 포함하지 않으므로, Compose 기동만으로 실제 검사·GPU 해석·실행 검증까지 준비되지는 않습니다. [보안엔진 설치](security_engine/README.md), [LLM 연결](docs/llm.md), [실행 검증 요구사항](docs/verify.md)을 확인하세요. 기존 일반 서버의 systemd/Caddy/GPU 터널은 이 구성으로 자동 전환되지 않습니다.
+
+Supabase를 지정해도 기본 Compose의 개발 DB 컨테이너는 함께 뜨지만 API는 지정한 Supabase에 연결합니다. 인증 기반 비동기 모드는 공개 웹/MCP가 사용하는 미리보기 작업 API와 다른 구성입니다. 단순히 환경변수만 켜지 말고 [활성화 조건과 클라이언트 호환 범위](docs/async-llm.md)를 먼저 확인하세요.
 
 문제가 생기면:
 
@@ -68,7 +72,7 @@ uvicorn app.main:app --reload
 
 - http://localhost:8000/api/health 에서 `{"status":"ok","db":"sqlite"}`가 나오면 성공 (Supabase면 `"postgresql"`)
 - http://localhost:8000/docs 에서 API를 직접 눌러 볼 수 있습니다
-- `Item`과 `/api/items`는 연결 확인용 예시입니다. 실제 테이블을 만들면 지우세요.
+- `Item`과 `/api/items`는 연결 확인용 예시 API이며 보안 검사 결과 저장 경로와 별개입니다.
 
 ## LLM 서버 연결 (vLLM, 8001 포트)
 
@@ -85,13 +89,13 @@ ssh -N -L 8001:127.0.0.1:8001 <GPU 서버>
 
 - 백엔드를 직접 띄우면 `.env`의 `LLM_BASE_URL=http://localhost:8001/v1`을 그대로 씁니다
 - Docker로 띄우면 compose가 `http://host.docker.internal:8001/v1`(내 PC의 8001)로 바꿔 연결합니다
-- vLLM은 OpenAI 호환 API라, 개발 중에는 OpenAI·Ollama 주소로 바꿔도 코드는 그대로입니다
+- 백엔드의 `LLM_API_KEY`와 `LLM_MODEL`은 연결 대상의 키·served model 이름에 맞춥니다. 다른 모델 서버는 JSON Schema 출력과 추론 파라미터 호환성도 확인해야 하므로 URL 변경만으로 동작을 보장하지 않습니다.
 - 모델(Qwen3.8-27B), Red–Blue 흐름, API, 테스트 방법: [docs/llm.md](docs/llm.md)
 
 ## 리포트·신고서
 
-- 비전공자용 점검 리포트(완료 리포트 포함)와 KISA 침해사고 신고(24시간)·개인정보 유출 신고(72시간) 초안: [docs/reports.md](docs/reports.md)
-- `POST /api/reports/plain` · `/assess` · `/incident-24h` · `/privacy-72h`, `?format=json|markdown|html`
+- 비전공자용 점검 리포트와 사용자 확인 사실을 바탕으로 만드는 침해사고·개인정보 유출 신고 초안: [docs/reports.md](docs/reports.md)
+- `POST /api/reports/plain` · `/incident-24h` · `/privacy-72h`는 `?format=json|markdown|html` 지원. `/api/reports/assess`는 기준 안내 JSON만 반환합니다.
 
 ## 규칙
 

@@ -172,6 +172,8 @@ class Section(BaseModel):
     bullets: list[str] = Field(default_factory=list)
     steps: list[str] = Field(default_factory=list)
     cards: list[Card] = Field(default_factory=list)
+    # HTML에서 접어 두는 섹션(제목만 보이고 눌러서 펼침). 마크다운은 그대로 모두 씁니다
+    collapsed: bool = False
 
 
 class Deadline(BaseModel):

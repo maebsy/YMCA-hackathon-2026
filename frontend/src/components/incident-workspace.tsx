@@ -108,11 +108,31 @@ function Evidence() {
   </details>;
 }
 
+/** 검사 결과·리포트의 '검사 기록으로 신고 초안 만들기'(/incident?from=scan)로 들어오면 한 번 자동으로 채웁니다. */
+function AutoFill({ run }: { run: () => void }) {
+  const latest = useRef(run);
+  useEffect(() => { latest.current = run; });
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("from") !== "scan") return;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    const timer = window.setTimeout(() => latest.current(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return null;
+}
+
 function ScanImport() {
-  const d = useIncident();
   const repository = useRepository();
   if (!repository.reportInput || !repository.resultRepo)
     return <p className="incident-scan-empty muted">검사 없이 시작해도 됩니다. 저장소를 검사했다면 수정·재검사 기록을 조치 내용으로 가져올 수 있습니다.</p>;
+  return <ScanImportReady/>;
+}
+
+function ScanImportReady() {
+  const d = useIncident();
+  const repository = useRepository();
+  const autoFilled = useRef(false);
+  if (!repository.reportInput) return null;
   // 점검을 실행한 사실을 첫 줄로, 그 뒤에 수정·재검사 기록을 붙입니다
   const actions = [scanCheckLine(repository.resultRepo, repository.findings), ...scanActions(repository.findings, repository.pendingIds)];
   const current = d.form.actions.split(/\r?\n/).map(line => line.trim());
@@ -137,6 +157,7 @@ function ScanImport() {
     toSelect.forEach(item => d.toggleEvidence(item));
   }
   return <section className="incident-scan" aria-labelledby="incident-scan-title">
+    <AutoFill run={() => { if (autoFilled.current) return; autoFilled.current = true; fillFromScan(); }}/>
     <div className="incident-scan-heading"><GitBranch size={18}/><div><h3 id="incident-scan-title">검사 기록에서 가져오기</h3><code>{repository.resultRepo}</code></div></div>
     <div className="incident-scan-fill">
       <button type="button" className="button" disabled={filledFromScan} onClick={fillFromScan}>{filledFromScan ? <><Check size={15}/>검사 결과로 채움</> : "검사 결과로 초안 채우기"}</button>

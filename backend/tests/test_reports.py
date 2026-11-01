@@ -657,3 +657,15 @@ def test_privacy_items_warn_against_lumping_with_deung():
     clear = filing.build_privacy_report(FilingRequest.model_validate({"incident": incident(personal_info=breach())}), NOW)
     assert field(section(clear, "유출신고서 항목"), "유출된 개인정보 항목").hint is None
     assert "제34조 제4항" in clear.deadline.basis
+
+
+def test_plain_report_starts_with_three_line_summary_and_folds_details():
+    # 멘토 피드백: 보고서가 너무 김 → 맨 위 3줄 요약, 자세한 내용은 접기
+    report = plain.build_plain_report(plain_request(results=[explanation("demo-secret-supabase-service-role")]), NOW)
+    lines = section(report, "한눈에 보기").bullets
+    assert len(lines) == 3
+    assert lines[0].startswith("지금 바로 고칠 것 ") and lines[1].startswith("가장 위험한 것: ") and lines[2].startswith("다음 할 일: ")
+    assert section(report, "고칠 것 자세히").collapsed and not section(report, "한눈에 보기").collapsed
+    html = render.to_html(report)
+    assert "<details><summary>" in html and "눌러서 펼치기" in html
+    assert html.index("한눈에 보기") < html.index("<details>")

@@ -126,6 +126,11 @@ BLUE_PATCH_SYSTEM = """\
   쿼리에 쓰이던 값은 매개변수로 넘겨 계속 쓰이게 한다.
 - 새 패키지를 추가하지 않는다. 언어 기본 기능과 이미 쓰는 라이브러리로 고친다.
   (예: SQL은 자리표시자(?)와 매개변수, HTML 출력은 이스케이프, 비밀값은 환경변수)
+- 따옴표 종류나 공백만 바꾸는 것은 수정이 아니다. 예시(Node.js/Express, 한 줄씩 바꾸면 된다):
+  · SQL: db.query("... WHERE id = " + id)  →  db.query("... WHERE id = ?", id)
+  · HTML 출력: const q = req.query.q || "";  →
+    const q = String(req.query.q || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+- 한 줄만 고치면 되면 start_line과 end_line을 같은 줄로 둔다. 응답을 보내는 줄(res.send, res.json)은 범위에 넣지 않는다.
 - 코드 블록 표시(```)를 넣지 않는다. summary는 무엇을 고쳤는지 한국어 한두 문장. JSON만 출력한다."""
 
 
@@ -191,6 +196,43 @@ def to_attack_spec(draft: RedAttackDraft, attack_id: str, finding: FindingInput)
     )
 
 
+_HEAD = re.compile(r"\s*((?:const|let|var|return)?\s*[\w.$]+)\s*(?:=|\()")
+
+
+def _similar(a: str, b: str) -> bool:
+    """같은 줄을 고친 것으로 보이는지: 글자가 많이 겹치거나, 같은 변수에 대입·같은 함수 호출로 시작하면 같은 줄로 봅니다
+    (예: `const q = req.query.q || ""` → `const q = String(...).replace(...)`)."""
+    if difflib.SequenceMatcher(None, a.strip(), b.strip()).ratio() >= 0.6:
+        return True
+    ha, hb = _HEAD.match(a), _HEAD.match(b)
+    return bool(ha and hb and ha.group(1).split() == hb.group(1).split())
+
+
+def normalize_edits(patch: BluePatch, original: str) -> list[Edit]:
+    """모델이 자주 내는 형식 실수를 서버가 바로잡습니다.
+
+    - 범위를 크게 잡고 앞쪽 줄만 다시 쓴 경우(예: 51~52줄 범위에 51줄 고친 것만 씀): 빠진 뒤쪽 원래 줄을 그대로 붙입니다.
+      운영에서 응답 줄(res.send)이 사라져 앱이 멈추는 수정본이 거의 매번 나왔습니다. 돌려준 줄이 범위 앞쪽 줄과
+      비슷할 때만(고친 것으로 보일 때만) 붙이고, 줄을 정말 지우려는 듯한 편집은 그대로 둡니다.
+    - 따옴표·공백만 바꾼 편집은 수정이 아니므로 적용하지 않습니다.
+    """
+    lines = original.splitlines()
+    fixed: list[Edit] = []
+    for edit in patch.edits:
+        if not 1 <= edit.start_line <= edit.end_line <= len(lines):
+            fixed.append(edit)  # 범위 오류는 to_patch_content 가 이유와 함께 거절합니다
+            continue
+        span = lines[edit.start_line - 1:edit.end_line]
+        new = edit.replace.splitlines()
+        if 0 < len(new) < len(span) and all(_similar(n, o) for n, o in zip(new, span)):
+            edit = Edit(start_line=edit.start_line, end_line=edit.end_line,
+                        replace="\n".join([*new, *span[len(new):]]))
+        if _same_code("\n".join(span), edit.replace):
+            continue
+        fixed.append(edit)
+    return fixed
+
+
 def to_patch_content(patch: BluePatch, path: str, original: str) -> tuple[str | None, str]:
     """줄 범위 편집을 원본에 적용해 (수정된 전체 내용, '') 또는 받을 수 없으면 (None, 이유)를 돌려줍니다.
 
@@ -199,7 +241,9 @@ def to_patch_content(patch: BluePatch, path: str, original: str) -> tuple[str | 
     if PurePosixPath(patch.file_path.strip().lstrip("./")) != PurePosixPath(path):
         return None, f"입력에 없는 파일을 고치려 했습니다: {patch.file_path[:80]!r}"
     lines = original.splitlines(keepends=True)
-    edits = sorted(patch.edits, key=lambda e: e.start_line)
+    edits = sorted(normalize_edits(patch, original), key=lambda e: e.start_line)
+    if not edits:
+        return None, "모든 편집이 따옴표·공백만 바꿔 실제로 고친 곳이 없습니다. 취약한 줄을 실제로 고치세요."
     for i, edit in enumerate(edits, 1):
         if not 1 <= edit.start_line <= edit.end_line <= len(lines):
             return None, f"{i}번째 편집의 줄 범위 {edit.start_line}~{edit.end_line}가 파일(1~{len(lines)}줄) 밖입니다."
@@ -261,7 +305,11 @@ def blue_check(path: str, original: str):
         if content is None:
             return [why]
         broken = syntax_error(path, content)
-        return [broken] if broken else _dropped_lines(patch, original) + _cosmetic_edits(patch, original)
+        if broken:
+            return [broken]
+        # 서버가 바로잡은 뒤에도 남는 문제만 되묻습니다 (따옴표만 바꾼 편집은 알려 줘서 실제로 고치게 함)
+        repaired = BluePatch(file_path=patch.file_path, edits=normalize_edits(patch, original) or patch.edits, summary=patch.summary)
+        return _dropped_lines(repaired, original) + _cosmetic_edits(patch, original)
     return check
 
 

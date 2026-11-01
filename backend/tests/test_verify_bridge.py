@@ -105,7 +105,7 @@ async def test_bad_red_output_is_skipped(fake_vllm, over, why):
         (blue([{"start_line": 9, "end_line": 8, "replace": "x"}]), "밖입니다"),
         (blue([SQL_EDIT, {"start_line": SQL_LINE, "end_line": SQL_LINE + 1, "replace": "x"}]), "겹칩니다"),
         (blue([{"start_line": SQL_LINE, "end_line": SQL_LINE,
-                "replace": ORIGINAL.splitlines()[SQL_LINE - 1]}]), "원본과 같"),
+                "replace": ORIGINAL.splitlines()[SQL_LINE - 1]}]), "실제로 고친 곳이 없습니다"),
     ],
 )
 async def test_bad_blue_output_is_skipped(fake_vllm, patch, why):
@@ -285,9 +285,29 @@ async def test_blue_dropping_response_line_is_sent_back_once(fake_vllm):
 
     plan = await B.plan_verification(fake_vllm.client(), [SQLI, XSS], DEMO)
 
+    # 운영에서 실제로 나온 답(따옴표만 바꾼 한 줄)은 서버가 빠진 응답 줄을 되붙이고, 겉모양만 바꾼 점을 되묻습니다
     retry = fake_vllm.calls("BluePatch")[1]["messages"][-1]["content"]
-    assert "2줄)을 1줄로" in retry and "res.type" in retry  # 사라지는 줄을 알려 줌
+    assert "따옴표·공백만" in retry
     assert "res.type" in plan.patch.files["server.js"].splitlines()[XSS_LINE]  # 다시 받은 정상 수정본 사용
+
+
+async def test_server_restores_response_line_the_model_forgot(fake_vllm):
+    # 범위를 51~52줄로 잡고 고친 51줄만 돌려줘도, 서버가 52줄(res.send)을 그대로 붙여 앱이 멈추지 않게 합니다 (#ai-blue-repair)
+    escaped_only = dict(XSS_EDIT, end_line=XSS_LINE + 1)
+    fake_vllm.queue("RedAttackPlan", red(), RED_XSS).queue("BluePatch", blue(edits=[SQL_EDIT, escaped_only]))
+
+    plan = await B.plan_verification(fake_vllm.client(), [SQLI, XSS], DEMO)
+
+    assert len(fake_vllm.calls("BluePatch")) == 1  # 되묻지 않음
+    lines = plan.patch.files["server.js"].splitlines()
+    assert "&amp;" in lines[XSS_LINE - 1] and "res.type" in lines[XSS_LINE]
+
+
+def test_cosmetic_only_edit_is_not_applied():
+    quote_only = {"start_line": XSS_LINE, "end_line": XSS_LINE, "replace": "    const q = req.query.q || '';"}
+    content, _ = B.to_patch_content(B.BluePatch(**blue(edits=[SQL_EDIT, quote_only])), "server.js", ORIGINAL)
+    assert content.splitlines()[XSS_LINE - 1] == ORIGINAL.splitlines()[XSS_LINE - 1]  # XSS 줄은 원본 그대로
+    assert "?" in content.splitlines()[SQL_LINE - 1]
 
 
 async def test_intentional_line_removal_is_accepted_on_second_answer(fake_vllm):

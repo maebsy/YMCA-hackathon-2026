@@ -95,7 +95,7 @@ export default function RepositoryResult() {
       os={repository.os} onChangeOS={repository.setOS} countdown=""
       onShowToast={repository.showMessage} repoInput={repository.repoInput} onChangeRepoInput={repository.setRepoInput}/></div>
     <section className="card incident-entry"><FlaskConical size={22}/><div><h2>고친 코드가 실제로 공격을 막을까요?</h2><p className="muted">Red가 공격하고 Blue가 고친 뒤, 격리 환경에서 수정 전·후를 직접 실행해 공격이 막히고 기능은 그대로인지 확인합니다. 지금은 데모 사이트로 시연하며, 내 저장소 실검증은 GitHub 로그인으로 소유권을 확인한 뒤 켭니다.</p><Link className="text-link" href="/verify">Red–Blue 실검증 보기 <ArrowRight size={15}/></Link></div></section>
-    <section className="card incident-entry"><ShieldAlert size={22}/><div><h2>실제 사고가 의심되나요?</h2><p className="muted">확인한 사실을 기록하고 신고 대상·기한과 두 신고서 초안을 준비하세요. 검사 발견은 선택해서 연결할 수 있습니다.</p><Link className="text-link" href="/incident">사고 신고 준비하기 <ArrowRight size={15}/></Link></div></section>
+    <section className="card incident-entry"><ShieldAlert size={22}/><div><h2>실제 사고가 의심되나요? 24시간·72시간 신고 초안</h2><p className="muted">이 검사 기록(점검 요약·조치 기록·위험도 높은 발견·검사한 저장소)으로 침해사고(24시간)·개인정보 유출(72시간) 신고서 초안을 바로 만듭니다. 취약점이 곧 침해 사실은 아니니, 실제 피해 여부는 직접 확인해 고쳐 주세요.</p><Link className="button" href="/incident?from=scan">검사 기록으로 신고 초안 만들기 <ArrowRight size={15}/></Link></div></section>
     <Link className="text-link" href="/"><ArrowLeft size={15}/>GitHub 주소 입력으로 돌아가기</Link>
   </main>;
 }

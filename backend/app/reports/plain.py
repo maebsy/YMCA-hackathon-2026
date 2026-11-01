@@ -486,8 +486,8 @@ def next_steps(open_items: list[Item], completed: bool, needs_rescan: bool = Fal
         return Section(
             heading="앞으로",
             bullets=[
-                # 매일 자동 검사·이메일 알림은 아직 없습니다(docs/roadmap.md). 없는 기능을 약속하지 않습니다
-                "새 취약점은 계속 공개됩니다. 정기적으로 재검사 버튼을 눌러 다시 확인해 주세요. 매일 자동 검사·알림은 준비 중입니다.",
+                # 재검사는 사용자가 실행합니다. 지원 범위는 docs/limitations.md를 따릅니다.
+                "새 취약점은 계속 공개됩니다. 정기적으로 재검사 버튼을 눌러 다시 확인해 주세요.",
                 "코드를 고치거나 새 기능을 넣은 뒤에는 한 번 더 검사해 주세요.",
             ],
         )

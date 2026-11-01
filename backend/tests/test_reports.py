@@ -587,7 +587,7 @@ def test_completed_next_steps_do_not_promise_unbuilt_alerts():
 
     text = " ".join(next_steps([], completed=True).bullets)
     assert "알려 드립니다" not in text and "자동 검사는 계속" not in text
-    assert "재검사" in text and "준비 중" in text
+    assert "재검사" in text and "준비 중" not in text
 
 
 

@@ -16,12 +16,12 @@ export type ProgressProps = {
   reportFailed?: boolean; resultHref?: string; busy?: boolean;
 };
 
-const labels = { idle: "검사 준비", queued: "접수 대기 중", running: "엔진 검사 중", explaining: "언어모델 해석 중", reporting: "결과 정리 중", done: "검사 완료", failed: "검사 중단" };
+const labels = { idle: "준비", queued: "접수 대기", running: "점검 중", explaining: "AI 분석 중", reporting: "리포트 정리 중", done: "완료", failed: "중단됨" };
 const steps = [
-  { title: "접수", description: "검사 요청을 접수합니다." },
-  { title: "엔진 검사", description: "저장소의 보안 항목을 살펴봅니다." },
-  { title: "언어모델 해석", description: "발견 항목에 쉬운 설명을 더합니다." },
-  { title: "결과 정리", description: "검사 근거와 수정 안내를 확인합니다." },
+  { title: "접수", description: "요청을 확인합니다." },
+  { title: "점검", description: "비밀키·코드·부품·설정을 살핍니다." },
+  { title: "AI 분석", description: "위험한 항목부터 풀어 설명합니다." },
+  { title: "리포트", description: "근거와 고칠 순서를 정리합니다." },
 ];
 /** "완료 1/5 · 해석 중 2 · 대기 2". 해석 중·대기 건수는 상태를 받기 전이면 생략합니다. */
 export function explainedText(explained: { done: number; total: number; running?: number; queued?: number }): string {
@@ -80,7 +80,7 @@ export default function ProgressH({ repo, phase, startedAt, logs, explained, cou
     <p className="ph-sr-only" role="status" aria-live="polite" aria-atomic="true">{labels[phase]}</p>
     <div className="ph-summary"><code className="ph-repo">{repo}</code><span className="ph-state"><span className={`ph-dot${active ? " ph-pulse" : ""}`} aria-hidden="true"/>{labels[phase]}</span><Elapsed startedAt={startedAt} active={active}/></div>
     <div className="ph-columns">
-      <div className="ph-stages"><div className="ph-section-heading"><h2 className="ph-section-title">전체 검사 과정</h2>{onRetry && !reportFailed && <button className="ph-text-button" type="button" disabled={active || phase === "idle"} onClick={onRetry}>재검사</button>}</div>
+      <div className="ph-stages"><div className="ph-section-heading"><h2 className="ph-section-title">진행 단계</h2>{onRetry && !reportFailed && <button className="ph-text-button" type="button" disabled={active || phase === "idle"} onClick={onRetry}>재검사</button>}</div>
         <ol className="ph-step-list" aria-label="검사 단계">{steps.map((step, index) => {
           const noExplanationCount = index === 2 && (phase === "done" || phase === "reporting" || reportFailed) && !explained;
           const skipped = noExplanationCount && logs.some(line => /해석 없음|해석 서버에 연결할 수 없어/.test(line));

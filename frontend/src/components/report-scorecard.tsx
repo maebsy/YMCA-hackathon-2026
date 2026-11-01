@@ -61,9 +61,9 @@ export default function ReportScorecard({ rows, identity, fresh, children }: { r
   }
   return <>
     <section className="scorecard" aria-labelledby="scorecard-title">
-      <div className="score-heading"><h1 id="scorecard-title">검사 채점표</h1><button type="button" onClick={replay}><RotateCcw size={12} aria-hidden="true"/>다시 재생</button></div>
+      <div className="score-heading"><h1 id="scorecard-title">점검 결과</h1><button type="button" onClick={replay}><RotateCcw size={12} aria-hidden="true"/>다시 재생</button></div>
       <div className="score-totals" aria-label="등급별 발견 건수">{(Object.keys(SCORE_LEVELS) as ScoreLevel[]).filter(level => SCORE_LEVELS[level].rank < 4 || rows.some(row => row.severity === level)).map(level => <span className={`score-total score-${level}`} key={level}>{SCORE_LEVELS[level].short} <b>{rows.filter(row => row.severity === level).length}</b></span>)}</div>
-      {rows.length ? <ul className="score-list" aria-label="심각도별 발견 항목" key={run}>{rows.slice(0,10).map((row,index) => <Row key={row.id} row={row} index={index} animated={animating}/>)}</ul> : <div key={run} className={`score-empty${animating ? " score-stamp" : ""}`} style={{ "--stamp-index":0 } as CSSProperties}><Info size={19} aria-hidden="true"/><b>발견 0건</b><span>검사 범위 밖의 안전을 보장하지 않습니다.</span></div>}
+      {rows.length ? <ul className="score-list" aria-label="심각도별 발견 항목" key={run}>{rows.slice(0,10).map((row,index) => <Row key={row.id} row={row} index={index} animated={animating}/>)}</ul> : <div key={run} className={`score-empty${animating ? " score-stamp" : ""}`} style={{ "--stamp-index":0 } as CSSProperties}><Info size={19} aria-hidden="true"/><b>찾은 문제 없음</b><span>점검한 범위 안에서의 결과입니다.</span></div>}
       {rows.length > 10 && <details className="score-more"><summary>외 {rows.length - 10}건</summary><ul className="score-list" aria-label="나머지 발견 항목">{rows.slice(10).map(row => <Row key={row.id} row={row} index={0} animated={false}/>)}</ul></details>}
       <p className="score-sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</p>
     </section>

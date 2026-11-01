@@ -32,7 +32,7 @@ export function scoreRows(raw: unknown[], findings: Finding[], pendingIds: strin
     const kind = (typeof cwe === "string" ? cweNames[cwe] : categories[category] || category) || "—";
     const path = text(item.file_path);
     const line = typeof item.start_line === "number" && Number.isInteger(item.start_line) && item.start_line > 0 ? item.start_line : undefined;
-    const action = display?.fixed || item.status === "code_resolved" ? "해결 확인" : pendingIds.includes(id) ? "재검증 대기" : "";
+    const action = display?.fixed || item.status === "code_resolved" ? "해결" : pendingIds.includes(id) ? "확인 중" : "";
     const tool = text(item.tool);
     const suffix = line ? ":" + line : "";
     return { id, severity, kind, rule: rule || "—", tool: toolNames[tool.toLowerCase()] || tool || "—",

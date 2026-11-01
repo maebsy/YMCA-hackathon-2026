@@ -18,8 +18,8 @@ export default function McpConnect({ embedded = false }: { embedded?: boolean })
     catch { setCopied(""); setStatus("복사하지 못했습니다. 내용을 직접 선택해 복사해 주세요."); }
   }
   return <section className={embedded ? "mc mc-embedded" : "card mc"} aria-labelledby="mcp-connect-title">
-    <h2 id="mcp-connect-title"><Unplug size={17} aria-hidden="true"/>AI 코딩 도구에 연결</h2>
-    <p className="mc-hint">쓰는 도구를 고르고 아래 내용을 붙여 넣으면 검사·수정 안내를 코딩 도구 안에서 바로 쓸 수 있습니다.</p>
+    <h2 id="mcp-connect-title"><Unplug size={17} aria-hidden="true"/>AI 코딩 도구에서 쓰기</h2>
+    <p className="mc-hint">한 줄만 붙여 넣으면 점검부터 수정까지 쓰던 도구 안에서 이어집니다.</p>
     <div className="mc-agents" role="group" aria-label="AI 코딩 도구">
       {targets.map(item => <button key={item.id} type="button" aria-pressed={item.id === target.id}
         className={item.id === target.id ? "mc-agent mc-agent-on" : "mc-agent"} onClick={() => choose(item.id)}>{item.label}</button>)}

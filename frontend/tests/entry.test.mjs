@@ -181,9 +181,7 @@ test("home sends a Pages site's repository URL and shows both supported input fo
   assert.equal(input.props.placeholder, "owner/repository");
   assert.equal(input.props["aria-describedby"], "repository-hint");
   const hint = ui.tree.find(node => node.props.id === "repository-hint");
-  assert.equal(hint.props.children[0], "owner/repository 또는 owner.github.io를 입력하세요.");
-  assert.equal(hint.props.children[1].type, "br");
-  assert.equal(hint.props.children[2], "GitHub Pages는 해당 저장소로 변환해 검사합니다.");
+  assert.equal(hint.props.children, "github.com/owner/repo 또는 owner.github.io");
   assert.equal(ui.tree.some(node => node.type === "span" && node.props.children === "실제 엔진 검사"), false);
 });
 test("website and malformed repository inputs stay on the form without engine requests", () => {
@@ -315,7 +313,7 @@ test("report is visible immediately with two small MD actions using the prepared
   assert.equal(frame.props.sandbox, "allow-same-origin");
   assert.ok(!frame.props.sandbox.includes("allow-scripts"));
   const buttons = ui.tree.filter(node => node.type === "button"); assert.equal(buttons.length, 2);
-  const copy = buttons.find(node => node.props.children.at(-1) === "MD 복사");
+  const copy = buttons.find(node => node.props.children.at(-1) === "복사");
   copy.props.onClick(); assert.deepEqual(writes, ["# Prepared MD"]); assert.equal(fetches, 0);
   assert.equal(ui.tree.some(node => node.props.children === "HTML 리포트 보기"), false);
 });
@@ -391,12 +389,12 @@ test("header destination, label and aria-current follow scanning, result and emp
   }
   // The server and first client render use the provider's empty default.
   assert.equal(headerLink().props.href, "/");
-  assert.equal(headerLink().props.children, "GitHub 실제 검사");
+  assert.equal(headerLink().props.children, "점검");
   for (const [state, href, label] of [
-    [{ isScanning: true, result: null }, "/repository", "검사 진행"],
-    [{ isScanning: true, result: {} }, "/repository", "검사 진행"],
-    [{ isScanning: false, result: {} }, "/report", "검사 결과"],
-    [{ isScanning: false, result: null }, "/", "GitHub 실제 검사"],
+    [{ isScanning: true, result: null }, "/repository", "진행 중"],
+    [{ isScanning: true, result: {} }, "/repository", "진행 중"],
+    [{ isScanning: false, result: {} }, "/report", "결과"],
+    [{ isScanning: false, result: null }, "/", "점검"],
   ]) {
     repository = state; pathname = href;
     assert.equal(headerLink().props.href, href); assert.equal(headerLink().props.children, label);

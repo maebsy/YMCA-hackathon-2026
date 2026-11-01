@@ -17,7 +17,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   // The provider starts empty on both server and client, then restores in an effect.
   const { isScanning, result } = useRepository();
   const repositoryHref = isScanning ? REPOSITORY_PROGRESS_PATH : result ? REPOSITORY_RESULT_PATH : "/";
-  const repositoryLabel = isScanning ? "검사 진행" : result ? "검사 결과" : "GitHub 실제 검사";
+  const repositoryLabel = isScanning ? "진행 중" : result ? "결과" : "점검";
   useEffect(() => {
     try { document.documentElement.dataset.theme = localStorage.getItem("72hours-theme") === "light" ? "light" : "dark"; } catch { /* optional storage */ }
   }, []);
@@ -34,15 +34,15 @@ export default function Shell({ children }: { children: ReactNode }) {
     <a className="skip-link" href="#main">본문으로 바로가기</a>
     <header className="site-header container">
       <Link href="/" aria-label="72hours 홈"><Brand/></Link>
-      <span className="header-note">만드는 사람 곁의 보안 가이드</span>
+      <span className="header-note">찾고, 고치고, 확인까지</span>
       <nav className="header-actions" aria-label="보조 메뉴">
         <Link href={repositoryHref} aria-current={pathname === repositoryHref ? "page" : undefined}>{repositoryLabel}</Link>
-        <Link href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}>사고 신고</Link>
-        <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>도움말</Link>
+        <Link href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}>사고 대응</Link>
+        <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>사용법</Link>
         <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label="밝은 테마와 어두운 테마 전환"><Sun className="sun-icon" size={18}/><Moon className="moon-icon" size={18}/></button>
       </nav>
     </header>
     {children}
-    <footer className="site-footer"><div className="container footer-inner"><p>© 2026 72hours <span>·</span> 작은 서비스의 더 안전한 다음 단계.</p><Link href="/help">사용 방법과 검사 범위</Link></div></footer>
+    <footer className="site-footer"><div className="container footer-inner"><p>© 2026 72hours <span>·</span> 사고 나기 전에 찾고, 나면 72시간 안에.</p><Link href="/help">사용법과 점검 범위</Link></div></footer>
   </div>;
 }

@@ -245,7 +245,7 @@ const SEV_DECISION: Record<string, Finding["decision"]> = {
   critical: "act", high: "act", medium: "attend", low: "trackstar", unknown: "trackstar",
 };
 const DECISION_LABEL: Record<Finding["decision"], string> = {
-  act: "act · 지금 바로", attend: "attend · 이번 주", trackstar: "track · 지켜보기",
+  act: "지금", attend: "이번 주", trackstar: "지켜보기",
 };
 
 const HANGUL = /[가-힣]/;

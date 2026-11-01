@@ -12,7 +12,7 @@ const MAIN = [
 ] as const;
 const NEXT = [
   { path: "/verify", label: "실검증" },
-  { path: "/mcp/connect", label: "MCP 연결", external: true },
+  { path: "/mcp-guide", label: "MCP 연결" },
   { path: "/incident", label: "사고 신고 24h·72h" },
 ] as const;
 const SHOWN = new Set<string>([...MAIN.map(step => step.path), ...NEXT.map(step => step.path)]);
@@ -46,7 +46,7 @@ export default function JourneyBar() {
       {NEXT.map(step => {
         const isCurrent = pathname === step.path;
         return <li key={step.path} data-state={isCurrent ? "current" : "branch"} aria-current={isCurrent ? "step" : undefined}>
-          {isCurrent ? <span>{step.label}</span> : "external" in step ? <a href={step.path}>{step.label}</a> : <Link href={step.path}>{step.label}</Link>}
+          {isCurrent ? <span>{step.label}</span> : <Link href={step.path}>{step.label}</Link>}
         </li>;
       })}
     </ol>

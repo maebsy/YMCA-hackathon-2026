@@ -39,8 +39,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         <Link href={repositoryHref} aria-current={pathname === repositoryHref ? "page" : undefined}>{repositoryLabel}</Link>
         {/* 핵심 기능 세 가지는 따로 강조합니다 (최종 멘토링: 실검증·MCP·사고 신고가 카테고리로 잘 보여야 함) */}
         <Link className="nav-core" href="/verify" aria-current={pathname === "/verify" ? "page" : undefined}>실검증</Link>
-        {/* /mcp/* 는 공개 서버에서 MCP 서버가 응답하므로 앱 내부 이동(Link)이 아닌 일반 링크로 엽니다 (#187) */}
-        <a className="nav-core" href="/mcp/connect">MCP 연결</a>
+        <Link className="nav-core" href="/mcp-guide" aria-current={pathname === "/mcp-guide" ? "page" : undefined}>MCP 연결</Link>
         <Link className="header-incident-link" href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}><ShieldAlert size={16} aria-hidden="true"/>72시간 사고 신고</Link>
         <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>사용법</Link>
         <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label="밝은 테마와 어두운 테마 전환"><Sun className="sun-icon" size={18}/><Moon className="moon-icon" size={18}/></button>

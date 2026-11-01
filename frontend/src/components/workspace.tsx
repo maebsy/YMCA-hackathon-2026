@@ -16,9 +16,9 @@ const flow: { step: string; title: string; text: string; href: string; tone?: "c
   { step: "3", title: "AI 쉬운 설명", text: "GPU Red–Blue가 위험·수정 방법 설명", href: "/repository" },
   { step: "4", title: "결과·리포트", text: "3줄 요약과 수정 지시문", href: "/report", tone: "core" },
 ];
-const branches: { title: string; text: string; href: string; label: string; external?: boolean }[] = [
+const branches: { title: string; text: string; href: string; label: string }[] = [
   { title: "실검증", text: "고친 코드를 격리 환경에서 실제로 공격해 막히는지 확인", href: "/verify", label: "Red–Blue" },
-  { title: "MCP 연결", text: "검사 결과로 연결 키를 발급해 Cursor·Claude Code 같은 AI 코딩 도구에서 바로 고침", href: "/mcp/connect", label: "MCP", external: true },
+  { title: "MCP 연결", text: "수정 지시를 Cursor·Claude Code 같은 AI 코딩 도구로 바로 보냄", href: "/mcp-guide", label: "MCP" },
   { title: "사고 신고", text: "사고가 의심되면 검사 기록으로 24시간·72시간 신고서 초안", href: "/incident", label: "24h · 72h" },
 ];
 
@@ -31,9 +31,7 @@ function FlowDiagram() {
     </li>)}</ol>
     <p className="help-flow-fork" aria-hidden="true">결과에서 필요한 것으로 이어서</p>
     <ul className="help-flow-branches">{branches.map(branch => <li key={branch.title}>
-      {branch.external
-        ? <a href={branch.href}><span className="help-flow-label">{branch.label}</span><strong>{branch.title}</strong><small>{branch.text}</small></a>
-        : <Link href={branch.href}><span className="help-flow-label">{branch.label}</span><strong>{branch.title}</strong><small>{branch.text}</small></Link>}
+      <Link href={branch.href}><span className="help-flow-label">{branch.label}</span><strong>{branch.title}</strong><small>{branch.text}</small></Link>
     </li>)}</ul>
     <p className="muted help-flow-note">고친 뒤에는 같은 저장소를 다시 검사하면 해결된 항목이 ‘해결 확인’으로 바뀝니다. 각 상자를 누르면 그 화면으로 갑니다.</p>
   </article>;

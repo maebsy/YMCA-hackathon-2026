@@ -378,7 +378,7 @@ test("header destination, label and aria-current follow scanning, result and emp
   let repository = { isScanning: false, result: null };
   let pathname = "/";
   const { default: Shell } = load("../src/components/shell.tsx", {
-    react: { useEffect() {} }, "react/jsx-runtime": { jsx: element, jsxs: element },
+    react: { useEffect() {}, useState: value => [value, () => {}], useRef: value => ({ current: value }), useCallback: callback => callback }, "react/jsx-runtime": { jsx: element, jsxs: element },
     "next/link": { default: "a" }, "next/navigation": { usePathname: () => pathname },
     "@/components/repository-provider": { useRepository: () => repository },
     "@/lib/repository-routes": { REPOSITORY_PROGRESS_PATH: "/repository", REPOSITORY_RESULT_PATH: "/report" },
@@ -394,12 +394,12 @@ test("header destination, label and aria-current follow scanning, result and emp
     const incident = links.find(node => node.props.href === "/incident");
     assert.equal(incident.props.href, "/incident");
     assert.equal(incident.props.className, "header-incident-link");
-    assert.equal(incident.props.children[1], "72시간 사고 신고");
+    assert.equal(incident.props.children[1], "사고 신고 72h");
     assert.equal(incident.props.children[0].props["aria-hidden"], "true");
     assert.equal(incident.props["aria-current"], route === "/incident" ? "page" : undefined);
     assert.equal(links.find(node => node.props.href === "/help").props.children, "사용법");
-    assert.equal(links.find(node => node.props.href === "/verify").props.children, "실검증");
-    assert.equal(links.find(node => node.props.href === "/mcp-guide").props.children, "MCP 연결");
+    assert.equal(links.find(node => node.props.href === "/verify").props.children, "실제검증");
+    assert.equal(links.find(node => node.props.href === "/mcp-guide").props.children, "MCP로 전달");
     assert.equal(nodes(nav).find(node => node.type === "button").props.className, "icon-button theme-toggle");
   }
   pathname = "/";

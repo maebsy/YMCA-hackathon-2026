@@ -56,7 +56,7 @@ class VerifyJobs:
         self._prune()
         if sum(job["finished"] is None for job in self.jobs.values()) >= self.capacity:
             raise HTTPException(429, detail={"code": "VERIFY_QUEUE_FULL",
-                                             "message": "실검증이 이미 돌고 있습니다. 1~2분 뒤 다시 시도해 주세요."},
+                                             "message": "실제검증이 이미 돌고 있습니다. 1~2분 뒤 다시 시도해 주세요."},
                                 headers={"Retry-After": "60"})
         key = uuid.uuid4().hex
         self.jobs[key] = {"job_id": key, "status": "queued", "result": None, "error": None,
@@ -101,13 +101,13 @@ class VerifyJobs:
                 job["status"] = "done"
         except asyncio.CancelledError:
             job.update(status="failed", error={"code": "VERIFY_INTERRUPTED",
-                                               "message": "서버가 중단되어 실검증이 멈췄습니다. 다시 실행해 주세요."})
+                                               "message": "서버가 중단되어 실제검증이 멈췄습니다. 다시 실행해 주세요."})
             raise
         except Exception as exc:
             # 예외 원문에는 서버 경로가 섞일 수 있어 화면에는 고정 문구만 보냅니다
             log.warning("verify job %s failed: %s", key, type(exc).__name__)
             job.update(status="failed", error={"code": "VERIFY_ERROR",
-                                               "message": "실검증 실행 중 오류가 났습니다. 서버 로그를 확인해 주세요."})
+                                               "message": "실제검증 실행 중 오류가 났습니다. 서버 로그를 확인해 주세요."})
         finally:
             job["finished"] = time.monotonic()
             job["finished_at"] = datetime.now(timezone.utc).isoformat()
@@ -118,7 +118,7 @@ class VerifyJobs:
         job = self.jobs.get(key)
         if job is None or job["owner"] != owner:
             raise HTTPException(404, detail={"code": "VERIFY_JOB_NOT_FOUND",
-                                             "message": "실검증 작업을 찾을 수 없습니다. 서버가 다시 켜졌다면 다시 실행해 주세요."})
+                                             "message": "실제검증 작업을 찾을 수 없습니다. 서버가 다시 켜졌다면 다시 실행해 주세요."})
         return {k: v for k, v in job.items() if k not in ("owner", "finished")}
 
     async def aclose(self) -> None:

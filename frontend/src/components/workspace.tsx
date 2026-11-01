@@ -10,11 +10,11 @@ const titles: Record<View, [string, string, string]> = {
   help: ["HELP & SCOPE", "한 장으로 보는 서비스 흐름", "저장소 검사부터 실제검증, MCP 전달, 24·72시간 사고 신고까지 어떻게 이어지는지 먼저 보세요."],
 };
 // 도움말 첫 화면의 서비스 흐름 그림. 각 단계는 실제 화면으로 이어집니다
-const flow: { step: string; title: string; text: string; href: string; tone?: "core" | "branch" }[] = [
+const flow: { step: string; title: string; text: string; href: string; note?: string }[] = [
   { step: "1", title: "저장소 입력", text: "공개 GitHub 주소 하나", href: "/" },
   { step: "2", title: "보안엔진 검사", text: "코드·부품·비밀키·설정 4종", href: "/repository" },
   { step: "3", title: "AI 쉬운 설명", text: "GPU Red–Blue가 위험·수정 방법 설명", href: "/repository" },
-  { step: "4", title: "결과·리포트", text: "3줄 요약과 수정 지시문", href: "/report", tone: "core" },
+  { step: "4", title: "결과·리포트", text: "3줄 요약과 수정 지시문", href: "/report", note: "여기서 갈라져요" },
 ];
 const branches: { title: string; text: string; href: string; label: string }[] = [
   { title: "실제검증", text: "고친 코드를 격리 환경에서 실제로 공격해 막히는지 확인", href: "/verify", label: "Red–Blue" },
@@ -25,8 +25,8 @@ const branches: { title: string; text: string; href: string; label: string }[] =
 function FlowDiagram() {
   return <article className="card help-flow" aria-labelledby="help-flow-title">
     <h2 id="help-flow-title">72hours는 이렇게 이어집니다</h2>
-    <ol className="help-flow-main">{flow.map((node, index) => <li key={node.step} data-tone={node.tone}>
-      <Link href={node.href}><span className="help-flow-step">{node.step}</span><strong>{node.title}</strong><small>{node.text}</small></Link>
+    <ol className="help-flow-main">{flow.map((node, index) => <li key={node.step}>
+      <Link href={node.href}><span className="help-flow-step">{node.step}</span><strong>{node.title}</strong><small>{node.text}</small>{node.note && <span className="help-flow-branch-note">{node.note}</span>}</Link>
       {index < flow.length - 1 && <ArrowRight className="help-flow-arrow" size={18} aria-hidden="true"/>}
     </li>)}</ol>
     <p className="help-flow-fork" aria-hidden="true">결과에서 필요한 것으로 이어서</p>

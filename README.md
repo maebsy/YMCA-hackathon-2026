@@ -6,7 +6,6 @@ AI 코딩 도구로 서비스를 만드는 개발자를 위한 보안 점검 서
 | 바로 써 보기 | 주소 |
 |---|---|
 | 웹 | https://oboe-handiness-enroll.ngrok-free.dev |
-| MCP 연결 안내 | https://oboe-handiness-enroll.ngrok-free.dev/mcp/service |
 
 > 웹 이용자는 서버·모델을 설치하지 않습니다. 무료 ngrok 주소라 브라우저로 처음 들어가면 ngrok 안내 화면이 한 번 나오며, **Visit Site**를 누르면 됩니다.
 
@@ -164,7 +163,7 @@ flowchart LR
 
 ## 개발자 재현 방법
 
-웹과 MCP는 위 주소에서 설치 없이 쓸 수 있습니다. 아래는 소스에서 직접 실행하는 방법입니다.
+웹은 위 주소에서 설치 없이 쓸 수 있습니다. AI 코딩 도구 연결은 [DISTRIBUTION.md](integrations/mcp-handoff/DISTRIBUTION.md)를 참고하세요. 아래는 소스에서 직접 실행하는 방법입니다.
 
 **권장 경로: Docker 없이 로컬 실행** (운영 서버와 같은 구성)
 

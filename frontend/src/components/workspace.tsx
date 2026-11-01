@@ -18,7 +18,7 @@ const flow: { step: string; title: string; text: string; href: string; tone?: "c
 ];
 const branches: { title: string; text: string; href: string; label: string }[] = [
   { title: "실검증", text: "고친 코드를 격리 환경에서 실제로 공격해 막히는지 확인", href: "/verify", label: "Red–Blue" },
-  { title: "MCP로 전달", text: "수정 지시를 Cursor·Claude Code 같은 AI 코딩 도구로 바로 보냄", href: "/report", label: "MCP" },
+  { title: "MCP로 전달", text: "수정 지시를 Cursor·Claude Code 같은 AI 코딩 도구로 바로 보냄", href: "/mcp", label: "MCP" },
   { title: "사고 신고", text: "사고가 의심되면 검사 기록으로 24시간·72시간 신고서 초안", href: "/incident", label: "24h · 72h" },
 ];
 

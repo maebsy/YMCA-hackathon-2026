@@ -71,8 +71,8 @@
 | ngrok 무료 고정 도메인 | 재시작해도 바뀌지 않는 시연 공개 주소(oboe-handiness-enroll.ngrok-free.dev). 무료 요금제는 브라우저 첫 방문에 경고 안내 페이지가 한 번 표시됨 | ngrok 이용약관 | https://ngrok.com/docs/universal-gateway/free-plan-limits/ |
 | 공식 MCP Registry (registry.modelcontextprotocol.io) | 원격 MCP 서버 `io.github.maebsy/72hours`의 주소·설명 공개 등록(배포 채널). GitHub 계정 인증으로 네임스페이스 확인 | MCP Registry 이용약관, 코드 Apache-2.0 | https://registry.modelcontextprotocol.io |
 | Hugging Face Hub | 모델 내려받기 (가중치는 GPU 서버에서만 실행) | Hugging Face Terms of Service | https://huggingface.co |
-| Google OAuth (Google Identity) | Google 계정으로 가입·로그인 | Google APIs Terms of Service | https://developers.google.com/identity |
-| GitHub OAuth Apps | GitHub 계정으로 가입·로그인 | GitHub Terms of Service | https://docs.github.com/apps/oauth-apps |
+| Google OAuth (Google Identity) | Google 계정으로 가입·로그인. 개발 초기 화면(#39)에서 사용했고 #82에서 제거, 현재 코드에서는 사용하지 않음 | Google APIs Terms of Service | https://developers.google.com/identity |
+| GitHub OAuth Apps | GitHub 계정으로 가입·로그인. 개발 초기 화면(#39)에서 사용했고 #82에서 제거, 현재 코드에서는 사용하지 않음 | GitHub Terms of Service | https://docs.github.com/apps/oauth-apps |
 | GitHub REST API: 공개 저장소 목록(자동완성) | 공개 owner의 최근 갱신 저장소 최대 100개를 비인증 조회(토큰 미전송, IP당 시간당 60회 제한) | GitHub 이용약관·API 사용 제한 | https://docs.github.com/rest/repos/repos#list-repositories-for-a-user |
 | OSV.dev API (api.osv.dev) | OSV-Scanner가 취약점 DB 조회 (무료, 키 없음) | OSV.dev 이용약관, 데이터는 출처(GitHub Advisory 등)별 라이선스 — 제출 전 확인 | https://osv.dev |
 | OSV GHSA-35jh-r3h4-6jhm / CVE-2021-23337 | 합성 lodash 4.17.15→4.17.21 정답 사례의 탐지·수정 경계 검증 근거 | GitHub Advisory Database CC-BY-4.0, OSV 이용약관 | https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm |
@@ -86,9 +86,7 @@
 
 ## 사전 보유 코드
 
-| 명칭 | 용도 | 라이선스 | 출처 |
-|---|---|---|---|
-| | | | |
+해당 없음. 주제 공개(10/30 10:00) 전 커밋은 GitHub 저장소 생성 시 자동으로 만들어진 `README.md` 2줄(`f2e4b3a`, 10/29)뿐이며 코드가 아닙니다.
 
 ## 기타 (AI 도구, 디자인 에셋, 폰트 등)
 

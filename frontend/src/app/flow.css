@@ -261,3 +261,10 @@ summary { cursor:pointer; font-size:0.75rem; }
 .journey-bar li[data-state="branch"] > a { border:1px dashed var(--line); }
 .journey-split { color:var(--accent); padding:0 2px; }
 @media (max-width: 720px) { .journey-bar ol { border-radius:14px; } }
+
+/* 상단 메뉴: 핵심 기능 세 가지 강조 */
+.header-actions .nav-core { border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:999px; padding:4px 12px; }
+.header-actions .nav-core[aria-current="page"] { background:var(--accent); color:#0a0a0a; border-color:var(--accent); }
+.mcp-steps { margin-top:24px; display:grid; gap:10px; padding-left:20px; color:var(--muted); line-height:1.7; }
+.mcp-steps strong { color:var(--accent); margin-right:8px; }
+@media (max-width: 720px) { .header-actions { flex-wrap:wrap; row-gap:6px; } }

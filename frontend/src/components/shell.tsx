@@ -37,7 +37,10 @@ export default function Shell({ children }: { children: ReactNode }) {
       <span className="header-note">찾고, 고치고, 확인까지</span>
       <nav className="header-actions" aria-label="보조 메뉴">
         <Link href={repositoryHref} aria-current={pathname === repositoryHref ? "page" : undefined}>{repositoryLabel}</Link>
-        <Link href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}>사고 대응</Link>
+        {/* 핵심 기능 세 가지는 따로 강조합니다 (최종 멘토링: 실검증·MCP·사고 신고가 카테고리로 잘 보여야 함) */}
+        <Link className="nav-core" href="/verify" aria-current={pathname === "/verify" ? "page" : undefined}>실검증</Link>
+        <Link className="nav-core" href="/mcp" aria-current={pathname === "/mcp" ? "page" : undefined}>MCP로 전달</Link>
+        <Link className="nav-core" href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}>사고 신고 24h·72h</Link>
         <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>사용법</Link>
         <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label="밝은 테마와 어두운 테마 전환"><Sun className="sun-icon" size={18}/><Moon className="moon-icon" size={18}/></button>
       </nav>

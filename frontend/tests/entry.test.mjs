@@ -398,7 +398,7 @@ test("header destination, label and aria-current follow scanning, result and emp
     assert.equal(incident.props.children[0].props["aria-hidden"], "true");
     assert.equal(incident.props["aria-current"], route === "/incident" ? "page" : undefined);
     assert.equal(links.find(node => node.props.href === "/help").props.children, "사용법");
-    assert.equal(links.find(node => node.props.href === "/verify").props.children, "실제검증");
+    assert.equal(links.find(node => node.props.href === "/verify").props.children, "실검증");
     assert.equal(links.find(node => node.props.href === "/mcp-guide").props.children, "MCP로 전달");
     assert.equal(nodes(nav).find(node => node.type === "button").props.className, "icon-button theme-toggle");
   }

@@ -78,7 +78,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       <nav className="header-actions" aria-label="보조 메뉴">
         <Link href={repositoryHref} aria-current={pathname === repositoryHref ? "page" : undefined}>{repositoryLabel}</Link>
         {/* 핵심 기능 세 가지는 따로 강조합니다 (최종 멘토링: 실검증·MCP·사고 신고가 카테고리로 잘 보여야 함) */}
-        <Link className="nav-core" href="/verify" aria-current={pathname === "/verify" ? "page" : undefined}>실제검증</Link>
+        <Link className="nav-core" href="/verify" aria-current={pathname === "/verify" ? "page" : undefined}>실검증</Link>
         <Link className="nav-core" href="/mcp-guide" aria-current={pathname === "/mcp-guide" ? "page" : undefined}>MCP로 전달</Link>
         <Link className="header-incident-link" href="/incident" aria-current={pathname === "/incident" ? "page" : undefined}><ShieldAlert size={16} aria-hidden="true"/>사고 신고 72h</Link>
         <Link href="/help" aria-current={pathname === "/help" ? "page" : undefined}>사용법</Link>
@@ -91,7 +91,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       }}>{menuOpen ? <X size={22} aria-hidden="true"/> : <Menu size={22} aria-hidden="true"/>}</button>
       <nav ref={menuPanel} id="header-menu" className="header-menu" aria-label="전체 메뉴" hidden={!menuOpen}>
         <Link href={repositoryHref} onClick={closeMenu} aria-current={pathname === repositoryHref ? "page" : undefined}>{isScanning ? "검사 진행" : result ? "검사 결과" : "GitHub 실제 검사"}</Link>
-        <Link href="/verify" onClick={closeMenu} aria-current={pathname === "/verify" ? "page" : undefined}>실제검증</Link>
+        <Link href="/verify" onClick={closeMenu} aria-current={pathname === "/verify" ? "page" : undefined}>실검증</Link>
         <Link href="/mcp-guide" onClick={closeMenu} aria-current={pathname === "/mcp-guide" ? "page" : undefined}>MCP로 전달</Link>
         <Link href="/incident" onClick={closeMenu} aria-current={pathname === "/incident" ? "page" : undefined}>사고 신고 72h</Link>
         <Link href="/help" onClick={closeMenu} aria-current={pathname === "/help" ? "page" : undefined}>도움말</Link>

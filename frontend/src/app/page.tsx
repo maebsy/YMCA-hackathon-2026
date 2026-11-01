@@ -47,7 +47,7 @@ export default function Home() {
       <div className="binary-background" aria-hidden="true">
         {binaryStreams.map((stream, index) => <div className="binary-column" key={index} style={{ "--column": index, "--duration": `${19 + index % 7 * 3}s`, "--delay": `${-index * 2.7}s` } as CSSProperties}><span>{stream}</span><span>{stream}</span></div>)}
       </div>
-      <button className="hero-motion-toggle" type="button" aria-pressed={motionPaused} aria-label={motionPaused ? "숫자 배경 애니메이션 재생" : "숫자 배경 애니메이션 일시 정지"} onClick={() => setMotionPaused(value => !value)}>{motionPaused ? <Play size={13} aria-hidden="true"/> : <Pause size={13} aria-hidden="true"/>}<span>{motionPaused ? "배경 재생" : "배경 정지"}</span></button>
+      <button className="hero-motion-toggle" type="button" aria-pressed={motionPaused} aria-label={motionPaused ? "히어로 배경 애니메이션 재생" : "히어로 배경 애니메이션 일시 정지"} onClick={() => setMotionPaused(value => !value)}>{motionPaused ? <Play size={13} aria-hidden="true"/> : <Pause size={13} aria-hidden="true"/>}<span>{motionPaused ? "배경 재생" : "배경 정지"}</span></button>
       <p className="eyebrow"><span className="status-dot"/> SECURITY FOR BUILDERS</p>
       <h1><span className="hero-title-line">코드 <span className="hero-security-word">보안</span></span><br/><span className="hero-title-accent">주소 하나면 됩니다.</span></h1>
     </div>

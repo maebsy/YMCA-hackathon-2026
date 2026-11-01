@@ -178,10 +178,10 @@ test("home sends a Pages site's repository URL and shows both supported input fo
   assert.deepEqual(ui.calls, ["https://github.com/alice/project"]);
   assert.deepEqual(ui.navigation, ["/repository"]);
   const input = ui.tree.find(node => node.type === "input");
-  assert.equal(input.props.placeholder, "owner/repository");
+  assert.equal(input.props.placeholder, "github.com/owner/repository 또는 owner.github.io");
   assert.equal(input.props["aria-describedby"], "repository-hint");
   const hint = ui.tree.find(node => node.props.id === "repository-hint");
-  assert.equal(hint.props.children, "github.com/owner/repo 또는 owner.github.io");
+  assert.equal(hint.props.children, "검사할 저장소: https://github.com/alice/project");
   assert.equal(ui.tree.some(node => node.type === "span" && node.props.children === "실제 엔진 검사"), false);
 });
 test("website and malformed repository inputs stay on the form without engine requests", () => {
@@ -254,8 +254,8 @@ test("H receives current progress, records and retry identity while compact lega
   const compact = nodes(WorkspaceTab({ compact: true, findings: [], logs: [], pendingIds: [] }));
   assert.equal(compact.some(node => node.props.children === "⑤ 재검사 실행"), false);
 });
-test("former sample routes lead to the actual workspace without starting a scan", () => {
-  for (const path of ["scan", "findings", "repair", "repair/[id]"]) {
+test("former scan route leads to progress without starting a scan", () => {
+  for (const path of ["scan"]) {
     const redirects = [];
     const { default: Page } = load(`../src/app/${path}/page.tsx`, {
       "next/navigation": { redirect: destination => redirects.push(destination) },
@@ -387,6 +387,22 @@ test("header destination, label and aria-current follow scanning, result and emp
     const nav = nodes(Shell({ children: null })).find(node => node.type === "nav");
     return nav.props.children[0];
   }
+  for (const route of ["/", "/incident", "/help"]) {
+    pathname = route;
+    const nav = nodes(Shell({ children: null })).find(node => node.type === "nav");
+    const links = nodes(nav).filter(node => node.type === "a");
+    const incident = links.find(node => node.props.href === "/incident");
+    assert.equal(incident.props.href, "/incident");
+    assert.equal(incident.props.className, "header-incident-link");
+    assert.equal(incident.props.children[1], "72시간 사고 신고");
+    assert.equal(incident.props.children[0].props["aria-hidden"], "true");
+    assert.equal(incident.props["aria-current"], route === "/incident" ? "page" : undefined);
+    assert.equal(links.find(node => node.props.href === "/help").props.children, "사용법");
+    assert.equal(links.find(node => node.props.href === "/verify").props.children, "실검증");
+    assert.equal(links.find(node => node.props.href === "/mcp").props.children, "MCP로 전달");
+    assert.equal(nodes(nav).find(node => node.type === "button").props.className, "icon-button theme-toggle");
+  }
+  pathname = "/";
   // The server and first client render use the provider's empty default.
   assert.equal(headerLink().props.href, "/");
   assert.equal(headerLink().props.children, "점검");
@@ -405,13 +421,12 @@ test("header destination, label and aria-current follow scanning, result and emp
 });
 
 
-test("short entries submit canonical URLs and expose the accessible fixed prefix", () => {
+test("short entries preview and submit the same canonical URL without a fixed prefix", () => {
   for (const repoInput of ["acme/app", " acme/app/ "]) {
     const ui = entry({ repoInput });
-    const prefix = ui.tree.find(node => node.props.id === "repository-prefix");
-    assert.equal(prefix.props.children, "https://github.com/");
-    prefix.props.onClick(); assert.equal(ui.focused(), 1);
-    assert.equal(ui.tree.find(node => node.type === "input").props["aria-describedby"], "repository-prefix repository-hint");
+    assert.equal(ui.tree.some(node => node.props.id === "repository-prefix"), false);
+    assert.equal(ui.tree.find(node => node.props.id === "repository-hint").props.children, "검사할 저장소: https://github.com/acme/app");
+    assert.equal(ui.tree.find(node => node.type === "input").props["aria-describedby"], "repository-hint");
     ui.submit(); assert.deepEqual(ui.calls, ["https://github.com/acme/app"]);
   }
   for (const repoInput of ["https://github.com/acme/app", "github.com/acme/app", "alice.github.io"]) {
@@ -419,5 +434,43 @@ test("short entries submit canonical URLs and expose the accessible fixed prefix
   }
   for (const repoInput of ["example.com/repo", "-alice/repo", "a--b/repo", "alice/../repo", "alice/repo?x=1"]) {
     const ui = entry({ repoInput }); ui.submit(); assert.deepEqual(ui.calls, [], repoInput);
+  }
+});
+
+test("home distinguishes Pages hosts from github.io repository names", () => {
+  for (const [repoInput, canonical] of [
+    ["papawolf42/papawolf42.github.io", "https://github.com/papawolf42/papawolf42.github.io", true],
+    ["owner/name.github.io", "https://github.com/owner/name.github.io", true],
+    ["owner/name.github.io/", "https://github.com/owner/name.github.io", true],
+    ["x.github.io", "https://github.com/x/x.github.io", false],
+    ["x.github.io/proj", "https://github.com/x/proj", false],
+    ["github.com/x/y", "https://github.com/x/y", false],
+    ["https://github.com/x/y", "https://github.com/x/y", false],
+    ["httparty/repo", "https://github.com/httparty/repo"],
+    ["HttpClient/project", "https://github.com/HttpClient/project"],
+  ]) {
+    const ui = entry({ repoInput });
+    assert.equal(ui.tree.some(node => node.props.id === "repository-prefix"), false, repoInput);
+    assert.equal(ui.tree.find(node => node.props.id === "repository-hint").props.children, `검사할 저장소: ${canonical}`, repoInput);
+    assert.ok(ui.tree.some(node => node.props["aria-live"] === "polite" && node.props["aria-atomic"] === "true" && node.props.children === `검사할 저장소: ${canonical}`));
+    ui.submit();
+    assert.deepEqual(ui.calls, [canonical], repoInput);
+  }
+});
+
+test("empty input keeps two guidance lines; incomplete and invalid input stays quiet until submission", () => {
+  const empty = entry({ repoInput: "" });
+  const hint = empty.tree.find(node => node.props.id === "repository-hint");
+  const lines = nodes(hint.props.children)[0].props.children;
+  assert.equal(lines[0], "github.com/owner/repository 또는 owner.github.io를 입력하세요.");
+  assert.equal(lines[1].type, "br");
+  assert.equal(lines[2], "GitHub Pages는 해당 저장소로 변환해 검사합니다.");
+  for (const repoInput of ["owner/", "github.com/owner/", "https://", "example.com/repo", "-owner/repo", "a--b/repo"]) {
+    const ui = entry({ repoInput });
+    assert.equal(ui.tree.find(node => node.props.id === "repository-hint").props.children, null, repoInput);
+    assert.equal(ui.errors.length, 0);
+    ui.submit();
+    assert.equal(ui.calls.length, 0);
+    assert.ok(ui.errors[0]);
   }
 });

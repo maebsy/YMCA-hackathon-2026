@@ -1,7 +1,9 @@
 .url-field.rs-field { position:relative; min-width:0; display:flex; align-items:center; padding:0 14px 0 47px; border:1px solid var(--border); border-radius:8px; background:var(--bg); font-size:0.875rem; }
 .rs-field:focus-within { outline:2px solid var(--accent); outline-offset:4px; }
 .rs-field:has(input[aria-invalid="true"]) { border-color:var(--danger); }
-.rs-prefix { flex-shrink:0; color:var(--fg); cursor:text; }
+.url-field.rs-field input::placeholder { color:var(--muted); opacity:1; }
+.field-hint.rs-hint { height:2lh; overflow-y:auto; overflow-wrap:anywhere; }
+@media(max-width:600px) { .field-hint.rs-hint { height:4lh; } }
 .url-field.rs-field input { flex:1; width:0; height:52px; padding:0; border:0; border-radius:0; background:transparent; font:inherit; color:var(--fg); outline:none; }
 @media(max-width:600px) { .url-field.rs-field { padding-left:38px; padding-right:10px; font-size:0.75rem; } .url-field.rs-field>svg { left:12px; width:17px; } }
 .rs-list { position:absolute; z-index:30; top:calc(100% + 5px); left:0; right:0; width:100%; max-height:380px; overflow-y:auto; overscroll-behavior:contain; margin:0; padding:4px; list-style:none; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--fg); box-shadow:0 10px 30px color-mix(in srgb,var(--fg) 12%,transparent); scrollbar-width:thin; }

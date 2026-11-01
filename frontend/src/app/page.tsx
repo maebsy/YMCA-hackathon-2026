@@ -5,7 +5,7 @@ import { useRef, useState, useSyncExternalStore, type CSSProperties, type FormEv
 import { ArrowRight, Code2, LoaderCircle, Pause, Play } from "lucide-react";
 import { normalizeRepositoryUrl, useRepository } from "@/components/repository-provider";
 import { useRepoAutocomplete } from "@/lib/use-repo-autocomplete";
-import { repositoryInputUrl, showGithubPrefix } from "@/lib/repo-suggest";
+import { repositoryInputUrl } from "@/lib/repo-suggest";
 import McpConnect from "@/components/mcp-connect";
 import "./repo-suggest.css";
 
@@ -24,7 +24,7 @@ export default function Home() {
   // 비교용 배치: /?mcp=inline 이면 MCP 연결을 검사 카드 안에 함께 보여 줍니다.
   const mcpInline = useSyncExternalStore(noSubscribe, readMcpInline, () => false);
   const autocomplete = useRepoAutocomplete({ value: repository.repoInput, setValue: repository.setRepoInput, inputRef: input });
-  const prefixVisible = showGithubPrefix(repository.repoInput);
+  const previewUrl = normalizeRepositoryUrl(repositoryInputUrl(repository.repoInput));
   function submit(event: FormEvent) {
     event.preventDefault();
     if (repository.isScanning) {
@@ -56,8 +56,7 @@ export default function Home() {
       <form onSubmit={submit} noValidate>
         <div className="url-form-row">
           <div className="url-field rs-field"><Code2 size={20} aria-hidden="true"/>
-            {prefixVisible && <span id="repository-prefix" className="rs-prefix" onClick={() => input.current?.focus()}>https://github.com/</span>}
-            <input {...autocomplete.inputProps} ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="owner/repository" onChange={event => { autocomplete.inputProps.onChange(event); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={[prefixVisible && "repository-prefix", error && "repository-error", "repository-hint"].filter(Boolean).join(" ")}/>
+            <input {...autocomplete.inputProps} ref={input} id="repository" name="repository" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="github.com/owner/repository 또는 owner.github.io" onChange={event => { autocomplete.inputProps.onChange(event); if (error) setError(""); }} disabled={!repository.restored || repository.isScanning} aria-invalid={!!error} aria-describedby={[error && "repository-error", "repository-hint"].filter(Boolean).join(" ")}/>
             <ul {...autocomplete.listProps} className="rs-list" hidden={!autocomplete.open}>
               {autocomplete.loading ? <li className="rs-loading" role="presentation">불러오는 중…</li> : autocomplete.suggestions.map((name, index) => {
                 const match = autocomplete.partial ? name.toLowerCase().indexOf(autocomplete.partial.toLowerCase()) : -1;
@@ -72,7 +71,8 @@ export default function Home() {
         </div>
         {error && <p id="repository-error" className="form-error" role="alert">{error}</p>}
         <p className="sr-only" aria-live="polite" aria-atomic="true">{autocomplete.announcement}</p>
-        <p id="repository-hint" className="field-hint">github.com/owner/repo 또는 owner.github.io</p>
+        <p id="repository-hint" className="field-hint rs-hint">{previewUrl ? `검사할 저장소: ${previewUrl}` : !repository.repoInput.trim() ? <>github.com/owner/repository 또는 owner.github.io를 입력하세요.<br/>GitHub Pages는 해당 저장소로 변환해 검사합니다.</> : null}</p>
+        <p className="sr-only" aria-live="polite" aria-atomic="true">{previewUrl ? `검사할 저장소: ${previewUrl}` : ""}</p>
       </form>
       {mcpInline && <McpConnect embedded/>}
     </section>

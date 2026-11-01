@@ -61,6 +61,8 @@ label { display:block; font-size:0.75rem; font-weight:600; margin-bottom:8px; }
 .header-actions { display:flex; align-items:center; gap:20px; }
 .header-actions>a { display:flex; align-items:center; min-height:44px; color:var(--muted); font-size:0.75rem; }
 .header-actions>a:hover,.header-actions>a[aria-current] { color:var(--accent); }
+.header-actions>.header-incident-link { gap:6px; padding-inline:12px; border:1px solid var(--accent); border-radius:999px; background:var(--accent-wash); color:var(--accent); font-weight:600; white-space:nowrap; }
+.header-actions>.header-incident-link:hover,.header-actions>.header-incident-link[aria-current="page"] { background:var(--accent); color:var(--accent-ink); }
 .moon-icon { display:none; }
 [data-theme="light"] .moon-icon { display:block; }
 [data-theme="light"] .sun-icon { display:none; }
@@ -146,7 +148,7 @@ summary { cursor:pointer; font-size:0.75rem; }
 @media(max-width:700px) {
   .site-header { min-height:73px; flex-wrap:wrap; padding-block:12px; }
   .brand { font-size:1.375rem; gap:7px; } .brand-hours { font-size:1.125rem; }
-  .header-actions { gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+  .header-actions { gap:10px; flex-wrap:wrap; justify-content:space-between; flex-basis:100%; }
   .footer-inner { flex-direction:column; gap:9px; padding-block:23px; font-size:0.625rem; }
   .entry { padding-block:43px 40px; }
   .entry-intro h1 { font-size:2rem; letter-spacing:-1.3px; margin-block:16px; }
